@@ -222,6 +222,17 @@ function endRound(room) {
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
+// The same player entering again (a new tab, or rejoining after the phone slept) replaces their old copy,
+// so nobody ever sees two of the same Squareface.
+function dropOldCopy(room, uid, ws) {
+  if (!room || !/^[a-z0-9]{8,24}$/.test(uid || '')) return;
+  for (const old of [...room.players.values()]) {
+    if (old.uid !== uid || old.ws === ws) continue;
+    send(old.ws, { t: 'replaced' });
+    leave(old.ws);
+    try { old.ws.close(4000, 'replaced'); } catch (e) {}
+  }
+}
 function leave(ws) {
   const room = ws.room, p = ws.player;
   if (!room || !p) return;
@@ -247,6 +258,7 @@ wss.on('connection', (ws) => {
       const code = String(m.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code.length < 3 || code.length > 8) return send(ws, { t: 'error', msg: 'Room names need 3 to 8 letters or numbers, like 67NM.' });
       if (room) leave(ws);
+      dropOldCopy(rooms.get(code), m.uid, ws);
       let r = rooms.get(code);
       if (!r) {
         r = { code, mode: m.mode === 'race' ? 'race' : 'team', players: new Map(), crunched: new Set(), teamFound: new Set(), nextId: 0, pot: { level: 1, fill: 0, need: potNeed(1) }, roundEnd: null };
@@ -263,9 +275,10 @@ wss.on('connection', (ws) => {
       return joinRoom(ws, r, m.name, m.color, m.uid);
     }
     if (m.t === 'join') {
+      if (room) leave(ws);
+      dropOldCopy(rooms.get(clean(m.code, 4).toUpperCase()), m.uid, ws);
       const r = rooms.get(clean(m.code, 4).toUpperCase());
       if (!r) return send(ws, { t: 'error', msg: 'No room with that code. Check the letters and try again.' });
-      if (room) leave(ws);
       return joinRoom(ws, r, m.name, m.color, m.uid);
     }
     if (!room || !p) return;
@@ -370,6 +383,6 @@ setInterval(() => {
     if (!ws.alive) { ws.terminate(); continue; }
     ws.alive = false; ws.ping();
   }
-}, 30000);
+}, 15000);
 
 server.listen(PORT, () => console.log(`Noodle Universe running at http://localhost:${PORT}`));

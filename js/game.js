@@ -1572,6 +1572,7 @@ const Game = (() => {
       if (G.pieces.includes(5) && seenAt(snail.x, snail.y)) c.fillText('🐌', snail.x * k, snail.y * k);
       if (fogGone() && seenAt(3500, 900)) c.fillText(landsOpen() ? '☁️▶' : '☁️🔒', (WORLD.w - 70) * k, 900 * k);
     }
+    if (mini === 'base') return;   // the zoomed live map draws its own markers
     // goal and pin
     const tg = goalTarget();
     if (tg) { c.font = `${mini ? 12 : Math.max(16, W / 40)}px sans-serif`; c.fillText('⭐', tg.x * k, tg.y * k); if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(tg.label, tg.x * k, tg.y * k + 16); } }
@@ -1633,6 +1634,7 @@ const Game = (() => {
       if (!landShards(n)[1] && seenAtL(L.pillar.x, L.pillar.y)) icon('🌟', L.pillar.x, L.pillar.y, big * 0.9);
     }
     icon(S.done[n] ? '☁️▶' : '☁️🔒', L.x1 - 90, L.stone.y, big * 0.9);
+    if (mini === 'base') return;
     const tg = goalTarget();
     if (tg && Lands.at(tg.x) === n) { icon('⭐', tg.x, tg.y, big); if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(tg.label, X(tg.x), Y(tg.y) + 16); } }
     if (G.pin && Lands.at(G.pin.x) === n) icon('📍', G.pin.x, G.pin.y - 30, big);
@@ -1647,6 +1649,53 @@ const Game = (() => {
       circle(c, X(P.x), Y(P.y), pr); fillStroke(c, profile.color || '#2fa4b5', 2.5);
       if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText('You', X(P.x), Y(P.y) + pr + 12); }
     }
+  }
+  // The live map: a zoomed-in piece of the world map around you, so you can see where you are at a glance.
+  const miniOff = document.createElement('canvas');
+  function drawMiniMap(c, W, H) {
+    const page = Lands.at(P.x), L = page ? Lands.get(page) : null;
+    const offW = page ? 700 : 900, offH = page ? Math.round(700 * LAND_H / LAND_W) : Math.round(900 * WORLD.h / WORLD.w);
+    if (miniOff.width !== offW || miniOff.height !== offH) { miniOff.width = offW; miniOff.height = offH; }
+    const o = miniOff.getContext('2d');
+    drawMap(o, offW, offH, 'base', page);
+    const kk = page ? offW / LAND_W : offW / WORLD.w;
+    const fx = (x) => (page ? x - L.x0 : x) * kk, fy = (y) => y * kk;
+    const sw = Math.min(offW, 1700 * kk), sh = Math.min(offH, sw * H / W);
+    const sx = clamp(fx(P.x) - sw / 2, 0, offW - sw), sy = clamp(fy(P.y) - sh / 2, 0, offH - sh);
+    c.clearRect(0, 0, W, H);
+    c.drawImage(miniOff, sx, sy, sw, sh, 0, 0, W, H);
+    const s = W / sw, mx = (x) => (fx(x) - sx) * s, my = (y) => (fy(y) - sy) * s;
+    const onPage = (x) => Lands.at(x) === page;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const u = W / ($('minimap').clientWidth || W);   // keep markers the same size on screen, however big the map is drawn
+    // goal: on the map, or a star stuck to the edge pointing the way
+    const tg = goalTarget();
+    if (tg) {
+      let gx = onPage(tg.x) ? mx(tg.x) : (tg.x > P.x ? W + 20 : -20), gy = onPage(tg.x) ? my(tg.y) : my(P.y);
+      const out = gx < 8 || gx > W - 8 || gy < 8 || gy > H - 8;
+      gx = clamp(gx, 10, W - 10); gy = clamp(gy, 10, H - 10);
+      c.font = `${Math.round((out ? 12 : 14) * u)}px sans-serif`; c.fillText('⭐', gx, gy);
+    }
+    if (G.pin && onPage(G.pin.x)) { c.font = `${Math.round(13 * u)}px sans-serif`; c.fillText('📍', clamp(mx(G.pin.x), 8, W - 8), clamp(my(G.pin.y) - 6, 8, H - 8)); }
+    for (const fr of Net.others.values()) {
+      if (fr.x === null || !onPage(fr.x)) continue;
+      circle(c, clamp(mx(fr.x), 5, W - 5), clamp(my(fr.y), 5, H - 5), 4.5 * u); fillStroke(c, fr.color, 1.8 * u);
+    }
+    const pr = (5 + Math.sin(now * 5)) * u;
+    c.fillStyle = 'rgba(255,255,255,0.75)'; circle(c, mx(P.x), my(P.y), pr + 3.5 * u); c.fill();
+    circle(c, mx(P.x), my(P.y), pr); fillStroke(c, profile.color || '#2fa4b5', 2 * u);
+  }
+  // On touch screens the live map sits top-right, just under whatever part of the HUD is above it
+  function placeMinimap(mm) {
+    const W = window.innerWidth, mw = mm.offsetWidth || 132, x0 = W - 12 - mw;
+    let bottom = 0;
+    document.querySelectorAll('#hud .pill, #hud .icon-btn, #hud .meter').forEach(el => {
+      if (el.offsetParent === null) return;
+      const r = el.getBoundingClientRect();
+      if (r.right > x0 && r.left < W && r.bottom > bottom) bottom = r.bottom;
+    });
+    const top = Math.round(bottom + 14) + 'px';
+    if (mm._top !== top) { mm._top = top; document.documentElement.style.setProperty('--mm-top', top); }
   }
   function openMap(page = Lands.at(P.x)) {
     const maxPage = fogGone() ? landsOpen() + 1 : 0;
@@ -2033,7 +2082,9 @@ const Game = (() => {
     if (mapT <= 0) {
       mapT = 0.3; markSeen();
       const mm = $('minimap');
-      if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMap(mc, mm.width, mm.height, true, Lands.at(P.x)); }
+      document.body.classList.toggle('show-mini', !$('hud').hidden && $('title').hidden && !Care.locked);
+      if (isTouch) placeMinimap(mm);
+      if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMiniMap(mc, mm.width, mm.height); }
     }
     if (G.pin && dist(P.x, P.y, G.pin.x, G.pin.y) < 90) { G.pin = null; Sound.coin(); UI.toast('📍 You reached your pin!', { life: 2 }); }
     cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(true); }
@@ -2581,9 +2632,11 @@ const Game = (() => {
   });
   Net.on('respawn', () => { roomCrunched.clear(); G.crunched = []; G.boulderHp = {}; UI.toast('The bricks grew back!', { life: 2.4 }); });
   Net.on('error', (m) => { mpMessage(m.msg, true); if (running) UI.toast(m.msg, { life: 3 }); });
-  Net.on('disconnected', () => {
+  Net.on('disconnected', (m) => {
     $('roomPill').classList.add('off'); $('emoteBtn').hidden = true; $('emoteMenuBtn').hidden = true; $('emoteBar').hidden = true;
-    if (running) UI.toast('<span class="t-small">Offline</span>Lost the connection to your room. You can keep playing solo.', { life: 4 });
+    if (running) UI.toast(m && m.replaced
+      ? '<span class="t-small">Playing somewhere else</span>You joined this room from another tab or device, so this one plays solo now.'
+      : '<span class="t-small">Offline</span>Lost the connection to your room. You can keep playing solo.', { life: 4.5 });
   });
 
   function updateRoomPill() {

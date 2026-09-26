@@ -3,7 +3,7 @@ const Net = (() => {
   let ws = null, me = null, code = null, mode = null, scores = [];
   const others = new Map();     // id -> { name, color, x, y, tx, ty, mood, sw, mv, f, z, walk }
   const handlers = {};
-  let lastState = 0, lastScore = '';
+  let lastState = 0, lastScore = '', replaced = false;
 
   const emit = (evt, data) => (handlers[evt] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
@@ -40,7 +40,8 @@ const Net = (() => {
       s.onclose = () => {
         const wasIn = !!code;
         ws = null; code = null; others.clear();
-        if (wasIn) emit('disconnected');
+        if (wasIn) emit('disconnected', { replaced });
+        replaced = false;
       };
     });
   }
@@ -77,6 +78,7 @@ const Net = (() => {
         });
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
+      case 'replaced': replaced = true; break;
       default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
     }
   }

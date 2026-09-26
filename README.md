@@ -30,7 +30,8 @@ Opening `index.html` without the server still works for solo play; multiplayer, 
 - **Room chat and voice:** tap 💬 (or press `C`) to chat. Kids can send quick phrases like "Follow me!" or type up to 80 letters; words show in a bubble over their Squareface. Bad words, links, emails and phone numbers are hidden, messages are never stored, and any player can be hidden with one tap. **Join voice** talks over WebRTC, straight between players (up to 8), with a mute button and a green glow on whoever is speaking. Voice needs a grown-up's OK the first time on each device.
 - **Grandma's shop:** spend coins on hats (friends see them), rocket fuel, Fortune Crackers and broth; sell the food you pick for coins.
 - **Rewards:** every Noodle Level gives something (coins, hats, sparkle trails, a golden antenna, a crown), forever. 1 in 40 finds turns a noodle golden (shiny).
-- **World map:** press M or tap 🗺️. Explored areas reveal themselves, landmarks appear once found, the goal is starred, and you can drop a pin to follow. Desktop has a minimap.
+- **Live map:** always on screen (top-right on phones and tablets, bottom-left on computers), zoomed in around you with your friends and a ⭐ pointing to your goal. Tap it for the full map.
+- **World map:** press M or tap 🗺️. Explored areas reveal themselves, landmarks appear once found, the goal is starred, and you can drop a pin to follow.
 - **The Udon Snail's trip:** after Chapter 2 the snail walks to the Soba Peaks over 7 real days and brings a gift.
 - **Healthy play for kids:** grown-up settings (⋯ menu → 🔒) for breaks, play time, chat and voice; a 5-minute break after 20 minutes of play, 60 minutes of play per day, and grown-up settings behind a math question. "Going to eat" pauses the game; in team rooms friends see you are away and earn you thank-you coins.
 - **Leaderboard:** coins, noodles, stars and trophies across everyone playing online.
