@@ -8,6 +8,9 @@ const SUBJECTS = {
   nature: { name: 'Nature & body', icon: '🌱' },
   math: { name: 'Math', icon: '➗' },
   earth: { name: 'Earth & weather', icon: '🌍' },
+  money: { name: 'Money & business', icon: '🪙' },
+  civics: { name: 'Town & government', icon: '🏛️' },
+  tools: { name: 'Building & tools', icon: '🔨' },
 };
 
 // Each fact unlocks the first time its trigger happens in the game.
@@ -104,6 +107,30 @@ const FACTS = [
     tryit: 'Visit the Soba Birds\' nest in the mountains.' },
 ];
 
+// Small World: how the real world works
+FACTS.push(
+  { id: 'wage', subject: 'money', title: 'Earning a wage', trigger: 'wage',
+    text: 'When you work, you earn a wage. People trade their time and skills for money.', tryit: 'Get a job at the Job Center in Small Town.' },
+  { id: 'tax', subject: 'civics', title: 'What taxes do', trigger: 'tax',
+    text: 'Taxes are money everyone gives to the town. The town uses it for things we all share: roads, lights, parks and schools.', tryit: 'Look at the treasury in the Town Hall.' },
+  { id: 'interest', subject: 'money', title: 'Interest', trigger: 'interest',
+    text: 'A bank pays you interest for keeping your money there, so savings grow a little every day. Big savings grow faster!', tryit: 'Put coins in the Bank and check again tomorrow.' },
+  { id: 'loan', subject: 'money', title: 'Loans', trigger: 'loan',
+    text: 'A loan lets you buy something now, but you pay back more later. The extra money is interest, and it grows every day until you pay.', tryit: 'Ask Banker Penny about loans.' },
+  { id: 'supply', subject: 'money', title: 'Supply and demand', trigger: 'supply',
+    text: 'When lots of people sell the same thing, its price goes down. When something is rare, its price goes up.', tryit: 'Sell 10 carrots and watch the Market price change.' },
+  { id: 'profit', subject: 'money', title: 'Profit', trigger: 'profit',
+    text: 'Profit is what you earn minus what you spent. A carrot seed costs 2 coins; if the carrot sells for 7, your profit is 5.', tryit: 'Grow crops on your farm and sell them.' },
+  { id: 'forest', subject: 'nature', title: 'Forests need planting', trigger: 'chop',
+    text: 'Forests grow back only when trees are planted. Cutting without planting leaves the land bare, and animals lose their homes.', tryit: 'Plant a sapling on a stump in the town forest.' },
+  { id: 'vote', subject: 'civics', title: 'Democracy', trigger: 'vote',
+    text: 'In a democracy, people vote to choose their leaders and decide together what their town builds.', tryit: 'Vote for a project at the Town Hall.' },
+  { id: 'rent', subject: 'money', title: 'Rent or own?', trigger: 'rent',
+    text: 'Rent is what you pay to live in a home someone else owns. Own your home and there is no rent, but you pay property tax.', tryit: 'Build your own house on a lot.' },
+  { id: 'land', subject: 'money', title: 'Why land has a price', trigger: 'land',
+    text: 'Land can earn money: farms grow food to sell, and shops sell to customers. That is why people pay for it.', tryit: 'Buy a plot of land in Small Town.' },
+);
+
 const FACT_BY_TRIGGER = {};
 FACTS.forEach(f => { (FACT_BY_TRIGGER[f.trigger] = FACT_BY_TRIGGER[f.trigger] || []).push(f); });
 
@@ -152,4 +179,58 @@ function makeMathQuestion(rnd, level) {
   while (opts.size < 3) { const d = ans + (rnd() < 0.5 ? -1 : 1) * r(1, Math.max(2, Math.round(ans / 4))); if (d >= 0) opts.add(d); }
   const o = [...opts].sort(() => rnd() - 0.5).map(String);
   return { s: 'math', q, o, a: o.indexOf(String(ans)), why: `The answer is ${ans}.` + (kind === 'mul' ? ' Multiplying is fast adding!' : kind === 'div' ? ' Sharing equally is dividing.' : '') };
+}
+
+// Small World classes: questions for three age groups (b: 1 = 6-8, 2 = 9-12, 3 = 13-16)
+const CLASS_BANK = {
+  money: [
+    { b: 1, q: 'You have 10 coins and buy a carrot for 3. How many are left?', o: ['7', '13', '3'], a: 0, why: 'Spending takes coins away: 10 − 3 = 7.' },
+    { b: 1, q: 'What is a wage?', o: ['Money you earn for working', 'A kind of vegetable', 'A kind of tax'], a: 0, why: 'A wage is what you are paid for your work.' },
+    { b: 1, q: 'Why keep money in a bank?', o: ['It is safe and grows with interest', 'Banks eat money', 'To lose it'], a: 0, why: 'Banks keep money safe and pay you a little interest.' },
+    { b: 1, q: 'Seeds cost 2 coins. The carrot sells for 7. What is your profit?', o: ['5 coins', '9 coins', '2 coins'], a: 0, why: 'Profit = what you sell for − what it cost: 7 − 2 = 5.' },
+    { b: 2, q: 'Lots of farmers sell tomatoes at the same time. What happens to the price?', o: ['It goes down', 'It goes up', 'It never changes'], a: 0, why: 'Lots of supply and the same demand make the price drop.' },
+    { b: 2, q: 'You save 100 coins. The bank pays 2% a day. How much interest after one day?', o: ['2 coins', '20 coins', '200 coins'], a: 0, why: '2% means 2 out of every 100.' },
+    { b: 2, q: 'What is a loan?', o: ['Money you borrow and pay back with interest', 'Free money', 'A kind of shop'], a: 0, why: 'Loans must be paid back, plus interest.' },
+    { b: 2, q: 'A shop earns 30 coins and pays 10% tax. How much tax?', o: ['3 coins', '10 coins', '30 coins'], a: 0, why: '10% of 30 is 3.' },
+    { b: 2, q: 'What is a budget?', o: ['A plan for spending and saving', 'A big bag', 'A bank robber'], a: 0, why: 'A budget helps you plan so you do not run out of money.' },
+    { b: 3, q: 'You borrow 100 coins at 5% simple interest per day. What do you owe after 2 days?', o: ['110 coins', '105 coins', '200 coins'], a: 0, why: '5% of 100 is 5 a day. 2 days = 10. 100 + 10 = 110.' },
+    { b: 3, q: 'Your shop sells 80 coins of goods that cost you 50. What is the profit?', o: ['30 coins', '130 coins', '50 coins'], a: 0, why: 'Profit = revenue − costs = 80 − 50.' },
+    { b: 3, q: 'What is inflation?', o: ['Prices going up over time', 'Filling balloons', 'A bank closing'], a: 0, why: 'With inflation the same coins buy a little less each year.' },
+    { b: 3, q: 'Why do people invest in land?', o: ['It can earn money and grow in value', 'Land is always free', 'To make it rain'], a: 0, why: 'Farms, shops and rent can earn money from land.' },
+  ],
+  civics: [
+    { b: 1, q: 'What do taxes pay for?', o: ['Things we share: roads, schools, parks', 'The mayor\'s candy', 'Nothing'], a: 0, why: 'Taxes pay for public things everyone uses.' },
+    { b: 1, q: 'Who leads a town after an election?', o: ['The mayor', 'The baker', 'The dog'], a: 0, why: 'Citizens vote to choose a mayor.' },
+    { b: 1, q: 'Why do we have rules (laws)?', o: ['To keep everyone safe and fair', 'To make people sad', 'For no reason'], a: 0, why: 'Laws help people live together safely.' },
+    { b: 1, q: 'What is voting?', o: ['A way to choose together', 'A kind of boat', 'A secret food'], a: 0, why: 'Voting lets everyone have a say.' },
+    { b: 2, q: 'Why must lumberjacks plant new trees?', o: ['So the forest does not disappear', 'Trees are ugly', 'To hide logs'], a: 0, why: 'Using nature carefully so it lasts is called sustainability.' },
+    { b: 2, q: 'If a town raises taxes, what happens?', o: ['More money for projects, less for people', 'Everyone gets richer', 'Nothing'], a: 0, why: 'Taxes move money from people to shared projects. Leaders must balance both.' },
+    { b: 2, q: 'What is public property?', o: ['Things the whole town owns, like parks', 'Your backpack', 'A secret room'], a: 0, why: 'Public property belongs to everyone together.' },
+    { b: 2, q: 'In an election, who wins?', o: ['The person with the most votes', 'The tallest person', 'Whoever came first'], a: 0, why: 'Most votes wins. That is majority rule.' },
+    { b: 3, q: 'Why is a secret ballot important?', o: ['People can vote freely without pressure', 'So nobody votes', 'It is faster'], a: 0, why: 'Secret votes protect people from being pushed or punished.' },
+    { b: 3, q: 'A town spends more than it collects. What is that called?', o: ['A deficit', 'A surplus', 'A festival'], a: 0, why: 'Spending more than income is a deficit. Having extra is a surplus.' },
+    { b: 3, q: 'What is democracy?', o: ['People choose leaders by voting', 'One king decides everything', 'The richest person rules'], a: 0, why: 'Democracy means power comes from the people.' },
+    { b: 3, q: 'Why do towns pay for schools with taxes?', o: ['Educated people can do more and help everyone', 'Schools make money for the mayor', 'Only to keep kids busy'], a: 0, why: 'Education helps the whole town grow.' },
+  ],
+  tools: [
+    { b: 1, q: 'Which tool pushes in nails?', o: ['A hammer', 'A spoon', 'A brush'], a: 0, why: 'Hammers drive nails into wood.' },
+    { b: 1, q: 'What are houses in Small Town built from?', o: ['Wood (logs)', 'Ice', 'Paper'], a: 0, why: 'Builders use logs from the forest.' },
+    { b: 1, q: 'Before you cut wood, you should...', o: ['Measure it', 'Paint it', 'Eat it'], a: 0, why: 'Measure twice, cut once!' },
+    { b: 2, q: 'A wall is 4 m long and 3 m high. What is its area?', o: ['12 square meters', '7 square meters', '43 square meters'], a: 0, why: 'Area = length × height = 4 × 3.' },
+    { b: 2, q: 'Why do roofs and bridges use triangles?', o: ['Triangles are strong and do not bend', 'They look like pizza', 'Paint sticks better'], a: 0, why: 'A triangle keeps its shape when pushed.' },
+    { b: 2, q: 'Which simple machine helps lift heavy things?', o: ['A lever', 'A pillow', 'A sock'], a: 0, why: 'A lever turns a small push into a big lift.' },
+    { b: 3, q: 'A house needs 12 logs. You have 5. Logs cost 8 coins. What do the rest cost?', o: ['56 coins', '96 coins', '40 coins'], a: 0, why: '12 − 5 = 7 logs. 7 × 8 = 56.' },
+    { b: 3, q: 'A room is 5 m by 4 m. How big is the floor?', o: ['20 square meters', '9 square meters', '18 square meters'], a: 0, why: '5 × 4 = 20.' },
+    { b: 3, q: 'What does a builder\'s level tool check?', o: ['That something is perfectly flat', 'How heavy it is', 'Which floor you are on'], a: 0, why: 'A bubble in the middle means level.' },
+  ],
+};
+// n questions for a class, fitted to the player's age group
+function classQuestions(subject, band, n = 3) {
+  const shuffle = (a) => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(v => v[1]);
+  const mix = (q) => { const order = shuffle([0, 1, 2]); return { ...q, o: order.map(i => q.o[i]), a: order.indexOf(q.a) }; };
+  if (subject === 'math') return Array.from({ length: n }, () => makeMathQuestion(Math.random, band * 2 + Math.floor(Math.random() * 2)));
+  if (subject === 'science') return shuffle(QUIZ_BANK).slice(0, n);
+  const bank = CLASS_BANK[subject] || [];
+  const fit = bank.filter(q => q.b === band), easier = bank.filter(q => q.b < band);
+  return shuffle(fit).concat(shuffle(easier)).slice(0, n).map(q => ({ s: subject === 'tools' ? 'tools' : subject, ...mix(q) }));
 }

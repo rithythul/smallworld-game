@@ -660,9 +660,9 @@ const UI = (() => {
       });
     });
   }
-  function quiz(questions, onAnswer, onDone) {
+  function quiz(questions, onAnswer, onDone, opts = {}) {
     let i = 0, score = 0;
-    const show = () => openSheet('Brain Noodle quiz', (body) => {
+    const show = () => openSheet(opts.title || 'Brain Noodle quiz', (body) => {
       const q = questions[i];
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Question ${i + 1} of ${questions.length} · ${SUBJECTS[q.s].icon} ${SUBJECTS[q.s].name}</p><h3 class="quiz-q">${q.q}</h3>`);
       const box = document.createElement('div'); box.className = 'quiz-opts';
@@ -673,7 +673,7 @@ const UI = (() => {
           if (right) score++;
           onAnswer(q, right);
           box.querySelectorAll('button').forEach((x, j) => { x.disabled = true; if (j === q.a) x.classList.add('right'); else if (j === k) x.classList.add('wrong'); });
-          body.insertAdjacentHTML('beforeend', `<p class="quiz-why ${right ? 'ok' : ''}">${right ? '✓ Right! ⭐ +1 and 5 coins. ' : 'Not quite, and that is okay! '}${q.why}</p>`);
+          body.insertAdjacentHTML('beforeend', `<p class="quiz-why ${right ? 'ok' : ''}">${right ? (opts.rightText || '✓ Right! ⭐ +1 and 5 coins. ') : 'Not quite, and that is okay! '}${q.why}</p>`);
           const next = document.createElement('button'); next.type = 'button'; next.className = 'big-btn small'; next.textContent = i < questions.length - 1 ? 'Next question' : 'Finish';
           next.addEventListener('click', () => { i++; if (i < questions.length) show(); else { closeSheet(); onDone(score); } });
           body.appendChild(next);
@@ -728,7 +728,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook, account, goalHint, shop, map, quiz,
+    players, openSheet, skills, selectText, leaderboard, cook, account, goalHint, shop, map, quiz,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },
