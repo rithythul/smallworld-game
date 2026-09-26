@@ -2385,7 +2385,16 @@ const Game = (() => {
       if (isTouch) $('mpPanel').scrollIntoView({ block: 'start', behavior: 'smooth' }); else nameIn.focus();
     });
     const ready = () => { profile.name = nameIn.value.trim().slice(0, 14) || 'Squareface'; saveProfile(); Sound.init(); pendingStart = startFn; };
-    const fail = () => { pendingStart = null; mpMessage('Could not reach the game server. Multiplayer works on the online version (Render) or when you run "npm start". Solo play works everywhere.', true); };
+    const fail = (e) => {
+      pendingStart = null;
+      const code = e && e.code;
+      mpMessage(code === 'no-server'
+        ? 'Multiplayer is not switched on for this website yet: it needs the game server (a Render Web Service, see the README). You can still play solo!'
+        : code === 'timeout' ? 'The game server did not wake up. Wait a minute and tap Enter room again.'
+        : code === 'offline' ? 'Multiplayer works on the online version of the game. Solo play works everywhere.'
+        : 'Could not connect to the game server. Check your internet and try again.', true);
+    };
+    Net.onStatus((sec) => mpMessage(`Waking up the game server… (${sec}s) The first visit after a break can take up to a minute.`));
     const codeIn = $('mpCode');
     const cleanCode = (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     codeIn.addEventListener('input', () => { const c = cleanCode(codeIn.value); if (c !== codeIn.value) codeIn.value = c; });

@@ -8,15 +8,34 @@ const Net = (() => {
   const emit = (evt, data) => (handlers[evt] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 
-  function connect() {
+  let statusFn = null;
+  const err = (code, msg) => Object.assign(new Error(msg || code), { code });
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  // Free Render servers sleep after ~15 minutes and take up to a minute to wake up.
+  // Ask /healthz until the server answers "ok". A 404 or an HTML page means there is no game server here.
+  async function wake() {
+    const deadline = Date.now() + 75000;
+    for (let tries = 0; Date.now() < deadline; tries++) {
+      try {
+        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
+        const r = await fetch('healthz?t=' + Date.now(), { cache: 'no-store', signal: ctl.signal });
+        clearTimeout(t);
+        const text = (await r.text()).trim();
+        if (r.ok && text === 'ok') return;
+        if (r.status === 404 || /<html|<!doctype/i.test(text)) throw err('no-server');
+      } catch (e) { if (e.code === 'no-server') throw e; }
+      if (statusFn) statusFn(Math.round((75000 - (deadline - Date.now())) / 1000));
+      await sleep(3000);
+    }
+    throw err('timeout');
+  }
+  function openSocket() {
     return new Promise((resolve, reject) => {
-      if (ws && ws.readyState === 1) return resolve();
-      if (!/^https?:$/.test(location.protocol)) return reject(new Error('offline'));
       let s;
-      try { s = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'); } catch (e) { return reject(e); }
-      const timer = setTimeout(() => { try { s.close(); } catch (e) {} reject(new Error('timeout')); }, 6000);
+      try { s = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'); } catch (e) { return reject(err('failed')); }
+      const timer = setTimeout(() => { try { s.close(); } catch (e) {} reject(err('timeout')); }, 12000);
       s.onopen = () => { clearTimeout(timer); ws = s; resolve(); };
-      s.onerror = () => { clearTimeout(timer); reject(new Error('failed')); };
+      s.onerror = () => { clearTimeout(timer); reject(err('failed')); };
       s.onmessage = onMessage;
       s.onclose = () => {
         const wasIn = !!code;
@@ -24,6 +43,12 @@ const Net = (() => {
         if (wasIn) emit('disconnected');
       };
     });
+  }
+  async function connect() {
+    if (ws && ws.readyState === 1) return;
+    if (!/^https?:$/.test(location.protocol)) throw err('offline');
+    await wake();
+    try { await openSocket(); } catch (e) { await sleep(1500); await openSocket(); } // one retry
   }
 
   function onMessage(ev) {
@@ -58,6 +83,7 @@ const Net = (() => {
   return {
     connect,
     on(evt, fn) { (handlers[evt] = handlers[evt] || []).push(fn); },
+    onStatus(fn) { statusFn = fn; },
     async create(name, color, roomMode, uid) { await connect(); send({ t: 'create', name, color, mode: roomMode, uid }); },
     async join(roomCode, name, color, uid) { await connect(); send({ t: 'join', code: roomCode, name, color, uid }); },
     async enter(roomCode, name, color, roomMode, uid) { await connect(); send({ t: 'enter', code: roomCode, name, color, mode: roomMode, uid }); },
