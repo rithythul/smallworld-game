@@ -332,3 +332,8 @@ const levelReward = (L) => LEVEL_REWARDS[L] || { coins: 10 * L, text: `${10 * L}
 const SHINY_CHANCE = 1 / 40;
 // What Grandma pays for food you collected (coins each)
 const FOOD_PRICES = { egg: 3, chili: 2, shiitake: 4, shoot: 3, naruto: 4, corn: 2, scallion: 2, nori: 3, dumpling: 5 };
+
+// The Udon Snail's week-long walk from the canyon to the summit (real time)
+const SNAIL_TRIP_DAYS = 7;
+const SNAIL_PATH = [[870, 2440], [760, 2160], [760, 1880], [760, 1300], [1000, 1000], [1250, 1265], [1460, 1260], [1700, 1150],
+  [2000, 1200], [2400, 1420], [2900, 1440], [3100, 1300], [2950, 1050], [3150, 860], [3000, 650], [3150, 470], [3240, 430]];

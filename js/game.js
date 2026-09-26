@@ -736,8 +736,46 @@ const Game = (() => {
     }, 400);
   }
 
+  // The snail's real-time trip: 7 real days along the roads, from the canyon to the summit.
+  const snailTrip = () => G.snailStart ? Math.min(1, (Date.now() - G.snailStart) / (SNAIL_TRIP_DAYS * 86400000)) : 0;
+  function snailTripPos() {
+    const segs = []; let total = 0;
+    for (let i = 1; i < SNAIL_PATH.length; i++) { const l = dist(...SNAIL_PATH[i - 1], ...SNAIL_PATH[i]); segs.push(l); total += l; }
+    let d = snailTrip() * total;
+    for (let i = 0; i < segs.length; i++) {
+      if (d <= segs[i]) { const [ax, ay] = SNAIL_PATH[i], [bx, by] = SNAIL_PATH[i + 1], f = d / segs[i]; return [ax + (bx - ax) * f, ay + (by - ay) * f]; }
+      d -= segs[i];
+    }
+    return SNAIL_PATH[SNAIL_PATH.length - 1];
+  }
   function talkSnail() {
-    if (G.pieces.includes(5)) return UI.say('snail', ['Hellooo again, speedy. I\'m still thinking about that Dawn Noodle.', 'I heard the mountains are next. Mountains are very tall. I\'ll meet you there in about... a year.']);
+    if (G.pieces.includes(5)) {
+      const p = snailTrip();
+      if (p >= 1) {
+        if (!G.flags.snailGift) {
+          return UI.say('snail', [
+            'Phew... I made it! The top of the Soba Peaks. Told you I would come. Only took a week!',
+            'Here, for waiting so patiently: my old <em>Golden Snail Shell</em>, 100 coins, and a very shiny Slow Udon.',
+          ], { onDone: () => {
+            G.flags.snailGift = true; G.hats.shell = true; G.hat = 'shell'; G.coins += 100;
+            if (!has('slowudon')) G.found.push('slowudon');
+            G.shiny.slowudon = true; G.bonusStars = (G.bonusStars || 0) + 3;
+            Sound.secret(); P.wow = 2;
+            burst(P.x, P.y - 70, 40, ['#ffd23f', '#fff1a8', '#d8e38a'], { type: 'spark', speed: 280, grav: 120 });
+            UI.toast('<span class="t-small">🐌 A gift from the Udon Snail · ⭐ +3</span>Golden Snail Shell hat, 100 coins and a shiny Slow Udon!', { big: true, life: 4.6 });
+            save();
+          } });
+        }
+        return UI.say('snail', ['What a view up here. I think I\'ll stay a while. Maybe a year. Or two.']);
+      }
+      const day = Math.min(SNAIL_TRIP_DAYS, Math.floor(p * SNAIL_TRIP_DAYS) + 1), left = Math.ceil((1 - p) * SNAIL_TRIP_DAYS * 24);
+      const lines = [
+        `Hellooo, speedy! I\'m on my way to the mountains. Day ${day} of ${SNAIL_TRIP_DAYS}.`,
+        left > 24 ? `About ${Math.ceil(left / 24)} more days to go. Real days! Come find me again.` : `Only about ${left} more hours! Meet me at the top of the Soba Peaks.`,
+        'I will have a present for you when I get there. Something shiny...',
+      ];
+      return UI.say('snail', lines);
+    }
     if (G.clues.includes('mirror')) {
       if (has('dawn')) {
         return UI.say('snail', [
@@ -761,7 +799,7 @@ const Game = (() => {
   function finishSnail() {
     snail.moved = 1;
     setTimeout(() => {
-      G.pieces.push(5); solve('mirror');
+      G.pieces.push(5); solve('mirror'); G.snailStart = Date.now();
       Sound.secret(); P.wow = 1.8;
       burst(CANYON.snail.x, CANYON.snail.y - 10, 50, ['#ffd23f', '#fff8e8', '#d8e38a'], { type: 'spark', speed: 300, grav: 150 });
       giveNoodle('slowudon');
@@ -1064,6 +1102,7 @@ const Game = (() => {
       'That old bowl south of here? The Noodle Oracle. It knows things... for a price.',
       'Shake the trees! Eggs, chilis, mushrooms... bring me food and I\'ll cook you something special.',
       'A Classic Ramen needs an egg, a scallion and a naruto swirl. Just saying.',
+      'Grandma\'s shop is right here! Hats, rocket fuel... and I buy the food you pick.',
     ];
     UI.say('grandma', tips[(G.day + G.coins + n) % tips.length], { choices: [
       { label: '🍜 Cook something', fn: () => UI.cook(G, { canCook, cook, eat: eatFood }) },
@@ -1390,10 +1429,16 @@ const Game = (() => {
     drumHit = Math.max(0, drumHit - dt * 4);
     rockShimmer = rockShimmer.map(v => Math.max(0, (v || 0) - dt));
     if (snail.moved > 0 && snail.moved < 90) snail.moved += dt * 30;
-    const sOff = G.pieces.includes(5) ? 90 : snail.moved;
-    const nx = CANYON.snail.x + sOff + Math.sin(now * 0.12) * 50;
-    snail.dir = nx > snail.x ? 1 : nx < snail.x ? -1 : snail.dir;
-    snail.x = nx;
+    if (G.pieces.includes(5)) {
+      // on its week-long walk to the mountains
+      const [sx, sy] = snailTripPos();
+      snail.dir = sx > snail.x + 0.01 ? 1 : sx < snail.x - 0.01 ? -1 : snail.dir;
+      snail.x = sx; snail.y = sy;
+    } else {
+      const nx = CANYON.snail.x + snail.moved + Math.sin(now * 0.12) * 50;
+      snail.dir = nx > snail.x ? 1 : nx < snail.x ? -1 : snail.dir;
+      snail.x = nx; snail.y = CANYON.snail.y;
+    }
 
     // antenna: sense secrets
     const secrets = [];
@@ -2112,6 +2157,7 @@ const Game = (() => {
     if (!G.fortune) newFortune();
     ensureDaily();
     if (G.pieces.includes(5) && !G.clues.includes('piece5')) G.clues.push('piece5');
+    if (G.pieces.includes(5) && !G.snailStart) G.snailStart = Date.now();
     P.x = G.px; P.y = G.py; P.color = profile.color;
     $('suitBtn').hidden = !G.flags.suit;
     if (blocked(P.x, P.y)) { P.x = DOOR.x; P.y = DOOR.y + 30; }
