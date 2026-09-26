@@ -1,13 +1,13 @@
 {
-  "name": "Noodle Universe",
-  "short_name": "Noodles",
-  "description": "Collect every noodle and crack the Golden Noodle mystery.",
+  "name": "Small World",
+  "short_name": "Small World",
+  "description": "A little 3D town that works like the real world: work, learn, save, build, vote and become anything you dream of.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "any",
-  "background_color": "#b7e3d9",
-  "theme_color": "#f4b942",
+  "background_color": "#cdeefc",
+  "theme_color": "#cdeefc",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }

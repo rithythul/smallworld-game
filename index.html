@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Noodle Universe</title>
-<meta name="theme-color" content="#f4b942">
+<title>Small World</title>
+<meta name="description" content="Small World: a little 3D town where kids learn how money, work, school and voting work by living there.">
+<meta name="theme-color" content="#cdeefc">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Noodles">
+<meta name="apple-mobile-web-app-title" content="Small World">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -16,75 +17,55 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Baloo+2:wght@500;600;700;800&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/sw.css">
 </head>
-<body>
+<body class="sw">
 <div id="app">
-  <canvas id="world" aria-label="Noodle Universe game world"></canvas>
+  <canvas id="world" aria-label="Small Town in 3D"></canvas>
+  <div class="tilt top"></div><div class="tilt bot"></div><div class="vignette"></div>
+  <div id="tags" aria-hidden="true"></div>
 
   <!-- HUD -->
   <div id="hud" hidden>
     <div class="hud-left">
-      <div class="pill clock" id="clock"><span class="clock-icon" id="clockIcon"></span><span id="clockText">Day 1 · 5:58 AM</span></div>
-      <div class="meters">
-        <div class="meter" title="Hydration">
-          <svg viewBox="0 0 24 24" class="meter-icon" aria-hidden="true"><path d="M12 2.5C9 7 5.5 10.6 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.6 15 7 12 2.5z" fill="var(--teal)" stroke="var(--ink)" stroke-width="2"/></svg>
-          <div class="bar"><div class="bar-fill water" id="waterBar"></div></div>
-        </div>
-        <div class="pill coins" title="Crunch Coins"><span class="coin"></span><span id="coinText">0</span></div>
+      <div class="hud-row">
+        <div class="pill coins" title="Coins in your pocket"><span class="coin"></span><span id="coinText">0</span></div>
+        <div class="pill clock"><span id="clockText">☀️ Day 1 · 6:00 AM</span></div>
       </div>
+      <button class="pill goal" id="goal" type="button"><span class="goal-label">Dream</span><span id="goalText">Pick a dream</span></button>
+      <button class="pill shift" id="shiftPill" type="button" hidden><span id="shiftText"></span></button>
       <button class="pill room" id="roomPill" type="button" hidden><span class="room-dot"></span><span id="roomText">ABCD</span></button>
-      <button class="pill goal" id="goal" type="button"><span class="goal-label">Goal</span><span id="goalText">Swim in the Morning Pool</span></button>
     </div>
     <div class="hud-right">
-      <button class="icon-btn" id="dexBtn" type="button" aria-label="Noodle-dex"><span class="icon-bowl"></span><span class="badge" id="dexCount">0/12</span></button>
-      <button class="icon-btn" id="skillsBtn" type="button" aria-label="Skills and challenges"><span class="icon-star">⭐</span><span class="badge" id="starCount">0</span></button>
-      <button class="icon-btn" id="mapBtn" type="button" aria-label="World map"><span class="icon-star">🗺️</span></button>
-      <button class="icon-btn" id="journalBtn" type="button" aria-label="Clue journal"><span class="icon-book"></span><span class="badge dot" id="journalDot" hidden></span></button>
-      <button class="icon-btn" id="menuBtn" type="button" aria-label="More" aria-expanded="false">⋯</button>
+      <button class="icon-btn" id="lifeBtn" type="button" aria-label="My life: money, bag, school, dream">🎒<span class="badge" id="bagText">0</span></button>
+      <button class="icon-btn" id="mapBtn" type="button" aria-label="Town map">🗺️</button>
+      <button class="icon-btn" id="menuBtn" type="button" aria-label="More">⋯</button>
       <div id="menuPop" hidden>
-        <button type="button" id="emoteMenuBtn" hidden>😊 Send an emote</button>
-        <button type="button" id="skillsMenuBtn">⭐ Skills &amp; Challenges</button>
+        <button type="button" id="friendsBtn2">👥 Play with friends</button>
+        <button type="button" id="dreamBtn">✨ Change my dream</button>
+        <button type="button" id="helpBtn">❓ How it works</button>
         <button type="button" id="awayBtn">🍽️ Going to eat (pause)</button>
-        <button type="button" id="accountBtn">☁️ Save online</button>
-        <button type="button" id="suitBtn" hidden>🧑‍🚀 Space suit on/off</button>
-        <button type="button" id="boardBtn">🏆 Leaderboard</button>
         <button type="button" id="grownBtn">🔒 Grown-up settings</button>
         <button type="button" id="soundBtn"><span id="soundIcon">🔊</span> Sound</button>
-        <button type="button" id="fsBtn" hidden>⛶ Full screen</button>
+        <a class="menu-link" href="classic.html">🍜 Classic Noodle Universe</a>
       </div>
-      <button class="icon-btn small" id="emoteBtn" type="button" aria-label="Send an emote" hidden>😊</button>
     </div>
   </div>
 
-  <canvas id="minimap" width="220" height="159" aria-label="Mini map, click to open the world map"></canvas>
-  <div id="buff" class="buff" hidden>😎 Fresh Start</div>
-  <div id="combo" class="combo" hidden></div>
+  <canvas id="minimap" width="180" height="178" aria-label="Town map, click to open" hidden></canvas>
+  <div id="watermark" aria-hidden="true"><img src="icons/smallworld-logo.png" alt="" onerror="this.remove()"><span>small world</span></div>
   <div id="toasts" aria-live="polite"></div>
 
   <!-- touch controls -->
-  <div id="stick" hidden><div id="stickKnob"></div><span class="stick-label">MOVE</span></div>
-  <button id="action" type="button" hidden><span id="actionLabel">CRUNCH</span></button>
-  <button id="flyBtn" type="button" hidden><span id="flyLabel">HOP</span></button>
+  <div id="stick" hidden><div id="stickKnob"></div></div>
+  <button id="action" type="button" hidden><span id="actionLabel"></span></button>
   <div id="emoteBar" hidden aria-label="Faces"></div>
 
-  <!-- dialogue -->
-  <div id="dialog" hidden>
-    <div class="dialog-card">
-      <canvas id="portrait" width="120" height="120"></canvas>
-      <div class="dialog-body">
-        <div class="dialog-name" id="dialogName">Grandma Ramen</div>
-        <div class="dialog-text" id="dialogText"></div>
-        <div class="dialog-choices" id="dialogChoices"></div>
-        <div class="dialog-next" id="dialogNext">tap to continue ▸</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- modal sheet (dex / journal) -->
+  <!-- sheets: every building, your life, the map -->
   <div id="sheet" hidden>
     <div class="sheet-card" role="dialog" aria-modal="true">
       <div class="sheet-head">
-        <h2 id="sheetTitle">Noodle-dex</h2>
+        <h2 id="sheetTitle"></h2>
         <button class="close" id="sheetClose" type="button" aria-label="Close">✕</button>
       </div>
       <div class="sheet-body" id="sheetBody"></div>
@@ -94,67 +75,42 @@
   <!-- title screen -->
   <div id="title">
     <div class="title-inner">
-      <canvas id="titleHero" width="260" height="260"></canvas>
-      <h1><span>Noodle</span><span>Universe</span></h1>
-      <p class="tagline">Collect every noodle. Crack the Golden Noodle mystery.</p>
-      <button class="big-btn" id="startBtn" type="button">Wake up ☀</button>
+      <canvas id="titleHero" width="220" height="220"></canvas>
+      <h1><span>Small</span><span>World</span></h1>
+      <p class="tagline">A little town that works like the real world. Work, learn, save, build, vote, and become anything you dream of.</p>
+      <div class="mp-panel title-form">
+        <div class="mp-row">
+          <label for="nameIn">Your name</label>
+          <div class="mp-join"><input id="nameIn" maxlength="14" autocomplete="off" placeholder="Your name"><button class="choice alt dice" id="dice" type="button" aria-label="Suggest a fun name">🎲</button></div>
+        </div>
+        <div class="mp-row"><span class="mp-label">Hoodie color</span><div class="swatches" id="colors"></div></div>
+        <div class="mp-row"><span class="mp-label">My age</span><div class="tabs" id="ages"></div></div>
+        <p class="mp-msg err" id="titleMsg"></p>
+      </div>
+      <button class="big-btn" id="startBtn" type="button">Start my life ☀</button>
       <button class="big-btn friends" id="friendsBtn" type="button">Play with friends 👥</button>
-      <button class="link-btn" id="loadBtn" type="button">Load my saved game ☁️</button>
-      <form id="loadPanel" class="mp-panel" hidden>
-        <p class="mp-msg" style="margin:0">Type the name and 4-number PIN you saved with.</p>
-        <div class="mp-row"><label for="loadName">Name</label><input id="loadName" maxlength="14" autocomplete="off" placeholder="Your name"></div>
-        <div class="mp-row"><label for="loadPin">PIN</label><input id="loadPin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4 numbers"></div>
-        <button class="big-btn small" type="submit">Load game</button>
-        <p class="mp-msg" id="loadMsg"></p>
-      </form>
-      <button class="link-btn" id="resetBtn" type="button" hidden>Start a new game</button>
-      <div id="mpPanel" class="mp-panel" hidden>
-        <div class="mp-row">
-          <label for="mpName">Your name</label>
-          <div class="mp-join"><input id="mpName" maxlength="14" autocomplete="off" placeholder="Squareface"><button class="choice alt dice" id="mpNameDice" type="button" aria-label="Suggest a fun name">🎲</button></div>
-        </div>
-        <div class="mp-row">
-          <span class="mp-label">Hoodie color</span>
-          <div class="swatches" id="mpColors"></div>
-        </div>
-        <div class="mp-row">
-          <label for="mpCode">Room name</label>
-          <div class="mp-join">
-            <input id="mpCode" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="67NM" aria-describedby="mpHelp">
-            <button class="choice alt dice" id="mpDice" type="button" aria-label="Make up a room name">🎲</button>
-          </div>
-          <small class="mp-help" id="mpHelp">Pick any name with 3 to 8 letters or numbers. Friends type the same name to join you.</small>
-        </div>
-        <span class="mp-label">If it's a new room, play as:</span>
-        <div class="mp-modes">
-          <button type="button" class="mode-card on" data-mode="team"><strong>🤝 Team up</strong><span>Share one Noodle-dex. Every noodle a friend finds is yours too.</span></button>
-          <button type="button" class="mode-card" data-mode="race"><strong>🏁 Race</strong><span>Everyone collects alone. Race for the same bricks. Most noodles wins.</span></button>
-        </div>
-        <button class="big-btn small" id="mpEnter" type="button">Enter room</button>
-        <p class="mp-msg" id="mpMsg"></p>
-      </div>
-      <p class="touch-how">Drag anywhere to walk · Tap the big button to crunch, drink and swim</p>
+      <button class="link-btn" id="newBtn" type="button" hidden>Start a brand new life</button>
       <div class="how">
-        <div><kbd>WASD</kbd><span>move</span></div>
-        <div><kbd>Space</kbd><span>crunch · drink · swim</span></div>
-        <div><kbd>F</kbd><span>hop · fly</span></div>
-        <div><kbd>N</kbd><span>Noodle-dex</span></div>
-        <div><kbd>J</kbd><span>journal</span></div>
+        <div><kbd>WASD</kbd><span>walk</span></div>
+        <div><kbd>Space</kbd><span>do things · hop</span></div>
         <div><kbd>M</kbd><span>map</span></div>
+        <div><kbd>1-6</kbd><span>faces</span></div>
       </div>
+      <p class="touch-how">Drag anywhere to walk · tap the big button to do things</p>
     </div>
   </div>
+  <div id="boot">Building Small Town…</div>
 </div>
 <script src="js/audio.js"></script>
 <script src="js/data.js"></script>
 <script src="js/art.js"></script>
-<script src="js/lands.js"></script>
 <script src="js/learn.js"></script>
-<script src="js/ui.js"></script>
+<script src="js/town.js"></script>
+<script src="js/life.js"></script>
 <script src="js/net.js"></script>
-<script src="js/space.js"></script>
 <script src="js/care.js"></script>
 <script src="js/talk.js"></script>
-<script src="js/game.js"></script>
+<script src="js/sw.js"></script>
+<script type="module" src="js/world3d.js"></script>
 </body>
 </html>

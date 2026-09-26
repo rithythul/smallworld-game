@@ -11,11 +11,11 @@ const Care = (() => {
 
   const TIPS = [
     '🍎 Go eat something yummy.',
-    '💧 Drink a glass of real water, like Squareface does from the stream.',
+    '💧 Drink a glass of real water.',
     '🤸 Stretch like a long noodle: arms up, reach for the sky!',
     '👀 Look out of a window at something far away.',
-    '🧹 Help someone at home for a minute. Grandma Ramen would be proud.',
-    '😊 Tell someone what you found in the Noodle Universe today.',
+    '🧹 Help someone at home for a minute. Real-life reputation points!',
+    '😊 Tell someone what you did in the game today.',
   ];
 
   function fmt(sec) { sec = Math.max(0, Math.ceil(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
@@ -102,8 +102,8 @@ const Care = (() => {
     el.querySelector('#careParent').hidden = newMode === 'grown';
     const t = el.querySelector('#careTitle'), p = el.querySelector('#careText');
     if (newMode === 'break') { t.textContent = 'Break time! 😴'; p.textContent = `You played for ${S.breakEvery} minutes. Squareface needs a rest, and so do you!`; }
-    if (newMode === 'done') { t.textContent = 'That\'s all for today! 🌙'; p.textContent = 'Squareface is recharging for tomorrow. The Noodle Universe will be waiting, and the Udon Snail keeps walking while you sleep.'; }
-    if (newMode === 'away') { t.textContent = 'Enjoy your meal! 🍽️'; p.textContent = 'Your game is paused. In a team room, your friends see that you are away, and every brick they crunch earns you a thank-you coin.'; }
+    if (newMode === 'done') { t.textContent = 'That\'s all for today! 🌙'; p.textContent = 'Squareface is recharging for tomorrow. Your world will be waiting for you.'; }
+    if (newMode === 'away') { t.textContent = 'Enjoy your meal! 🍽️'; p.textContent = 'Your game is paused. In a room with friends, they see that you are away.'; }
     if (newMode === 'grown') { t.textContent = 'Grown-ups only 🔒'; p.textContent = ''; }
     else if (onAway) onAway(true);
     tick(0);

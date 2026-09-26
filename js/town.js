@@ -24,7 +24,7 @@
     [X0 - 1000, 1760, X1, 1760], [4800, 1000, 4800, 2560], [4330, 1180, 5270, 1180], [4330, 1580, 5270, 1580],
     [4330, 1180, 4330, 1760], [5270, 1180, 5270, 1760], [5520, 760, 5520, 1760], [4560, 760, 5520, 760], [4560, 760, 4560, 1180],
   ];
-  const PROJECT_SPOTS = { fountain: { x: 4800, y: 1340 }, park: { x: 5100, y: 2230 }, library: { x: 4620, y: 1580 }, clinic: { x: 5000, y: 2000 }, busTown: { x: 3740, y: 1700 }, busVillage: { x: 560, y: 680 } };
+  const PROJECT_SPOTS = { fountain: { x: 4800, y: 1340 }, park: { x: 5100, y: 2230 }, library: { x: 5330, y: 2010 }, clinic: { x: 5000, y: 2000 }, busTown: { x: 3740, y: 1700 }, busVillage: { x: 560, y: 680 } };
 
   // land for sale: farms east of the market, building lots in the west and south
   const PLOTS = [];
@@ -63,7 +63,7 @@
   const PROJECTS = [
     { id: 'fountain', name: 'Plaza Fountain', icon: '⛲', cost: 60, desc: 'A place to meet friends. The town looks happier.' },
     { id: 'lights', name: 'Street Lights', icon: '💡', cost: 110, desc: 'Bright, safe streets at night.' },
-    { id: 'bus', name: 'Bus Line', icon: '🚌', cost: 150, desc: 'A free bus between Ramen Village and Small Town.' },
+    { id: 'bus', name: 'Bus Line', icon: '🚌', cost: 150, desc: 'A free town bus that drives up and down Main Road.' },
     { id: 'park', name: 'Town Park', icon: '🌳', cost: 210, desc: 'Trees, benches and a playground for everyone.' },
     { id: 'library', name: 'Library', icon: '📚', cost: 280, desc: 'Free books for everyone. Classes give an extra star.' },
     { id: 'clinic', name: 'Clinic', icon: '🏥', cost: 380, desc: 'Doctors and nurses keep the town healthy.' },
@@ -159,7 +159,9 @@
   function act(town, a, who, now) {
     settle(town, now);
     const fail = (msg) => ({ ok: false, msg });
-    const plot = a.id ? PLOT_BY_ID[a.id] : null, st = a.id ? town.plots[a.id] : null;
+    const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    const plot = a.id && own(PLOT_BY_ID, a.id) ? PLOT_BY_ID[a.id] : null, st = plot && own(town.plots, a.id) ? town.plots[a.id] : null;
+    if (a.i !== undefined && !(Number.isInteger(a.i) && a.i >= 0 && a.i < 10)) return fail('?');
     const mine = st && st.owner === who.uid;
     switch (a.type) {
       case 'buyPlot': {
@@ -180,7 +182,7 @@
       case 'plant': {
         if (!mine || plot.kind !== 'farm') return fail('Plant on your own farm.');
         if (st.soil[a.i]) return fail('Something is already growing here.');
-        if (!GOODS[a.k] || !GOODS[a.k].grow) return fail('That will not grow.');
+        if (!own(GOODS, a.k) || !GOODS[a.k].grow) return fail('That will not grow.');
         st.soil[a.i] = { k: a.k, t: now, w: 0 };
         return { ok: true };
       }
@@ -241,7 +243,7 @@
         return { ok: true };
       }
       case 'ballot': {
-        if (!town.election || !town.election.cand[a.cand]) return fail('No election right now.');
+        if (!town.election || !own(town.election.cand, a.cand)) return fail('No election right now.');
         town.election.votes[who.uid] = a.cand; return { ok: true };
       }
       case 'setTax': {

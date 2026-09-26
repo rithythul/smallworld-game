@@ -1,10 +1,10 @@
-# Noodle Universe
+# Small World
 
-A cozy browser game about **Squareface Guy**, a little AI with a smiley screen for a face, who collects every noodle in the Noodle Universe and uncovers the mystery of the Golden Noodle.
+A little 3D town that works like the real world, for kids aged 6 to 16. You play **Squareface**, a new citizen of Small Town. Work a job, go to school, save at the bank, buy land, farm, build a house or a shop, pay taxes, vote, run for mayor, and work step by step toward your dream. Play alone or with friends in the same shared town.
 
 ## Play
 
-The game runs on a small Node server (it also hosts multiplayer, the leaderboard and online saves):
+The game runs on a small Node server (it also hosts multiplayer towns, the leaderboard and online saves):
 
 ```sh
 npm install
@@ -12,13 +12,33 @@ npm start
 # then open http://localhost:3000
 ```
 
-Opening `index.html` without the server still works for solo play; multiplayer, the leaderboard and online saves need the server.
+**Controls:** WASD or arrows to walk. Space, E or the big button does whatever is nearby: talk, plant, water, harvest, chop, buy land, deliver a letter. With nothing nearby, Space hops. `M` opens the map, `1` to `6` make faces, `C` opens chat in a room. Scroll to zoom.
 
-**Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk, shake), F or Shift to hop and fly, `N` Noodle-dex, `J` journal, `M` map.
+**Phones and tablets:** drag anywhere to walk, tap the big button to do things, and tap quickly to hop.
 
-**Phones and tablets:** drag anywhere to walk (the joystick follows your thumb), tap the big button to act and hold it to drink, HOP/FLY button to jump and fly. Portrait, landscape and tablets all have their own layout. Use the ⋯ menu for full screen, or **Add to Home Screen** to play it like an app.
+## Small World: what's in the town
 
-## What's in the game
+- **Work:** at the 💼 Jobs office, pick a job and go to work. There are 7 jobs: Farmhand, Lumberjack, Mail Carrier, Builder, Town Clerk, Bank Teller and Tutor. A shift is a few small tasks, marked by yellow diamonds. The pay slip shows the wage, the income tax that goes to the town, and what you keep. Experience gives raises. You can work 3 shifts a day.
+- **School:** 🏫 classes in Money, Civics, Building, Math and Science, with questions for ages 6–8, 9–12 or 13–16. Pass 2 classes in a subject to earn its certificate. Certificates unlock better jobs. Classes are free because taxes pay for the school.
+- **Bank:** 🏦 savings earn 2% interest every morning. Loans cost 5% a day. You can borrow more when you hold certificates and land.
+- **Market:** 🧺 sell crops and logs. Prices follow supply and demand: every sale lowers the price a little, and prices recover over time. Buy logs from the sawmill.
+- **Land:** 12 farms and 12 building lots are for sale, and each has a daily land tax. Farms have 6 soil beds: buy seeds, plant, water and harvest. On a lot you can build a house (no more rent) or a shop (customers buy from your shelf every morning at a markup).
+- **The forest:** chop a tree for logs, then plant a sapling on a stump before you chop again ("cut one, plant one"). The forest closes when too few trees are left.
+- **The town:** 🏛️ taxes fill the treasury. Citizens vote on projects: a fountain, street lights, a bus line, a park, a library and a clinic, then festivals and new forests forever. Each project appears in the 3D town when it is built. Anyone with the Good Citizen certificate can run for mayor. The mayor sets the tax rate, and their project vote counts 3 times.
+- **Every morning:** a budget card shows the rent, land taxes, savings interest, loan interest and shop sales. If you can't pay the bills, the bank lends the rest, and that loan costs interest.
+- **Dreams:** choose to become a Farmer, Builder, Shopkeeper, Mayor, Banker or Teacher. Each dream is a path of real steps, and the yellow diamond shows the way to the next one. After the last step the dream keeps levelling up forever, and your title shows over your head.
+- **Day and night:** a Small Town day is 6 minutes. Everyone in a room shares the same clock, so the whole room has the same day and night.
+- **Friends:** type a room name (3 to 8 letters or numbers) to share one town: the same land, market prices, votes and mayor. Towns are saved on the server. You can chat (bad words, links and phone numbers are hidden), make faces, and use WebRTC voice (a grown-up says OK first).
+- **Healthy play:** breaks, a daily play limit, and grown-up settings behind a math question (⋯ menu → 🔒).
+- **Logo watermark:** put the Small World logo at `icons/smallworld-logo.png` and it replaces the text watermark.
+
+The 3D is made with [three.js](https://threejs.org) (MIT, bundled in `js/vendor/`). All models are built in code: no model files to download.
+
+## Classic: Noodle Universe
+
+The original 2D game is still here at `classic.html` (⋯ menu → 🍜 Classic Noodle Universe).
+
+### What's in the classic game
 
 - **Story (3 chapters so far):** the Pillow Note, pool tiles at dawn, the Backwards Willow and a noodle cipher; Crunch Canyon with the Echo Rock, the rhythm drum, the Mirror Pond and the Udon Snail; the Soba Peaks with the Face Statue. The journal's **Story** tab always shows the next step and where to look. Tap the goal for a yellow guide arrow.
 - **World:** Ramen Village, Crunch Meadow, Spaghetti Woods, Crunch Canyon, Soba Peaks, the Morning Pool (6–8 AM), day and night, storms.
@@ -60,7 +80,7 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 
 **Voice chat on strict networks:** voice connects players directly using free STUN servers, which works on most home Wi-Fi. Some school and phone networks block that; to relay voice there, add a TURN server (for example from Metered or Twilio) with the environment variables `TURN_URL` (like `turn:your.server:3478`), `TURN_USER` and `TURN_PASS`.
 
-**Keep saves and the leaderboard:** the free plan sleeps after about 15 minutes without players and its disk is wiped on every restart or deploy, which erases online saves and the leaderboard. To keep them, use a paid instance, add a **Disk** (mount path `/var/data`) and set the environment variable `DATA_DIR=/var/data`. The free plan also takes about 30 seconds to wake up for the first visitor.
+**Keep saves and the leaderboard:** the free plan sleeps after about 15 minutes without players and its disk is wiped on every restart or deploy, which erases online saves, shared towns and the leaderboard. To keep them, use a paid instance, add a **Disk** (mount path `/var/data`) and set the environment variable `DATA_DIR=/var/data`. The free plan also takes about 30 seconds to wake up for the first visitor.
 
 **How many players?** Each room holds up to 8 players, and there can be many rooms at the same time. A single free Render instance comfortably handles a few dozen players at once.
 
@@ -68,6 +88,12 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 
 | File | What it does |
 |---|---|
+| `index.html`, `css/sw.css` | Small World page and styles |
+| `js/world3d.js` | The 3D town (three.js): buildings, farms, forest, projects, Squarefaces, name tags, day and night, walking |
+| `js/sw.js` | Small World game: HUD, places, jobs, school, bank, market, land, dreams, rooms |
+| `js/town.js` | Town rules shared by the browser and the server: land, crops, prices, forest, taxes, votes, elections |
+| `js/life.js` | Your life's rules: money, jobs and wages, certificates, bank, morning bills, dreams |
+| `classic.html` | The classic 2D Noodle Universe |
 | `js/data.js` | Noodles, map layout, clues, riddles |
 | `js/art.js` | All drawing (characters, world, icons), no image files |
 | `js/audio.js` | Synthesized sound effects |
@@ -78,4 +104,4 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 | `js/care.js` | Breaks, daily play time and grown-up settings |
 | `js/lands.js` | The Endless Frontier: lands made from their number, their Keepers and drawings |
 | `js/talk.js` | Room chat, quick phrases and WebRTC voice |
-| `server.js` | Node server: static files, rooms, leaderboard, online saves |
+| `server.js` | Node server: static files, rooms, shared Small World towns, leaderboard, online saves |

@@ -4,7 +4,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
+const Town = require('./js/town.js');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -16,7 +18,7 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
 };
-const PUBLIC = new Set(['index.html', 'manifest.webmanifest', 'css', 'js', 'icons']);
+const PUBLIC = new Set(['index.html', 'classic.html', 'manifest.webmanifest', 'css', 'js', 'icons']);
 const ROUND_SECS = +process.env.ROUND_SECS || 120;               // one Crunch Race round
 const potNeed = (level) => 20 + level * 10; // team pot grows every time it fills
 
@@ -125,6 +127,7 @@ function handleAccount(urlPath, m, req, json) {
 }
 
 /* ---------- static files ---------- */
+const gzCache = new Map();   // compressed copies of the game files (the files never change while the server runs)
 const server = http.createServer((req, res) => {
   const [rawPath, query = ''] = (req.url || '/').split('?');
   let urlPath = decodeURIComponent(rawPath);
@@ -134,12 +137,58 @@ const server = http.createServer((req, res) => {
   const file = path.normalize(path.join(ROOT, urlPath));
   const top = path.relative(ROOT, file).split(path.sep)[0];
   if (!file.startsWith(ROOT + path.sep) || !PUBLIC.has(top)) { res.writeHead(404); res.end('Not found'); return; }
+  const ext = path.extname(file), type = TYPES[ext] || 'application/octet-stream';
+  const gz = /gzip/.test(req.headers['accept-encoding'] || '') && /^(text|application\/(json|manifest))/.test(type);
+  const hit = gz && gzCache.get(file);
+  if (hit) { res.writeHead(200, { 'Content-Type': type, 'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding', 'Cache-Control': 'public, max-age=300' }); return res.end(hit); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=300' });
+    if (gz) { const z = zlib.gzipSync(data); gzCache.set(file, z); res.writeHead(200, { 'Content-Type': type, 'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding', 'Cache-Control': 'public, max-age=300' }); return res.end(z); }
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=300' });
     res.end(data);
   });
 });
+
+/* ---------- Small World: one shared town per room, saved to disk ---------- */
+const TOWN_DIR = path.join(DATA_DIR, 'towns');
+const towns = new Map();            // room code -> { town, dirty }
+function townFor(code) {
+  let t = towns.get(code);
+  if (t) return t;
+  let town = null;
+  try { town = JSON.parse(fs.readFileSync(path.join(TOWN_DIR, code + '.json'), 'utf8')); } catch (e) { town = null; }
+  if (!town || town.v !== 1) town = Town.newTown(Date.now());
+  t = { town, dirty: false };
+  towns.set(code, t);
+  return t;
+}
+setInterval(() => {
+  for (const [code, t] of towns) {
+    if (t.dirty) { t.dirty = false; fs.mkdir(TOWN_DIR, { recursive: true }, () => fs.writeFile(path.join(TOWN_DIR, code + '.json'), JSON.stringify(t.town), () => {})); }
+    if (!rooms.has(code) && !t.dirty) towns.delete(code);
+  }
+}, 10000);
+// Time passes in every busy town: prices settle, elections close, projects get built.
+setInterval(() => {
+  for (const room of rooms.values()) {
+    const t = townFor(room.code), before = JSON.stringify(t.town);
+    Town.settle(t.town, Date.now());
+    if (JSON.stringify(t.town) !== before) { t.dirty = true; broadcast(room, { t: 'town', town: t.town }); }
+  }
+}, 15000);
+const UIDRE = /^[a-z0-9]{8,24}$/;
+// Only known fields, with the right types, reach the town rules.
+function cleanAction(a) {
+  if (!a || typeof a !== 'object' || typeof a.type !== 'string') return null;
+  const out = { type: a.type.slice(0, 12) };
+  if (typeof a.id === 'string' && /^[FL]\d{1,2}$/.test(a.id)) out.id = a.id;
+  if (Number.isInteger(a.i) && a.i >= 0 && a.i < 10) out.i = a.i;
+  ['k', 'g', 'kind', 'tree', 'project'].forEach(k => { if (typeof a[k] === 'string' && /^[a-z0-9]{1,16}$/.test(a[k])) out[k] = a[k]; });
+  if (typeof a.cand === 'string' && UIDRE.test(a.cand)) out.cand = a.cand;
+  ['n', 'rep', 'rate'].forEach(k => { if (typeof a[k] === 'number' && isFinite(a[k])) out[k] = Math.round(a[k]); });
+  if (a.bonus) out.bonus = true;
+  return out;
+}
 
 /* ---------- rooms ---------- */
 const rooms = new Map();
@@ -192,7 +241,7 @@ function joinRoom(ws, room, name, color, uid) {
   const p = { id: ++room.nextId, ws, name: safeName(name) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
   room.players.set(p.id, p);
   ws.room = room; ws.player = p;
-  send(ws, { t: 'joined', now: Date.now(), you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
+  send(ws, { t: 'joined', now: Date.now(), town: townFor(room.code).town, you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
   broadcast(room, { t: 'player', p: publicPlayer(p) }, ws);
   broadcast(room, { t: 'scores', list: scores(room) });
 }
@@ -286,7 +335,7 @@ wss.on('connection', (ws) => {
     switch (m.t) {
       case 'state':
         p.x = num(m.x, 0, 1e7); p.y = num(m.y, 0, 5000);  // the world keeps growing east
-        p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400), su: !!m.su, h: clean(m.h, 10), ga: !!m.ga };
+        p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400), su: !!m.su, h: clean(m.h, 10), ga: !!m.ga, ti: clean(m.ti, 24) };
         break;
       case 'crunch': {
         const id = typeof m.b === 'number' ? m.b : clean(m.b, 12);
@@ -362,6 +411,17 @@ wss.on('connection', (ws) => {
         send(to.ws, { t: 'rtc', from: p.id, data: m.data });
         break;
       }
+      case 'tact': {
+        // a Small World action on the shared town: buy land, plant, vote...
+        if (!allow(p, 'townBucket', 20, 5)) return send(ws, { t: 'tres', rid: m.rid, res: { ok: false, msg: 'Slow down a little!' } });
+        const a = cleanAction(m.a), rid = Number.isInteger(m.rid) ? m.rid : 0;
+        if (!a) return;
+        const t = townFor(room.code);
+        const res = Town.act(t.town, a, { uid: p.uid || 'p' + p.id, name: p.name }, Date.now());
+        send(ws, { t: 'tres', rid, res });
+        if (res.ok) { t.dirty = true; broadcast(room, { t: 'town', town: t.town }); }
+        break;
+      }
       case 'leave':
         leave(ws);
         break;
@@ -386,4 +446,4 @@ setInterval(() => {
   }
 }, 15000);
 
-server.listen(PORT, () => console.log(`Noodle Universe running at http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Small World running at http://localhost:${PORT}`));

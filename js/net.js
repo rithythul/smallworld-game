@@ -3,7 +3,8 @@ const Net = (() => {
   let ws = null, me = null, code = null, mode = null, scores = [];
   const others = new Map();     // id -> { name, color, x, y, tx, ty, mood, sw, mv, f, z, walk }
   const handlers = {};
-  let lastState = 0, lastScore = '', replaced = false, clockOffset = 0;
+  let lastState = 0, lastScore = '', replaced = false, clockOffset = 0, rid = 0;
+  const pending = new Map();      // town actions waiting for the server's answer
 
   const emit = (evt, data) => (handlers[evt] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
@@ -40,6 +41,7 @@ const Net = (() => {
       s.onclose = () => {
         const wasIn = !!code;
         ws = null; code = null; others.clear();
+        pending.forEach(fn => fn({ ok: false, msg: 'Lost the connection.' })); pending.clear();
         if (wasIn) emit('disconnected', { replaced });
         replaced = false;
       };
@@ -75,11 +77,12 @@ const Net = (() => {
           if (s.id === me) return;
           const o = others.get(s.id); if (!o) return;
           if (o.x === null) { o.x = s.x; o.y = s.y; o.walk = 0; }
-          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0; o.su = s.su; o.h = s.h; o.ga = s.ga; o.a = s.a;
+          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0; o.su = s.su; o.h = s.h; o.ga = s.ga; o.a = s.a; o.ti = s.ti;
         });
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
       case 'replaced': replaced = true; break;
+      case 'tres': { const fn = pending.get(m.rid); if (fn) { pending.delete(m.rid); fn(m.res); } break; }
       default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
     }
   }
@@ -98,7 +101,17 @@ const Net = (() => {
       const t = performance.now();
       if (t - lastState < 90) return;
       lastState = t;
-      send({ t: 'state', x: p.x, y: p.y, mood: p.mood, sw: p.swimming, mv: p.moving, f: Math.round(p.face * 10) / 10, z: Math.round(p.z || 0), su: !!p.suit, h: p.hat || '', ga: !!p.goldAntenna });
+      send({ t: 'state', x: p.x, y: p.y, mood: p.mood, sw: p.swimming, mv: p.moving, f: Math.round(p.face * 100) / 100, z: Math.round(p.z || 0), su: !!p.suit, h: p.hat || '', ga: !!p.goldAntenna, ti: p.title || '' });
+    },
+    // Small World: an action on the shared town. Resolves with the town's answer.
+    townAct(a) {
+      if (!code) return Promise.resolve({ ok: false, msg: 'Not in a room.' });
+      const id = ++rid;
+      return new Promise((resolve) => {
+        pending.set(id, resolve);
+        send({ t: 'tact', rid: id, a });
+        setTimeout(() => { if (pending.has(id)) { pending.delete(id); resolve({ ok: false, msg: 'The town did not answer. Try again.' }); } }, 8000);
+      });
     },
     crunch(id, n = 0, v = '') { if (code) send({ t: 'crunch', b: id, n, v }); },
     // milliseconds on the shared clock (the server's, once you are in a room)
