@@ -279,7 +279,7 @@ const UI = (() => {
     });
   }
 
-  function players(Net, onLeave) {
+  function players(Net, onLeave, extra = {}) {
     openSheet('Friends', (body) => {
       const team = Net.mode === 'team';
       body.insertAdjacentHTML('beforeend', `
@@ -292,9 +292,35 @@ const UI = (() => {
       rows.forEach((p, i) => {
         const me = p.id === Net.me;
         list.insertAdjacentHTML('beforeend', `<div class="player-row"><span class="rank">${team ? '·' : i + 1}</span><span class="dot" style="background:${p.color}"></span>
-          <span class="who">${p.name}${me ? ' (you)' : ''}</span><span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></div>`);
+          <span class="who">${p.name}${me ? ' (you)' : ''}</span>${p.trophies ? `<span class="stat">🏆 ${p.trophies}</span>` : ''}${p.round ? `<span class="stat">🧱 ${p.round}</span>` : ''}<span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></div>`);
       });
       body.appendChild(list);
+      if (team && extra.pot) {
+        const p = extra.pot;
+        body.insertAdjacentHTML('beforeend', `<div class="clue" style="margin-top:14px"><span class="where">Work together</span><h3>🍲 Team Pot · level ${p.level}</h3>
+          <p class="sheet-sub" style="margin:4px 0 8px">Every brick anyone crunches goes in the pot. Fill it and everyone gets ⭐ +2 and 10 coins. Then a bigger pot starts. It never ends.</p>
+          <div class="progress"><div style="width:${p.fill / p.need * 100}%"></div></div><b>${p.fill} / ${p.need} bricks</b></div>`);
+      }
+      if (!team) {
+        const live = extra.roundLeft > 0;
+        body.insertAdjacentHTML('beforeend', `<div class="clue" style="margin-top:14px"><span class="where">Compete</span><h3>🏁 Crunch Race</h3>
+          <p class="sheet-sub" style="margin:4px 0 8px">2 minutes. All bricks grow back at the start. Whoever crunches the most wins a 🏆 trophy, ⭐ +3 and 20 coins. Play as many rounds as you like.</p>
+          ${live ? `<b>Round running: ${Math.floor(extra.roundLeft / 60)}:${String(extra.roundLeft % 60).padStart(2, '0')} left</b>` : '<button class="choice" type="button" id="startRound">Start a Crunch Race</button>'}</div>`);
+        const b = $('startRound'); if (b) b.addEventListener('click', () => { extra.startRound(); closeSheet(); });
+      }
+      const taken = new Set(rows.filter(p => p.id !== Net.me).map(p => p.color));
+      const mine = (rows.find(p => p.id === Net.me) || {}).color;
+      const sw = document.createElement('div'); sw.className = 'swatches'; sw.style.marginTop = '14px';
+      ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'].forEach(c => {
+        const b = document.createElement('button'); b.type = 'button'; b.style.background = c;
+        b.setAttribute('aria-label', taken.has(c) ? 'Color taken' : 'Pick color');
+        if (c === mine) b.classList.add('on');
+        if (taken.has(c)) { b.disabled = true; b.style.opacity = '.25'; }
+        b.addEventListener('click', () => Net.color(c));
+        sw.appendChild(b);
+      });
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub" style="margin:14px 0 0">Your hoodie color (faded colors are taken):</p>');
+      body.appendChild(sw);
       body.insertAdjacentHTML('beforeend', '<p class="sheet-sub" style="margin-top:14px">Tap 😊 to send an emote. Everyone sees it over your head.</p><button class="choice alt" type="button" id="leaveRoom">Leave room</button>');
       $('leaveRoom').addEventListener('click', onLeave);
       $('copyCode').addEventListener('click', () => {
@@ -302,6 +328,33 @@ const UI = (() => {
         const done = () => { $('copyCode').textContent = 'Copied!'; };
         try { navigator.clipboard.writeText(link).then(done, () => { selectText($('linkLine')); }); } catch (e) { selectText($('linkLine')); }
       });
+    });
+  }
+  function leaderboard(opts) {
+    openSheet('Leaderboard', (body) => {
+      const tabs = document.createElement('div'); tabs.className = 'tabs';
+      [['coins', '🪙 Coins'], ['found', '🍜 Noodles'], ['stars', '⭐ Stars'], ['trophies', '🏆 Trophies']].forEach(([id, label]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tab' + (opts.by === id ? ' on' : ''); b.textContent = label;
+        b.addEventListener('click', () => leaderboard({ ...opts, by: id }));
+        tabs.appendChild(b);
+      });
+      body.appendChild(tabs);
+      body.insertAdjacentHTML('beforeend', `<form class="answer-row" id="nameForm" style="margin:0 0 12px"><input id="boardName" maxlength="14" placeholder="Your name on the board" value="${(opts.name || '').replace(/"/g, '')}" aria-label="Your name"><button class="choice" type="submit">Save name</button></form>`);
+      $('nameForm').addEventListener('submit', (e) => { e.preventDefault(); opts.rename($('boardName').value.trim() || 'Squareface'); $('boardName').blur(); leaderboard({ ...opts, name: $('boardName').value.trim() }); });
+      const list = document.createElement('div'); list.className = 'players'; list.innerHTML = '<p class="empty">Loading…</p>';
+      body.appendChild(list);
+      if (!opts.online) { list.innerHTML = '<p class="empty">The leaderboard lives on the online server. Play at your Render link (or run npm start) to join it.</p>'; return; }
+      opts.load(opts.by).then(d => {
+        if (!d.list.length) { list.innerHTML = '<p class="empty">Nobody on the board yet. Crunch some bricks and be first!</p>'; return; }
+        list.innerHTML = '';
+        const unit = { coins: '🪙', found: '🍜', stars: '⭐', trophies: '🏆' }[opts.by];
+        d.list.forEach((e, i) => {
+          const me = e.id === opts.uid;
+          list.insertAdjacentHTML('beforeend', `<div class="player-row${me ? ' me' : ''}"><span class="rank">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="dot" style="background:${e.color}"></span>
+            <span class="who">${e.name}${me ? ' (you)' : ''}</span><span class="stat">${unit} ${e[opts.by] || 0}</span></div>`);
+        });
+        body.insertAdjacentHTML('beforeend', `<p class="sheet-sub" style="margin-top:12px">${d.total} players on the board. It updates every 30 seconds while you play.</p>`);
+      }).catch(() => { list.innerHTML = '<p class="empty">Could not load the leaderboard. Check your connection and try again.</p>'; });
     });
   }
   function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
@@ -345,7 +398,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills,
+    players, openSheet, skills, leaderboard,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

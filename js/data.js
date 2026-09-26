@@ -240,3 +240,16 @@ const PHYS = {
   swimStamina: [0, 10, 25, Infinity],
   current: [0, 80, 40, 25],       // how hard the stream pushes you (px/s)
 };
+
+// ---------- Daily challenges: 3 new ones every in-game morning, forever ----------
+const DAILY_POOL = [
+  { id: 'crunch', title: 'Crunch {n} bricks', min: 8, max: 16 },
+  { id: 'drink', title: 'Drink {n} times', min: 3, max: 6 },
+  { id: 'hop', title: 'Hop or fly {n} times', min: 6, max: 12 },
+  { id: 'coins', title: 'Earn {n} coins', min: 10, max: 25 },
+  { id: 'swim', title: 'Swim for {n} seconds', min: 10, max: 30 },
+  { id: 'air', title: 'Spend {n} seconds in the air', min: 4, max: 12, needFly: true },
+  { id: 'combo', title: 'Get a x3 crunch combo', min: 1, max: 1 },
+  { id: 'food', title: 'Pick {n} foods from trees', min: 3, max: 6 },
+  { id: 'talk', title: 'Say good morning to Grandma Ramen', min: 1, max: 1 },
+];

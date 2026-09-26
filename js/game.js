@@ -190,6 +190,7 @@ const Game = (() => {
     return true;
   }
   function addCoins(n, x = P.x, y = P.y - 80) {
+    dailyAdd('coins', n);
     G.coins += n; floatText(x, y, `+${n}`, '#ffd23f'); Sound.coin();
   }
   function addClue(id) {
@@ -211,6 +212,8 @@ const Game = (() => {
     G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = []; G.boulderHp = {};
     G.water = Math.max(G.water, 70);
     newFortune();
+    ensureDaily();
+    setTimeout(() => UI.toast('<span class="t-small">📅 New day, new challenges</span>Open ⭐ Skills to see today\'s 3 challenges.', { life: 3.4 }), 3800);
     P.swimming = false; swim = null; P.area = null; P.z = 0; P.vz = 0; G.lesson = null;
     P.x = spot ? spot.x : DOOR.x; P.y = spot ? spot.y : DOOR.y + 30;
     cam.x = P.x - vw / zoom / 2; cam.y = P.y - vh / zoom / 2;
@@ -280,12 +283,14 @@ const Game = (() => {
     if (flyHeld() && P.z === 0 && !P.swimming && !drinkHeld && !P.jumpLock) {
       P.vz = PHYS.hop; P.jumpLock = true; P.airT = 0;
       G.stats.hops++;
+      dailyAdd('hop');
       Sound.pop();
       if (G.lesson && G.lesson.id === 'fly1') G.lesson.n = (G.lesson.n || 0) + 1;
     }
     if (!flyHeld()) P.jumpLock = false;
     if (P.z > 0 || P.vz > 0) {
       P.airT += dt;
+      dailyAdd('air', dt);
       P.flapping = false;
       if (flyHeld() && lvl >= 1 && P.wing > 0 && P.z < PHYS.flyMaxZ[lvl] && P.airT > 0.12) {
         P.vz = Math.min(P.vz + 2600 * dt, 240);
@@ -363,9 +368,35 @@ const Game = (() => {
     let n = 0;
     LESSONS.forEach(l => { if (G.lessons[l.id]) n += l.stars; });
     CHALLENGES.forEach(c => { if (G.challenges[c.id]) n += c.stars; });
-    Object.values(G.daily && G.daily.done || {}).forEach(v => { if (v) n += 1; });
     return n + (G.bonusStars || 0);
   }
+  // Daily challenges (new ones every in-game morning)
+  function ensureDaily() {
+    if (G.daily && G.daily.day === G.day) return;
+    const rnd = mulberry(G.day * 7919 + 13);
+    const pool = DAILY_POOL.filter(d => !d.needFly || G.skills.fly >= 1);
+    const list = [];
+    while (list.length < 3 && pool.length) {
+      const d = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+      const goal = d.min + Math.floor(rnd() * (d.max - d.min + 1));
+      list.push({ id: d.id, goal, title: d.title.replace('{n}', goal) });
+    }
+    G.daily = { day: G.day, list, prog: {}, done: {} };
+  }
+  function dailyAdd(key, amount = 1) {
+    if (!G || !G.daily || G.daily.day !== G.day) return;
+    const c = G.daily.list.find(x => x.id === key);
+    if (!c || G.daily.done[key]) return;
+    G.daily.prog[key] = (G.daily.prog[key] || 0) + amount;
+    if (G.daily.prog[key] >= c.goal) {
+      G.daily.done[key] = true;
+      G.bonusStars = (G.bonusStars || 0) + 1;
+      Sound.coin();
+      UI.toast(`<span class="t-small">⭐ +1 · Daily challenge</span>${c.title}. Done!`, { life: 3 });
+      addCoins(5);
+    }
+  }
+
   function nextLesson(coach) { return LESSONS.find(l => l.coach === coach && !lessonDone(l.id)); }
   function startLesson(l) {
     G.lesson = { id: l.id, left: { swim1: 60, swim2: 45, swim3: 90, fly1: 60, fly2: 60, fly3: 90 }[l.id], n: 0, side: null, rings: [false, false, false], started: false };
@@ -449,6 +480,7 @@ const Game = (() => {
 
   function crunch(b) {
     faceStep('crunch');
+    dailyAdd('crunch');
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
     Sound.crunch(b.kind === 'gold' ? 1.4 : 1); buzz(b.kind === 'boulder' ? 35 : 18);
@@ -463,6 +495,7 @@ const Game = (() => {
     combo.last = t;
     UI.combo(combo.n);
     G.stats.maxCombo = Math.max(G.stats.maxCombo || 0, combo.n);
+    if (combo.n >= 3) dailyAdd('combo');
     if (combo.n >= 2) Sound.combo(combo.n);
     if (combo.n >= 5 && !has('macaroni')) setTimeout(() => giveNoodle('macaroni'), 350);
 
@@ -642,6 +675,7 @@ const Game = (() => {
   function startDrink(where = 'stream') {
     drinkHeld = true; drinkWhere = where;
     G.drinks++;
+    dailyAdd('drink');
     Sound.gulp();
     if (where === 'spring') {
       if (!minty()) UI.toast('<span class="t-small">Minty 🌿</span>So fresh! You walk faster for a while.', { life: 2.8 });
@@ -809,6 +843,7 @@ const Game = (() => {
   }
 
   function talkGrandma() {
+    dailyAdd('talk');
     if (!G.flags.metGrandma) {
       UI.say('grandma', [
         'Oh! You switched on! Good morning, little square one.',
@@ -927,7 +962,7 @@ const Game = (() => {
     if (buffed()) speed *= 1.2;
     if (minty()) speed *= 1.2;
     if (G.water < 25) faceStep('thirsty');
-    if (!busy) { lessonTick(dt); challengeTick(dt); }
+    if (!busy) { lessonTick(dt); challengeTick(dt); if (P.swimming) dailyAdd('swim', dt); }
     if (P.swimming && P.area === 'lake' && !has('ice') && dist(P.x, P.y, LAKE.x + LAKE.w * 0.62 + Math.sin(now) * 40, LAKE.y + LAKE.h * 0.55) < 34) giveNoodle('ice');
     stormFlash = Math.max(0, stormFlash - dt * 3);
     if (stormy() && inPeaks(P.x) && !busy) {
@@ -1121,6 +1156,8 @@ const Game = (() => {
       }
     }
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
+    if (roundEnd && Net.active) updateRoomPill();
+    boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
   }
 
   /* ---------- render ---------- */
@@ -1479,12 +1516,15 @@ const Game = (() => {
   flyBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { flyBtn.setPointerCapture(e.pointerId); } catch (err) {} flyTouch = true; flyBtn.classList.add('pressed'); });
   const flyUp = () => { flyTouch = false; flyBtn.classList.remove('pressed'); };
   flyBtn.addEventListener('pointerup', flyUp); flyBtn.addEventListener('pointercancel', flyUp); flyBtn.addEventListener('lostpointercapture', flyUp);
+  $('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); const pop = $('menuPop'); pop.hidden = !pop.hidden; $('menuBtn').setAttribute('aria-expanded', String(!pop.hidden)); });
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#menuPop') && !e.target.closest('#menuBtn')) $('menuPop').hidden = true; });
+  $('boardBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; postScore(); openBoard(); });
   $('skillsBtn').addEventListener('click', () => { Sound.blip(); UI.skills(G, starTotal()); });
 
   $('dexBtn').addEventListener('click', () => { Sound.blip(); UI.dex(G); });
   $('journalBtn').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
   $('goal').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
-  $('soundBtn').addEventListener('click', () => { const m = Sound.toggle(); $('soundIcon').textContent = m ? '🔇' : '🔊'; });
+  $('soundBtn').addEventListener('click', () => { const m = Sound.toggle(); $('soundIcon').textContent = m ? '🔇' : '🔊'; $('menuPop').hidden = true; });
 
   /* ---------- boot ---------- */
   let titleAnim = true;
@@ -1499,6 +1539,8 @@ const Game = (() => {
   const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
   let profile = { name: '', color: COLORS[0] };
   try { Object.assign(profile, JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}); } catch (e) {}
+  if (!/^[a-z0-9]{8,24}$/.test(profile.uid || '')) profile.uid = (Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 16);
+  let roomPot = null, roundEnd = 0;
   const saveProfile = () => { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {} };
   const emotes = new Map(); // id (or 'me') -> { e, until }
   let pendingStart = null;
@@ -1509,11 +1551,13 @@ const Game = (() => {
   }
   Net.on('joined', (m) => {
     profile.color = (m.players.find(p => p.id === m.you) || {}).color || profile.color;
+    P.color = profile.color;
     const go = pendingStart; pendingStart = null;
     if (go) go();
     // bring in what the room already did
     m.crunched.forEach(id => { if (typeof id === 'number') { if (!G.crunched.includes(id)) G.crunched.push(id); } else { const k = /^boulder(\d)$/.exec(id); if (k) G.boulderHp[+k[1]] = 0; } });
     if (m.mode === 'team') m.teamFound.forEach(n => { if (!has(n) && NOODLES.some(x => x.id === n)) G.found.push(n); });
+    roomPot = m.pot; roundEnd = m.round ? now + m.round.secs : 0;
     $('roomPill').hidden = false; $('roomPill').classList.remove('off'); $('emoteBtn').hidden = false;
     updateRoomPill();
     UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>Tell friends to join with code <b>${m.code}</b>`, { life: 5 });
@@ -1521,7 +1565,7 @@ const Game = (() => {
   });
   Net.on('arrived', (p) => { Sound.blip(); UI.toast(`<span class="t-small">👋 New player</span>${p.name} joined the room`, { life: 2.6 }); updateRoomPill(); });
   Net.on('left', (m) => { UI.toast(`${m.name} left the room`, { life: 2.2 }); updateRoomPill(); });
-  Net.on('scores', () => { updateRoomPill(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') UI.players(Net, leaveRoom); });
+  Net.on('scores', () => { updateRoomPill(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends(); });
   Net.on('crunch', (m) => {
     const pos = brickPos(m.b);
     if (typeof m.b === 'number') { if (!G.crunched.includes(m.b)) G.crunched.push(m.b); }
@@ -1533,7 +1577,32 @@ const Game = (() => {
     if (Net.mode === 'team') { if (!giveNoodle(m.n, m.name)) UI.toast(`<span class="t-small">${m.name}</span>found ${n.name} too!`, { life: 2.4 }); }
     else UI.toast(`<span class="t-small">🏁 ${m.name}</span>found ${n.name}${has(m.n) ? '' : '. Hurry!'}`, { noodle: n, life: 2.8 });
   });
+  Net.on('me', (p) => { profile.color = p.color; P.color = p.color; saveProfile(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends(); });
   Net.on('emote', (m) => { emotes.set(m.id === Net.me ? 'me' : m.id, { e: m.e, until: now + 3.5 }); if (m.id !== Net.me) Sound.pop(); });
+  Net.on('round', (m) => {
+    if (m.state === 'start') {
+      roundEnd = now + m.secs;
+      Sound.rooster();
+      UI.toast(`<span class="t-small">🏁 Crunch Race!</span>${Math.round(m.secs / 60)} minutes. Crunch as many bricks as you can!`, { big: true, life: 4 });
+    } else {
+      roundEnd = 0;
+      const won = m.winners.includes(Net.me);
+      const names = m.list.filter(e => m.winners.includes(e.id)).map(e => e.name).join(' & ') || 'Nobody';
+      if (won) { G.bonusStars = (G.bonusStars || 0) + 3; G.trophies = (G.trophies || 0) + 1; addCoins(20); Sound.secret(); P.wow = 2; }
+      UI.toast(`<span class="t-small">🏆 Race over</span>${won ? 'You win! ⭐ +3 and 20 coins' : names + ' wins'}. Start another round any time!`, { big: true, life: 5 });
+      save();
+    }
+    updateRoomPill();
+  });
+  Net.on('pot', (m) => {
+    roomPot = m.pot;
+    if (m.up) {
+      G.bonusStars = (G.bonusStars || 0) + 2; addCoins(10); Sound.secret();
+      UI.toast(`<span class="t-small">🍲 Team Pot level ${m.pot.level}!</span>Everyone gets ⭐ +2 and 10 coins. The next pot is bigger.`, { big: true, life: 4.4 });
+      save();
+    }
+    if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends();
+  });
   Net.on('respawn', () => { G.crunched = []; G.boulderHp = {}; UI.toast('The bricks grew back!', { life: 2.4 }); });
   Net.on('error', (m) => { mpMessage(m.msg, true); if (running) UI.toast(m.msg, { life: 3 }); });
   Net.on('disconnected', () => {
@@ -1543,7 +1612,30 @@ const Game = (() => {
 
   function updateRoomPill() {
     if (!Net.code) return;
-    $('roomText').textContent = `${Net.mode === 'team' ? '🤝' : '🏁'} ${Net.code} · ${Net.others.size + 1}`;
+    let text = `${Net.mode === 'team' ? '🤝' : '🏁'} ${Net.code} · ${Net.others.size + 1}`;
+    if (roundEnd > now) {
+      const left = Math.ceil(roundEnd - now), mine = (Net.scores.find(e => e.id === Net.me) || {}).round || 0;
+      text = `🏁 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · you ${mine}`;
+    } else if (Net.mode === 'team' && roomPot) text += ` · 🍲 ${roomPot.fill}/${roomPot.need}`;
+    $('roomText').textContent = text;
+  }
+  function openFriends() {
+    UI.players(Net, leaveRoom, { pot: roomPot, roundLeft: roundEnd > now ? Math.ceil(roundEnd - now) : 0, startRound: () => Net.startRound() });
+  }
+
+  // Global leaderboard (lives on the server; quietly off when there is no server)
+  let boardFails = 0, boardT = 20, myRank = null;
+  const online = () => /^https?:$/.test(location.protocol) && boardFails < 3;
+  function postScore() {
+    if (!online() || !G) return;
+    fetch('api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: profile.uid, name: profile.name || 'Squareface', color: profile.color, coins: G.coins, found: G.found.length, stars: starTotal() }) })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => { myRank = d.rank; boardFails = 0; })
+      .catch(e => { if (e !== 429) boardFails++; });
+  }
+  function openBoard(by = 'coins') {
+    UI.leaderboard({ by, uid: profile.uid, name: profile.name, online: /^https?:$/.test(location.protocol),
+      load: (key) => fetch('api/leaderboard?by=' + key).then(r => r.ok ? r.json() : Promise.reject()),
+      rename: (n) => { profile.name = n.slice(0, 14); saveProfile(); boardT = 0; } });
   }
   function leaveRoom() {
     Net.leave();
@@ -1575,17 +1667,17 @@ const Game = (() => {
     $('friendsBtn').addEventListener('click', () => { $('mpPanel').hidden = !$('mpPanel').hidden; if (!$('mpPanel').hidden) nameIn.focus(); });
     const ready = () => { profile.name = nameIn.value.trim().slice(0, 14) || 'Squareface'; saveProfile(); Sound.init(); pendingStart = startFn; };
     const fail = () => { pendingStart = null; mpMessage('Could not reach the game server. Multiplayer works on the online version (Render) or when you run "npm start". Solo play works everywhere.', true); };
-    $('mpCreate').addEventListener('click', () => { ready(); mpMessage('Creating a room…'); Net.create(profile.name, profile.color, mode).catch(fail); });
+    $('mpCreate').addEventListener('click', () => { ready(); mpMessage('Creating a room…'); Net.create(profile.name, profile.color, mode, profile.uid).catch(fail); });
     $('mpJoinForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const code = $('mpCode').value.trim().toUpperCase();
       if (!/^[A-Z]{4}$/.test(code)) return mpMessage('Room codes are 4 letters, like KFPR.', true);
-      ready(); mpMessage('Joining ' + code + '…'); Net.join(code, profile.name, profile.color).catch(fail);
+      ready(); mpMessage('Joining ' + code + '…'); Net.join(code, profile.name, profile.color, profile.uid).catch(fail);
     });
     // a link like .../#KFPR opens the panel with the code filled in
     const hash = (location.hash || '').replace('#', '').toUpperCase();
     if (/^[A-Z]{4}$/.test(hash)) { $('mpPanel').hidden = false; $('mpCode').value = hash; }
-    $('roomPill').addEventListener('click', () => { Sound.blip(); UI.players(Net, leaveRoom); });
+    $('roomPill').addEventListener('click', () => { Sound.blip(); openFriends(); });
     $('emoteBtn').addEventListener('click', () => { $('emoteBar').hidden = !$('emoteBar').hidden; });
     $('emoteBar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendEmote(b.dataset.e); });
   }
@@ -1593,8 +1685,9 @@ const Game = (() => {
   function begin(state) {
     G = state || fresh();
     if (!G.fortune) newFortune();
+    ensureDaily();
     if (G.pieces.includes(5) && !G.clues.includes('piece5')) G.clues.push('piece5');
-    P.x = G.px; P.y = G.py;
+    P.x = G.px; P.y = G.py; P.color = profile.color;
     if (blocked(P.x, P.y)) { P.x = DOOR.x; P.y = DOOR.y + 30; }
     cam.x = P.x - vw / zoom / 2; cam.y = P.y - vh / zoom / 2;
     $('title').hidden = true; $('hud').hidden = false;

@@ -35,7 +35,7 @@ const Net = (() => {
         emit('joined', m);
         break;
       case 'player':
-        if (m.p.id === me) break;
+        if (m.p.id === me) { emit('me', m.p); break; }
         if (!others.has(m.p.id)) { others.set(m.p.id, { ...m.p, x: null, y: null }); emit('arrived', m.p); }
         else Object.assign(others.get(m.p.id), m.p);
         break;
@@ -58,8 +58,9 @@ const Net = (() => {
   return {
     connect,
     on(evt, fn) { (handlers[evt] = handlers[evt] || []).push(fn); },
-    async create(name, color, roomMode) { await connect(); send({ t: 'create', name, color, mode: roomMode }); },
-    async join(roomCode, name, color) { await connect(); send({ t: 'join', code: roomCode, name, color }); },
+    async create(name, color, roomMode, uid) { await connect(); send({ t: 'create', name, color, mode: roomMode, uid }); },
+    async join(roomCode, name, color, uid) { await connect(); send({ t: 'join', code: roomCode, name, color, uid }); },
+    startRound() { if (code) send({ t: 'round' }); },
     leave() { send({ t: 'leave' }); code = null; others.clear(); },
     state(p) {
       if (!code) return;
@@ -76,6 +77,7 @@ const Net = (() => {
       lastScore = key; send({ t: 'score', found, coins, stars });
     },
     emote(e) { if (code) send({ t: 'emote', e }); },
+    color(c) { if (code) send({ t: 'color', color: c }); },
     get active() { return !!code; },
     get code() { return code; },
     get mode() { return mode; },

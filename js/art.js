@@ -27,55 +27,61 @@ function drawFace(ctx, mood, t, cx, cy, s = 1) {
   ctx.save();
   ctx.translate(cx, cy); ctx.scale(s, s);
   ctx.strokeStyle = glow; ctx.fillStyle = glow;
-  ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.shadowColor = glow; ctx.shadowBlur = 6;
-  const eye = (x, y, r = 2.8) => { circle(ctx, x, y, r); ctx.fill(); };
-  const line = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  ctx.lineWidth = 2.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = glow; ctx.shadowBlur = 5;
+  // big friendly eyes: rounded ovals with a little shine
+  const eye = (x, y, dx = 0, dy = 0) => {
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.ellipse(x, y, 3.4, 4.6, 0, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#1f1a2e'; circle(ctx, x + 1 + dx, y - 1.6 + dy, 1.2); ctx.fill(); ctx.shadowBlur = 5; ctx.fillStyle = glow;
+  };
+  const closed = (x, y, up = true) => { ctx.beginPath(); up ? ctx.arc(x, y + 2, 3.6, Math.PI * 1.15, Math.PI * 1.85) : ctx.arc(x, y - 2, 3.6, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke(); };
+  const smile = (w = 7, y = 4, depth = 4) => { ctx.beginPath(); ctx.moveTo(-w, y); ctx.quadraticCurveTo(0, y + depth * 2, w, y); ctx.stroke(); };
   switch (mood) {
-    case 'blink':
-      line(-11, -4, -5, -4); line(5, -4, 11, -4);
-      ctx.beginPath(); ctx.arc(0, 2, 7, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-      break;
+    case 'blink': closed(-8, -3); closed(8, -3); smile(); break;
     case 'crunch': {
-      line(-12, -3, -8, -7); line(-8, -7, -4, -3); line(4, -3, 8, -7); line(8, -7, 12, -3);
-      const m = 3 + Math.abs(Math.sin(t * 22)) * 4;
-      ctx.beginPath(); ctx.ellipse(0, 6, 6, m, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-11, -6); ctx.lineTo(-6, -3); ctx.lineTo(-11, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(11, -6); ctx.lineTo(6, -3); ctx.lineTo(11, 0); ctx.stroke();
+      const m = 2.5 + Math.abs(Math.sin(t * 22)) * 3.5;
+      ctx.beginPath(); ctx.ellipse(0, 6, 5.5, m, 0, 0, TAU); ctx.fill();
       break;
     }
     case 'thirsty':
-      line(-12, -6, -5, -3); line(5, -3, 12, -6);
-      eye(-8, -1, 2); eye(8, -1, 2);
-      ctx.beginPath(); ctx.moveTo(-7, 8); ctx.quadraticCurveTo(-3, 4, 0, 8); ctx.quadraticCurveTo(3, 12, 7, 8); ctx.stroke();
+      eye(-8, -2); eye(8, -2);
+      ctx.fillStyle = '#1f1a2e'; ctx.shadowBlur = 0; ctx.fillRect(-12, -8, 8, 3.5); ctx.fillRect(4, -8, 8, 3.5); ctx.shadowBlur = 5;
+      ctx.beginPath(); ctx.ellipse(0, 7, 5, 3.5, 0, 0, TAU); ctx.stroke();
       ctx.fillStyle = '#ff9fb5'; ctx.shadowColor = '#ff9fb5';
-      ctx.beginPath(); ctx.ellipse(2, 12 + Math.sin(t * 6), 3, 4, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(1, 10 + Math.sin(t * 6) * 0.8, 2.6, 3, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = glow; ctx.shadowColor = glow;
+      ctx.beginPath(); ctx.moveTo(14, -10); ctx.quadraticCurveTo(17, -5, 14, -3); ctx.quadraticCurveTo(11, -5, 14, -10); ctx.fill();
       break;
     case 'cool':
-      ctx.beginPath(); ctx.moveTo(-15, -6); ctx.lineTo(15, -6); ctx.stroke();
-      rr(ctx, -14, -6, 11, 7, 3); ctx.fill(); rr(ctx, 3, -6, 11, 7, 3); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-5, 8); ctx.quadraticCurveTo(2, 12, 8, 5); ctx.stroke();
+      rr(ctx, -14, -8, 12, 8, 3); ctx.fill(); rr(ctx, 2, -8, 12, 8, 3); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-2, -5); ctx.lineTo(2, -5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5, 6); ctx.quadraticCurveTo(2, 10, 8, 4); ctx.stroke();
       break;
     case 'sleepy':
-      ctx.beginPath(); ctx.arc(-8, -4, 4, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
-      ctx.beginPath(); ctx.arc(8, -4, 4, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
-      circle(ctx, 0, 8, 2.6); ctx.stroke();
+      closed(-8, -2, false); closed(8, -2, false);
+      ctx.beginPath(); ctx.ellipse(0, 7, 2.4, 2.8, 0, 0, TAU); ctx.stroke();
       break;
-    case 'think':
-      eye(-8, -3); line(4, -8, 12, -6); eye(8, -3, 2.2);
-      line(-5, 8, 6, 6);
+    case 'think': {
+      const look = Math.sin(t * 2) * 0.8;
+      eye(-8, -3, 0.8 + look, -1); eye(8, -3, 0.8 + look, -1);
+      ctx.beginPath(); ctx.moveTo(-3, 6); ctx.quadraticCurveTo(0, 8, 3, 6); ctx.stroke();
+      ctx.font = '800 9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('?', 13, -7);
       break;
+    }
     case 'wow': {
-      const star = (x, y) => { ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 2 : 5; const a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.fill(); };
-      star(-8, -4); star(8, -4);
-      ctx.beginPath(); ctx.arc(0, 3, 7, 0, Math.PI); ctx.closePath(); ctx.fill();
+      const star = (x, y) => { ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 2.2 : 5.4; const a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.fill(); };
+      star(-8, -3); star(8, -3);
+      ctx.beginPath(); ctx.moveTo(-7, 3); ctx.lineTo(7, 3); ctx.quadraticCurveTo(7, 11, 0, 11); ctx.quadraticCurveTo(-7, 11, -7, 3); ctx.fill();
       break;
     }
     case 'swim':
-      eye(-8, -4); eye(8, -4);
-      ctx.beginPath(); ctx.arc(0, 2, 6, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+      closed(-8, -3); closed(8, -3);
+      ctx.beginPath(); ctx.ellipse(0, 6, 3.5, 3, 0, 0, TAU); ctx.stroke();
       break;
     default: // happy
-      eye(-8, -4); eye(8, -4);
-      ctx.beginPath(); ctx.arc(0, 1, 8, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+      eye(-8, -3); eye(8, -3); smile(7, 4, 3.5);
   }
   ctx.restore();
 }
@@ -93,7 +99,7 @@ function drawHead(ctx, x, y, mood, t, opts = {}) {
     ctx.fillStyle = `rgba(255,210,63,${0.35 * ab})`;
     circle(ctx, ax, ay, 6 + ab * 10); ctx.fill();
   }
-  circle(ctx, ax, ay, 5); fillStroke(ctx, opts.golden ? '#ffd23f' : (ab > 0.5 ? '#ffd23f' : '#e4572e'), 2.5);
+  circle(ctx, ax, ay, 5); fillStroke(ctx, opts.golden ? '#ffd23f' : (ab > 0.5 ? '#ffd23f' : (opts.color || '#e4572e')), 2.5);
   // head shell
   rr(ctx, x - w / 2, y - h / 2, w, h, 11); fillStroke(ctx, '#f7f1e3', 3);
   ctx.fillStyle = 'rgba(52,35,63,0.12)'; rr(ctx, x - w / 2 + 3, y + h / 2 - 8, w - 6, 5, 3); ctx.fill();
@@ -119,7 +125,7 @@ function drawPlayer(ctx, p, t) {
       ctx.beginPath(); ctx.ellipse(x, y, 26 + k * 22, 10 + k * 8, 0, 0, TAU); ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face });
+    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color });
     ctx.fillStyle = 'rgba(95,208,230,0.75)';
     ctx.beginPath(); ctx.ellipse(x, y + 2, 30, 9, 0, 0, Math.PI); ctx.fill();
     return;
@@ -155,7 +161,7 @@ function drawPlayer(ctx, p, t) {
   ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - 14, y - 26 - bob); ctx.lineTo(x - 19, y - 16 - bob + arm); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob + (air ? arm : -arm)); ctx.stroke();
-  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face });
+  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color });
   ctx.restore();
 }
 

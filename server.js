@@ -16,10 +16,59 @@ const TYPES = {
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
 };
 const PUBLIC = new Set(['index.html', 'manifest.webmanifest', 'css', 'js', 'icons']);
+const ROUND_SECS = +process.env.ROUND_SECS || 120;               // one Crunch Race round
+const potNeed = (level) => 20 + level * 10; // team pot grows every time it fills
+
+/* ---------- leaderboard (saved to a JSON file) ---------- */
+const BOARD_FILE = process.env.LEADERBOARD_FILE || path.join(ROOT, 'data', 'leaderboard.json');
+let board = {};
+try { board = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8')) || {}; } catch (e) { board = {}; }
+let boardDirty = false;
+setInterval(() => {
+  if (!boardDirty) return;
+  boardDirty = false;
+  fs.mkdir(path.dirname(BOARD_FILE), { recursive: true }, () => fs.writeFile(BOARD_FILE, JSON.stringify(board), () => {}));
+}, 10000);
+const lastPost = new Map();
+function readBody(req, cb) {
+  let data = '';
+  req.on('data', (c) => { data += c; if (data.length > 2000) req.destroy(); });
+  req.on('end', () => { try { cb(JSON.parse(data)); } catch (e) { cb(null); } });
+}
+function topList(by) {
+  const key = ['coins', 'found', 'stars', 'trophies'].includes(by) ? by : 'coins';
+  return Object.values(board).sort((a, b) => (b[key] || 0) - (a[key] || 0) || (b.coins || 0) - (a.coins || 0)).slice(0, 50)
+    .map(e => ({ id: e.id, name: e.name, color: e.color, coins: e.coins, found: e.found, stars: e.stars, trophies: e.trophies || 0 }));
+}
+function handleApi(req, res, urlPath, query) {
+  const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  if (urlPath === '/api/leaderboard' && req.method === 'GET') {
+    const by = new URLSearchParams(query).get('by');
+    return json(200, { list: topList(by), total: Object.keys(board).length });
+  }
+  if (urlPath === '/api/score' && req.method === 'POST') {
+    return readBody(req, (m) => {
+      if (!m || typeof m.id !== 'string' || !/^[a-z0-9]{8,24}$/.test(m.id)) return json(400, { error: 'bad request' });
+      const t = Date.now();
+      if (t - (lastPost.get(m.id) || 0) < 8000) return json(429, { error: 'slow down' });
+      lastPost.set(m.id, t);
+      const prev = board[m.id] || { id: m.id };
+      board[m.id] = { ...prev, id: m.id, name: clean(m.name, 14) || 'Squareface', color: COLORS.includes(m.color) ? m.color : COLORS[0],
+        coins: num(m.coins, 0, 1e7), found: num(m.found, 0, 999), stars: num(m.stars, 0, 1e5), trophies: prev.trophies || 0, updated: t };
+      boardDirty = true;
+      const key = 'coins';
+      const rank = Object.values(board).filter(e => (e[key] || 0) > board[m.id][key]).length + 1;
+      json(200, { rank, total: Object.keys(board).length });
+    });
+  }
+  json(404, { error: 'not found' });
+}
 
 /* ---------- static files ---------- */
 const server = http.createServer((req, res) => {
-  let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  const [rawPath, query = ''] = (req.url || '/').split('?');
+  let urlPath = decodeURIComponent(rawPath);
+  if (urlPath.startsWith('/api/')) return handleApi(req, res, urlPath, query);
   if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
   if (urlPath === '/healthz') { res.writeHead(200); res.end('ok'); return; }
   const file = path.normalize(path.join(ROOT, urlPath));
@@ -45,7 +94,7 @@ const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, 
 const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
 
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, host: p.host };
+  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host };
 }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(room, msg, except) {
@@ -53,19 +102,43 @@ function broadcast(room, msg, except) {
   for (const p of room.players.values()) if (p.ws !== except && p.ws.readyState === 1) p.ws.send(data);
 }
 function scores(room) {
-  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars }))
+  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, round: p.round }))
     .sort((a, b) => b.found - a.found || b.stars - a.stars || b.coins - a.coins);
 }
 
-function joinRoom(ws, room, name, color) {
+function joinRoom(ws, room, name, color, uid) {
   if (room.players.size >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `Room ${room.code} is full (${MAX_PLAYERS} players).` });
   const used = new Set([...room.players.values()].map(p => p.color));
   const pick = COLORS.includes(color) && !used.has(color) ? color : (COLORS.find(c => !used.has(c)) || COLORS[0]);
-  const p = { id: ++room.nextId, ws, name: clean(name, 14) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0 };
+  const p = { id: ++room.nextId, ws, name: clean(name, 14) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
   room.players.set(p.id, p);
   ws.room = room; ws.player = p;
-  send(ws, { t: 'joined', you: p.id, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound] });
+  send(ws, { t: 'joined', you: p.id, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
   broadcast(room, { t: 'player', p: publicPlayer(p) }, ws);
+  broadcast(room, { t: 'scores', list: scores(room) });
+}
+
+function roundInfo(room) { return room.roundEnd ? { secs: Math.max(0, Math.round((room.roundEnd - Date.now()) / 1000)) } : null; }
+function startRound(room) {
+  if (room.roundEnd) return;
+  room.roundEnd = Date.now() + ROUND_SECS * 1000;
+  room.players.forEach(p => { p.round = 0; });
+  room.crunched.clear();
+  broadcast(room, { t: 'respawn' });
+  broadcast(room, { t: 'round', state: 'start', secs: ROUND_SECS });
+  room.roundTimer = setTimeout(() => endRound(room), ROUND_SECS * 1000);
+}
+function endRound(room) {
+  room.roundEnd = null;
+  const list = [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, n: p.round })).sort((a, b) => b.n - a.n);
+  const best = list[0] && list[0].n > 0 ? list[0].n : 0;
+  const winners = list.filter(e => best > 0 && e.n === best);
+  winners.forEach(w => {
+    const p = room.players.get(w.id); if (!p) return;
+    p.trophies++;
+    if (p.uid && board[p.uid]) { board[p.uid].trophies = (board[p.uid].trophies || 0) + 1; boardDirty = true; }
+  });
+  broadcast(room, { t: 'round', state: 'end', list, winners: winners.map(w => w.id) });
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
@@ -74,7 +147,7 @@ function leave(ws) {
   if (!room || !p) return;
   room.players.delete(p.id);
   ws.room = null; ws.player = null;
-  if (!room.players.size) { clearInterval(room.respawn); rooms.delete(room.code); return; }
+  if (!room.players.size) { clearInterval(room.respawn); clearTimeout(room.roundTimer); rooms.delete(room.code); return; }
   if (p.host) { const next = room.players.values().next().value; next.host = true; broadcast(room, { t: 'player', p: publicPlayer(next) }); }
   broadcast(room, { t: 'left', id: p.id, name: p.name });
   broadcast(room, { t: 'scores', list: scores(room) });
@@ -91,16 +164,16 @@ wss.on('connection', (ws) => {
 
     if (m.t === 'create') {
       if (room) leave(ws);
-      const r = { code: newCode(), mode: m.mode === 'race' ? 'race' : 'team', players: new Map(), crunched: new Set(), teamFound: new Set(), nextId: 0 };
+      const r = { code: newCode(), mode: m.mode === 'race' ? 'race' : 'team', players: new Map(), crunched: new Set(), teamFound: new Set(), nextId: 0, pot: { level: 1, fill: 0, need: potNeed(1) }, roundEnd: null };
       r.respawn = setInterval(() => { r.crunched.clear(); broadcast(r, { t: 'respawn' }); }, RESPAWN_MS);
       rooms.set(r.code, r);
-      return joinRoom(ws, r, m.name, m.color);
+      return joinRoom(ws, r, m.name, m.color, m.uid);
     }
     if (m.t === 'join') {
       const r = rooms.get(clean(m.code, 4).toUpperCase());
       if (!r) return send(ws, { t: 'error', msg: 'No room with that code. Check the letters and try again.' });
       if (room) leave(ws);
-      return joinRoom(ws, r, m.name, m.color);
+      return joinRoom(ws, r, m.name, m.color, m.uid);
     }
     if (!room || !p) return;
 
@@ -114,6 +187,14 @@ wss.on('connection', (ws) => {
         if (room.crunched.has(id)) return;
         room.crunched.add(id);
         broadcast(room, { t: 'crunch', b: id, by: p.id }, ws);
+        if (room.roundEnd) { p.round++; broadcast(room, { t: 'scores', list: scores(room) }); }
+        if (room.mode === 'team') {
+          room.pot.fill++;
+          if (room.pot.fill >= room.pot.need) {
+            room.pot.level++; room.pot.fill = 0; room.pot.need = potNeed(room.pot.level);
+            broadcast(room, { t: 'pot', pot: room.pot, up: true });
+          } else broadcast(room, { t: 'pot', pot: room.pot });
+        }
         break;
       }
       case 'found': {
@@ -125,6 +206,18 @@ wss.on('connection', (ws) => {
       case 'score':
         p.found = num(m.found, 0, 999); p.coins = num(m.coins, 0, 1e6); p.stars = num(m.stars, 0, 999);
         broadcast(room, { t: 'scores', list: scores(room) });
+        break;
+      case 'color': {
+        const taken = [...room.players.values()].some(o => o !== p && o.color === m.color);
+        if (!COLORS.includes(m.color)) return;
+        if (taken) return send(ws, { t: 'error', msg: 'Someone in the room already has that color. Pick another one!' });
+        p.color = m.color;
+        broadcast(room, { t: 'player', p: publicPlayer(p) });
+        broadcast(room, { t: 'scores', list: scores(room) });
+        break;
+      }
+      case 'round':
+        if (room.mode === 'race') startRound(room);
         break;
       case 'emote':
         broadcast(room, { t: 'emote', id: p.id, e: clean(m.e, 4) });
