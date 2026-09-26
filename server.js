@@ -57,7 +57,7 @@ function handleApi(req, res, urlPath, query) {
       if (t - (lastPost.get(m.id) || 0) < 8000) return json(429, { error: 'slow down' });
       lastPost.set(m.id, t);
       const prev = board[m.id] || { id: m.id };
-      board[m.id] = { ...prev, id: m.id, name: clean(m.name, 14) || 'Squareface', color: COLORS.includes(m.color) ? m.color : COLORS[0],
+      board[m.id] = { ...prev, id: m.id, name: safeName(m.name) || 'Squareface', color: COLORS.includes(m.color) ? m.color : COLORS[0],
         coins: num(m.coins, 0, 1e7), found: num(m.found, 0, 999), stars: num(m.stars, 0, 1e5), trophies: prev.trophies || 0, updated: t };
       boardDirty = true;
       const key = 'coins';
@@ -75,22 +75,31 @@ function handleApi(req, res, urlPath, query) {
 const nameKey = (n) => String(n || '').trim().toLowerCase().replace(/[^a-z0-9 _-]/g, '').replace(/\s+/g, '-');
 const hashPin = (pin, salt) => crypto.scryptSync(String(pin), salt, 32).toString('hex');
 const attempts = new Map(); // ip -> [timestamps] of failed PINs
+const nameLocks = new Map(); // save name -> { fails, until }
 function tooManyTries(ip) {
   const t = Date.now(), list = (attempts.get(ip) || []).filter(x => t - x < 60000);
   attempts.set(ip, list);
   return list.length >= 6;
 }
 function handleAccount(urlPath, m, req, json) {
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?';
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+  const ip = xff.length ? xff[xff.length - 1] : (req.socket.remoteAddress || '?');
   if (!m) return json(400, { error: 'Something went wrong. Try again.' });
   const key = nameKey(m.name), pin = String(m.pin || '');
   if (key.length < 2 || key.length > 14) return json(400, { error: 'Names need 2 to 14 letters or numbers.' });
   if (!/^\d{4}$/.test(pin)) return json(400, { error: 'The PIN is 4 numbers, like 2468.' });
   if (tooManyTries(ip)) return json(429, { error: 'Too many wrong PINs. Wait a minute and try again.' });
+  const lock = nameLocks.get(key);
+  if (lock && lock.until > Date.now()) return json(429, { error: 'This name is locked for a while after too many wrong PINs. Try again later.' });
   const file = path.join(SAVE_DIR, key + '.json');
   fs.readFile(file, 'utf8', (err, text) => {
     let rec = null; try { rec = err ? null : JSON.parse(text); } catch (e) { rec = null; }
-    const wrongPin = () => { attempts.get(ip).push(Date.now()); };
+    const wrongPin = () => {
+      attempts.get(ip).push(Date.now());
+      const l = nameLocks.get(key) || { fails: 0, until: 0 };
+      l.fails++; if (l.fails >= 10) { l.until = Date.now() + 3600000; l.fails = 0; }
+      nameLocks.set(key, l);
+    };
     if (urlPath === '/api/load') {
       if (!rec) return json(404, { error: 'No saved game with that name. Check the spelling.' });
       if (hashPin(pin, rec.salt) !== rec.hash) { wrongPin(); return json(403, { error: 'Wrong PIN for that name.' }); }
@@ -99,8 +108,11 @@ function handleAccount(urlPath, m, req, json) {
     // save
     if (!m.save || typeof m.save !== 'object') return json(400, { error: 'Nothing to save.' });
     if (rec && hashPin(pin, rec.salt) !== rec.hash) { wrongPin(); return json(403, { error: 'That name is already taken. Wrong PIN? Pick a different name.' }); }
+    // Never let an older device overwrite a save with more progress, unless the player says so.
+    const progress = num(m.progress, 0, 1e7);
+    if (rec && !m.force && (rec.progress || 0) > progress) return json(409, { error: 'Your online save has more progress (from another device).', theirs: rec.progress, yours: progress });
     const salt = rec ? rec.salt : crypto.randomBytes(12).toString('hex');
-    const out = { name: clean(m.name, 14), salt, hash: rec ? rec.hash : hashPin(pin, salt), save: m.save, created: rec ? rec.created : Date.now(), updated: Date.now() };
+    const out = { name: safeName(m.name), salt, hash: rec ? rec.hash : hashPin(pin, salt), save: m.save, progress, created: rec ? rec.created : Date.now(), updated: Date.now() };
     fs.mkdir(SAVE_DIR, { recursive: true }, () => fs.writeFile(file, JSON.stringify(out), (e) => e ? json(500, { error: 'Could not save right now.' }) : json(200, { ok: true, created: !rec })));
   });
 }
@@ -130,7 +142,9 @@ function newCode() {
   do { code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join(''); } while (rooms.has(code));
   return code;
 }
+const BLOCK = ['fuck', 'shit', 'bitch', 'cunt', 'dick', 'cock', 'pussy', 'slut', 'whore', 'nigg', 'fag', 'rape', 'nazi', 'porn', 'piss', 'bastard'];
 const clean = (s, n) => String(s || '').replace(/[<>&"'`]/g, '').trim().slice(0, n);
+const safeName = (s) => { const c = clean(s, 14), flat = c.toLowerCase().replace(/[^a-z]/g, ''); return BLOCK.some(w => flat.includes(w)) ? 'Squareface' : c; };
 const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo);
 const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
 
@@ -151,7 +165,7 @@ function joinRoom(ws, room, name, color, uid) {
   if (room.players.size >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `Room ${room.code} is full (${MAX_PLAYERS} players).` });
   const used = new Set([...room.players.values()].map(p => p.color));
   const pick = COLORS.includes(color) && !used.has(color) ? color : (COLORS.find(c => !used.has(c)) || COLORS[0]);
-  const p = { id: ++room.nextId, ws, name: clean(name, 14) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
+  const p = { id: ++room.nextId, ws, name: safeName(name) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
   room.players.set(p.id, p);
   ws.room = room; ws.player = p;
   send(ws, { t: 'joined', you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
@@ -173,13 +187,14 @@ function endRound(room) {
   room.roundEnd = null;
   const list = [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, n: p.round })).sort((a, b) => b.n - a.n);
   const best = list[0] && list[0].n > 0 ? list[0].n : 0;
-  const winners = list.filter(e => best > 0 && e.n === best);
+  const scored = list.filter(e => e.n > 0).length;
+  const winners = scored >= 2 ? list.filter(e => best > 0 && e.n === best) : [];
   winners.forEach(w => {
     const p = room.players.get(w.id); if (!p) return;
     p.trophies++;
     if (p.uid && board[p.uid]) { board[p.uid].trophies = (board[p.uid].trophies || 0) + 1; boardDirty = true; }
   });
-  broadcast(room, { t: 'round', state: 'end', list, winners: winners.map(w => w.id) });
+  broadcast(room, { t: 'round', state: 'end', list, winners: winners.map(w => w.id), valid: scored >= 2 });
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
@@ -243,7 +258,7 @@ wss.on('connection', (ws) => {
         broadcast(room, { t: 'crunch', b: id, by: p.id }, ws);
         if (room.roundEnd) { p.round++; broadcast(room, { t: 'scores', list: scores(room) }); }
         if (room.mode === 'team') room.players.forEach(q => { if (q !== p && q.away) q.helped = (q.helped || 0) + 1; });
-        if (room.mode === 'team') {
+        if (room.mode === 'team' && room.players.size >= 2) {
           room.pot.fill++;
           if (room.pot.fill >= room.pot.need) {
             room.pot.level++; room.pot.fill = 0; room.pot.need = potNeed(room.pot.level);
@@ -272,7 +287,9 @@ wss.on('connection', (ws) => {
         break;
       }
       case 'round':
-        if (room.mode === 'race') startRound(room);
+        if (room.mode !== 'race') break;
+        if (room.players.size < 2) { send(ws, { t: 'error', msg: 'Crunch Races need at least 2 players. Share your room name with a friend!' }); break; }
+        startRound(room);
         break;
       case 'away':
         p.away = !!m.on;

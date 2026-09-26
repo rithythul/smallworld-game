@@ -45,10 +45,17 @@ const Care = (() => {
     el.querySelector('#careParent').addEventListener('click', openGate);
   }
 
+  function inWords(n) {
+    const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    const under100 = (x) => x < 20 ? ones[x] : tens[Math.floor(x / 10)] + (x % 10 ? '-' + ones[x % 10] : '');
+    const th = Math.floor(n / 1000), h = Math.floor(n / 100) % 10, r = n % 100;
+    return [ones[th] + ' thousand', h ? ones[h] + ' hundred' : '', r ? under100(r) : ''].filter(Boolean).join(' ');
+  }
   function openGate() {
-    const a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4);
-    el.querySelector('#careQ').textContent = `Grown-ups only: what is ${a} × ${b}?`;
-    const g = el.querySelector('#careGate'); g.hidden = false; g.dataset.ans = String(a * b);
+    const n = 1000 + Math.floor(Math.random() * 9000);
+    el.querySelector('#careQ').textContent = `Grown-ups only: type this number in digits: ${inWords(n)}.`;
+    const g = el.querySelector('#careGate'); g.hidden = false; g.dataset.ans = String(n);
     el.querySelector('#careAnswer').value = ''; el.querySelector('#careGateMsg').textContent = '';
     g.onsubmit = (e) => {
       e.preventDefault();
@@ -111,7 +118,8 @@ const Care = (() => {
   }
 
   // Called every frame while playing. Returns true when play is paused.
-  function tick(dt) {
+  let warned = 0, onWarn = null;
+  function tick(dt, canBreak = true) {
     if (S.day !== today()) { S.day = today(); S.played = 0; S.extra = 0; }
     if (mode) {
       if (el.hidden) el.hidden = false;
@@ -134,8 +142,14 @@ const Care = (() => {
     S.played += dt; S.since += dt;
     saveT -= dt; if (saveT <= 0) { saveT = 5; save(); }
     if (S.daily && S.played >= (S.daily + S.extra) * 60) { S.doneDay = S.day; save(); show('done'); return true; }
-    if (S.breakEvery && S.since >= S.breakEvery * 60) {
-      S.since = 0; S.breakUntil = Date.now() + S.breakLen * 60000; save(); show('break'); return true;
+    if (S.breakEvery) {
+      const left = S.breakEvery * 60 - S.since;
+      if (left <= 120 && left > 30 && warned < 1) { warned = 1; onWarn && onWarn(2); }
+      if (left <= 30 && left > 0 && warned < 2) { warned = 2; onWarn && onWarn(0.5); }
+      // wait for a good moment (not mid-dialogue, lesson or race), but never more than 2 extra minutes
+      if (left <= 0 && (canBreak || left < -120)) {
+        S.since = 0; warned = 0; S.breakUntil = Date.now() + S.breakLen * 60000; save(); show('break'); return true;
+      }
     }
     return false;
   }
@@ -144,6 +158,7 @@ const Care = (() => {
     tick,
     goAway() { show('away'); },
     onAway(fn) { onAway = fn; },
+    onWarn(fn) { onWarn = fn; },
     minutesLeftToday() { return S.daily ? Math.max(0, Math.round((S.daily + S.extra) * 60 - S.played) / 60) : Infinity; },
     get locked() { return !!mode; },
   };

@@ -41,7 +41,7 @@ const UI = (() => {
     const el = $('goal'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
-  function toast(html, { noodle = null, food = null, shiny = false, big = false, life = 2.6 } = {}) {
+  function toast(html, { noodle = null, food = null, shiny = false, big = false, life = 2.6, prio = null } = {}) {
     const el = document.createElement('div');
     el.className = 'toast' + (big ? ' big' : '');
     el.style.setProperty('--life', life + 's');
@@ -57,7 +57,14 @@ const UI = (() => {
     }
     const span = document.createElement('div'); span.innerHTML = html; el.appendChild(span);
     $('toasts').appendChild(el);
-    while ($('toasts').children.length > (document.body.classList.contains('touch') ? 2 : 3)) $('toasts').firstChild.remove();
+    el.dataset.prio = prio !== null ? prio : noodle ? 3 : big ? 2 : 1;
+    const box = $('toasts'), cap = document.body.classList.contains('touch') ? 2 : 3;
+    while (box.children.length > cap) {
+      // drop the least important (oldest first among equals)
+      let drop = box.firstChild;
+      [...box.children].forEach(c => { if (+c.dataset.prio < +drop.dataset.prio) drop = c; });
+      drop.remove();
+    }
     setTimeout(() => el.remove(), (life + 0.5) * 1000);
   }
 
@@ -634,7 +641,10 @@ const UI = (() => {
       c.addEventListener('click', (e) => {
         const r = c.getBoundingClientRect();
         opts.tap((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
-        closeSheet();
+        if (!$('goPin')) {
+          wrap.insertAdjacentHTML('afterend', '<button class="big-btn small go-pin" type="button" id="goPin">Go there 📍</button>');
+          $('goPin').addEventListener('click', closeSheet);
+        }
       });
     });
   }
@@ -666,10 +676,10 @@ const UI = (() => {
 
   function skills(G, stars) {
     openSheet('Skills & Challenges', (body) => {
-      const level = 1 + Math.floor(Math.sqrt(stars / 2));
-      const nextAt = 2 * level * level;
+      const level = Game.level();
+      const nextAt = 3 * level * level, prevAt = 3 * (level - 1) ** 2;
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">⭐ <b>${stars} stars</b> · Noodle Level <b>${level}</b>. ${nextAt - stars} more stars to level ${level + 1}. Levels never stop.</p>
-        <div class="progress"><div style="width:${Math.min(100, (stars - 2 * (level - 1) ** 2) / (nextAt - 2 * (level - 1) ** 2) * 100)}%"></div></div>
+        <div class="progress"><div style="width:${Math.min(100, (stars - prevAt) / (nextAt - prevAt) * 100)}%"></div></div>
         <p class="sheet-sub">🎁 Level ${level + 1} reward: <b>${Game.levelReward().text}</b></p>`);
       const skillBlock = (skill, title, coach, where) => {
         const lv = G.skills[skill];
@@ -684,8 +694,6 @@ const UI = (() => {
         if (lv >= 3) el.insertAdjacentHTML('beforeend', `<div class="lesson next"><span class="mark">∞</span><span><b>Mastery level ${m.level + 1}</b><br><small>Keep ${skill === 'swim' ? 'swimming' : 'flying'}: ${Math.max(0, m.next - m.xp)} more seconds. Levels never stop.</small></span></div>`);
         body.appendChild(el);
       };
-      skillBlock('swim', '🏊 Swimming', 'Coach Kombu', 'on the Morning Pool deck');
-      skillBlock('fly', '🪽 Flying', 'Captain Penne', 'on the hill in Crunch Meadow');
       if (G.daily && G.daily.list) {
         const d = document.createElement('div'); d.className = 'clue';
         d.innerHTML = `<span class="where">New ones every morning, forever · finish all 3 for a Perfect Day (⭐ +2)</span><h3>📅 Today's challenges (day ${G.day})${G.streak && G.lastPerfect >= G.day - 1 ? ` · 🔥 ${G.streak}-day streak` : ''}</h3>`;
@@ -695,6 +703,8 @@ const UI = (() => {
         });
         body.appendChild(d);
       }
+      skillBlock('swim', '🏊 Swimming', 'Coach Kombu', 'on the Morning Pool deck');
+      skillBlock('fly', '🪽 Flying', 'Captain Penne', 'on the hill in Crunch Meadow');
       const ch = document.createElement('div'); ch.className = 'clue';
       ch.innerHTML = '<span class="where">Big goals</span><h3>🏆 Challenges</h3>';
       CHALLENGES.forEach(c => {

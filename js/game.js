@@ -71,6 +71,8 @@ const Game = (() => {
   const dist = (a, b, c, d) => Math.hypot(a - c, b - d);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const has = (id) => G.found.includes(id);
+  const ownHas = (id) => has(id) && !(G.teamGiven || {})[id];   // noodles you found yourself (story checks)
+  const ownCount = () => G.found.filter(id => !(G.teamGiven || {})[id]).length;
   const buffed = () => G.buffDay === G.day && G.buffUntil > G.time;
   const minty = () => G.mintDay === G.day && G.mintUntil > G.time;
   const inPond = (x, y, pad = 0) => ((x - MIRROR.x) / (MIRROR.rx + pad)) ** 2 + ((y - MIRROR.y) / (MIRROR.ry + pad)) ** 2 < 1;
@@ -154,7 +156,7 @@ const Game = (() => {
 
   function bricks() {
     const list = BRICK_SPOTS.map(([x, y], i) => ({ i, x, y, kind: y > CANYON.top ? 'canyon' : x > PEAKS.left ? (y < PEAKS.snowLine ? 'snow' : 'peak') : x > 1450 ? 'woods' : 'normal' }))
-      .filter(b => !G.crunched.includes(b.i));
+      .filter(b => !G.crunched.includes(b.i) && !roomCrunched.has(b.i));
     CANYON.boulders.forEach(([x, y], k) => {
       const hp = G.boulderHp[k] === undefined ? 3 : G.boulderHp[k];
       if (hp > 0) list.push({ i: 'boulder' + k, k, x, y, kind: 'boulder', hp, max: 3 });
@@ -184,13 +186,17 @@ const Game = (() => {
 
   /* ---------- rewards ---------- */
   function giveNoodle(id, from) {
-    if (has(id)) return false;
+    if (has(id)) {
+      // found it yourself after a teammate shared it: now it is really yours
+      if (!from && G.teamGiven && G.teamGiven[id]) { delete G.teamGiven[id]; UI.toast(`You found ${NOODLES.find(x => x.id === id).name} yourself!`, { life: 2.4 }); save(); }
+      return false;
+    }
     const n = NOODLES.find(n => n.id === id);
     if (!n) return false;
     G.found.push(id);
     P.wow = 1.6;
     Sound.discover(); buzz([20, 40, 30]);
-    if (from) UI.toast(`<span class="t-small">Team noodle · from ${from}</span>${n.name}`, { noodle: n, big: true, life: 3.2 });
+    if (from) { G.teamGiven = G.teamGiven || {}; G.teamGiven[id] = true; UI.toast(`<span class="t-small">🤝 Team noodle · from ${from}</span>${n.name}`, { noodle: n, big: true, life: 3.2 }); }
     else { UI.toast(`<span class="t-small">New noodle · ${n.rarity}</span>${n.name}`, { noodle: n, big: true, life: 3.2 }); Net.found(id); }
     burst(P.x, P.y - 60, 24, ['#ffd23f', '#fff8e8', '#e4572e', '#8fe0ea'], { type: 'spark', speed: 260, grav: 200, life: 1.1 });
     milestone();
@@ -221,7 +227,7 @@ const Game = (() => {
     G.water = Math.max(G.water, 70);
     newFortune();
     ensureDaily();
-    setTimeout(() => UI.toast('<span class="t-small">📅 New day, new challenges</span>Open ⭐ Skills to see today\'s 3 challenges.', { life: 3.4 }), 3800);
+    setTimeout(() => UI.toast('<span class="t-small">📅 New day, new challenges</span>Tap the goal at the top to see today\'s 3 challenges.', { life: 3.4 }), 3800);
     P.swimming = false; swim = null; P.area = null; P.z = 0; P.vz = 0; G.lesson = null;
     P.x = spot ? spot.x : DOOR.x; P.y = spot ? spot.y : DOOR.y + 30;
     cam.x = P.x - vw / zoom / 2; cam.y = P.y - vh / zoom / 2;
@@ -500,7 +506,7 @@ const Game = (() => {
     return `Lesson · ${l.title}: ${prog} (${s})`;
   }
   // Noodle Level rewards: every level gives something, forever.
-  const noodleLevel = () => 1 + Math.floor(Math.sqrt(starTotal() / 2));
+  const noodleLevel = () => 1 + Math.floor(Math.sqrt(starTotal() / 3));
   function levelTick() {
     const L = noodleLevel();
     if (!G.levelClaimed) { G.levelClaimed = 1; }
@@ -510,6 +516,7 @@ const Game = (() => {
       G.levelClaimed++;
       const r = levelReward(G.levelClaimed);
       if (r.coins) G.coins += r.coins;
+      if (r.hat && G.hats[r.hat]) { G.coins += 30; got.push(`30 coins (you already had the ${HATS[r.hat].name})`); continue; }
       if (r.hat) { G.hats[r.hat] = true; if (!G.hat) G.hat = r.hat; }
       if (r.flag) G.flags[r.flag] = true;
       got.push(r.text);
@@ -565,9 +572,14 @@ const Game = (() => {
     return '';
   }
 
+  const SELL_PER_DAY = 8;
   function sellFood(id, all) {
     const have = G.pantry[id] || 0; if (!have) return 'You have none left.';
-    const n = all ? have : 1, coins = n * FOOD_PRICES[id];
+    if (!G.sold || G.sold.day !== G.day) G.sold = { day: G.day, n: 0 };
+    const room = SELL_PER_DAY - G.sold.n;
+    if (room <= 0) return `Grandma can only buy ${SELL_PER_DAY} foods a day. Cook with the rest, or come back tomorrow!`;
+    const n = Math.min(all ? have : 1, room), coins = n * FOOD_PRICES[id];
+    G.sold.n += n;
     G.pantry[id] -= n;
     addCoins(coins);
     UI.toast(`<span class="t-small">🪙 Sold to Grandma</span>${n} × ${FOODS[id].name} for ${coins} coins.`, { food: id, life: 2.4 });
@@ -581,7 +593,7 @@ const Game = (() => {
     levelTick();
     const met = {
       combo5: G.stats.maxCombo >= 5, drink10: G.drinks >= 10, early: !!G.flags.early,
-      noodles10: G.found.length >= 10, air4: (G.stats.bestAir || 0) >= 4, river30: G.stats.swimOpen >= 30, noodles20: G.found.length >= 20,
+      noodles10: ownCount() >= 10, air4: (G.stats.bestAir || 0) >= 4, river30: G.stats.swimOpen >= 30, noodles20: ownCount() >= 20,
     };
     CHALLENGES.forEach(c => {
       if (G.challenges[c.id] || !met[c.id]) return;
@@ -791,7 +803,7 @@ const Game = (() => {
       return UI.say('snail', lines);
     }
     if (G.clues.includes('mirror')) {
-      if (has('dawn')) {
+      if (ownHas('dawn')) {
         return UI.say('snail', [
           'Under my house? Mmm... My shell IS my house, you know.',
           'Oh! You have seen the <em>Dawn Noodle</em>? The one that only lives at sunrise? How lovely.',
@@ -1038,7 +1050,7 @@ const Game = (() => {
     }
     learn('swim'); if (G.time < 7 * 60) learn('dawn');
     P.swimming = true; P.area = 'pool'; P.x = GATE.x; P.y = POOL.y + 40;
-    swim = { t: 25, score: 0, bubbles: [], spawn: 0, dawn: G.time < POOL_OPEN + 60 && !has('dawn') ? { x: POOL.x + 200, y: POOL.y + 120 } : null, done: false };
+    swim = { t: 25, score: 0, bubbles: [], spawn: 0, dawn: G.time < POOL_OPEN + 60 && !ownHas('dawn') ? { x: POOL.x + 200, y: POOL.y + 120 } : null, done: false };
     Sound.splash();
     burst(P.x, P.y, 30, ['#8fe0ea', '#ffffff', '#5ed0e6'], { speed: 240, up: 200, size: 5, type: 'drop' });
     G.flags.swam = true;
@@ -1090,7 +1102,7 @@ const Game = (() => {
   // Some puzzles need the early morning; never make players wait 10 minutes for it.
   function needsMorning() {
     const c = (id) => G.clues.includes(id);
-    return !poolOpen() && ((c('pillow') && !G.pieces.includes(1)) || (c('mirror') && !G.pieces.includes(5) && !has('dawn')));
+    return !poolOpen() && ((c('pillow') && !G.pieces.includes(1)) || (c('mirror') && !G.pieces.includes(5) && !ownHas('dawn')));
   }
   const canSleep = () => hour() >= 18 || hour() < 5 || needsMorning();
 
@@ -1229,7 +1241,7 @@ const Game = (() => {
     if (canyonOpen() && !p(3)) return { x: 600, y: 2150, label: 'Canyon rocks' };
     if (p(3) && !p(4)) return { x: 1900, y: 2350, label: 'East canyon' };
     if (p(4) && !c('mirror')) return { x: 1250, y: 900, label: 'The stream' };
-    if (c('mirror') && !p(5)) return has('dawn') ? { x: 800, y: 2380, label: 'Udon Snail' } : poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
+    if (c('mirror') && !p(5)) return ownHas('dawn') ? { x: 800, y: 2380, label: 'Udon Snail' } : poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
     if (p(5) && !c('statue')) return { x: STATUE.x, y: STATUE.y + 80, label: 'Summit' };
     if (c('statue') && !p(6)) return G.statueStep === 2 ? { ...PEAKS.lakeEntry, label: 'Lake' } : G.statueStep === 3 ? { x: STATUE.x, y: STATUE.y + 80, label: 'Statue' } : null;
     return null;
@@ -1265,10 +1277,15 @@ const Game = (() => {
     if (canyonOpen() && !G.pieces.includes(3)) return 'Find the echo that crunches twice';
     if (G.pieces.includes(3) && !G.pieces.includes(4)) return 'Where could that rhythm be played?';
     if (G.pieces.includes(4) && !G.clues.includes('mirror')) return 'Drink where the water lies';
-    if (G.clues.includes('mirror') && !G.pieces.includes(5)) return has('dawn') ? 'Ask the Udon Snail about its house (canyon)' : (poolOpen() ? 'Catch the Dawn Noodle in the pool (6–7 AM)' : 'Catch the Dawn Noodle: nap at home, swim at 6 AM');
+    if (G.clues.includes('mirror') && !G.pieces.includes(5)) return ownHas('dawn') ? 'Ask the Udon Snail about its house (canyon)' : (poolOpen() ? 'Catch the Dawn Noodle in the pool (6–7 AM)' : 'Catch the Dawn Noodle: nap at home, swim at 6 AM');
     if (G.pieces.includes(5) && !G.clues.includes('statue')) return 'Climb to the top of the Soba Peaks (east)';
     if (G.clues.includes('statue') && !G.pieces.includes(6)) return `Show the statue your faces (${G.statueStep}/4)`;
-    return `Chapter 3 done! Fill the Noodle-dex (${n}/${NOODLES.length})`;
+    if (G.daily && G.daily.day === G.day) {
+      const next = G.daily.list.find(c => !G.daily.done[c.id]);
+      if (next) return `📅 Today: ${next.title} (${Math.min(next.goal, Math.floor(G.daily.prog[next.id] || 0))}/${next.goal})`;
+      return '🌟 Perfect Day! Cook, race friends, or collect shiny noodles';
+    }
+    return `Explore and fill the Noodle-dex (${n}/${NOODLES.length})`;
   }
 
   /* ---------- update ---------- */
@@ -1312,9 +1329,12 @@ const Game = (() => {
     setTimeout(() => startDaydream('rocket'), 600);
   }
 
+  const setText = (el, v) => { v = String(v); if (el._v !== v) { el._v = v; el.textContent = v; } };
+
   /* ---------- world map ---------- */
   const CELL = 200, COLS = Math.ceil(WORLD.w / CELL), ROWS = Math.ceil(WORLD.h / CELL);
   let mapImg = null, mapT = 0;
+  const fogCache = { key: '', canvas: null };
   function buildMapImage() {
     mapImg = document.createElement('canvas'); mapImg.width = 900; mapImg.height = Math.round(900 * WORLD.h / WORLD.w);
     const m = mapImg.getContext('2d'), k = mapImg.width / WORLD.w;
@@ -1365,6 +1385,8 @@ const Game = (() => {
     c.clearRect(0, 0, W, H);
     c.drawImage(mapImg, 0, 0, W, H);
     // fog of war over places you have not explored yet
+    const fogKey = W + 'x' + H + ':' + G.seen;
+    if (fogCache.key === fogKey) { c.drawImage(fogCache.canvas, 0, 0); } else {
     const fog = document.createElement('canvas'); fog.width = W; fog.height = H;
     const f = fog.getContext('2d');
     f.fillStyle = '#e9dcc0'; f.fillRect(0, 0, W, H);
@@ -1379,6 +1401,8 @@ const Game = (() => {
       f.fillStyle = g; f.fillRect(x - r, y - r, r * 2, r * 2);
     }
     c.drawImage(fog, 0, 0);
+    fogCache.key = fogKey; fogCache.canvas = fog;
+    }
     c.textAlign = 'center'; c.textBaseline = 'middle';
     if (!mini) {
       // region names
@@ -1432,14 +1456,19 @@ const Game = (() => {
     (FACT_BY_TRIGGER[trigger] || []).forEach(f => { if (!G.facts[f.id] && !factQueue.includes(f)) factQueue.push(f); });
   }
   function factTick() {
-    if (!factQueue.length || UI.busy || now - lastFactT < 14 || roundEnd > now || G.lesson) return;
+    if (!factQueue.length || UI.busy || now - lastFactT < (G.flags.firstFact ? 120 : 20) || roundEnd > now || G.lesson) return;
     const f = factQueue.shift();
     if (G.facts[f.id]) return;
     G.facts[f.id] = true; lastFactT = now;
     G.coins += 2;
     Sound.blip();
     // Kids need time to read, so the professor tells it in a speech bubble (the game waits).
-    UI.say('prof', [`${SUBJECTS[f.subject].icon} <em>Science snack: ${f.title}!</em> ${f.text}`], { onDone: () => UI.toast(`<span class="t-small">🔬 +2 coins</span>Saved in your journal, Science tab.`, { life: 2.2 }) });
+    if (!G.flags.firstFact) {
+      G.flags.firstFact = true;
+      UI.say('prof', [`${SUBJECTS[f.subject].icon} <em>Science snack: ${f.title}!</em> ${f.text}`, 'Every time you try something new, I will save a Science Snack in your journal. Collect them all!'], { onDone: () => UI.toast(`<span class="t-small">🔬 +2 coins</span>Saved in your journal, Science tab.`, { life: 2.2 }) });
+    } else {
+      UI.toast(`<span class="t-small">🔬 New Science Snack · +2 coins</span>${SUBJECTS[f.subject].icon} ${f.title}. Read it in your journal (Science).`, { life: 5, prio: 2 });
+    }
     G.journalNew = true;
     save();
   }
@@ -1467,9 +1496,11 @@ const Game = (() => {
     ], { choices: [
       { label: '🧠 Start the quiz', fn: () => {
         const qs = makeQuiz();
+        G.quiz = { day: G.day, score: 0 }; save();   // started = today's quiz is used, even if closed early
         UI.quiz(qs, (q, right) => {
           if (q.i !== undefined) G.quizSeen = [...(G.quizSeen || []), q.i];
-          if (right) { G.bonusStars = (G.bonusStars || 0) + 1; addCoins(5); Sound.coin(); } else Sound.wrong();
+          if (right) { G.quiz.score++; G.bonusStars = (G.bonusStars || 0) + 1; addCoins(5); Sound.coin(); } else Sound.wrong();
+          save();
         }, (score) => {
           G.quiz = { day: G.day, score };
           G.quizStreak = G.lastQuizDay === G.day - 1 ? (G.quizStreak || 0) + 1 : 1; G.lastQuizDay = G.day;
@@ -1484,7 +1515,7 @@ const Game = (() => {
   }
 
   function update(dt) {
-    if (Care.tick(dt)) { keys.clear(); stick.active = false; drinkHeld = false; return; }
+    if (Care.tick(dt, !UI.busy && !G.lesson && !(roundEnd > now) && !Space.active)) { keys.clear(); stick.active = false; drinkHeld = false; return; }
     if (Space.active) {
       let mx = 0, my = 0;
       if (keys.has('arrowleft') || keys.has('a')) mx -= 1;
@@ -1690,23 +1721,23 @@ const Game = (() => {
     const btn = $('action');
     if (current) {
       if ($('actionLabel').textContent !== current.label || btn.hidden) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
-      $('actionLabel').textContent = current.label;
-      btn.className = btn.className.replace(/\b(water|talk|swim|look|idle)\b/g, '').trim();
-      if (current.cls) btn.classList.add(current.cls);
+      setText($('actionLabel'), current.label);
+      const cls = current.cls || '';
+      if (btn._cls !== cls) { btn._cls = cls; btn.className = btn.className.replace(/\b(water|talk|swim|look|idle)\b/g, '').trim(); if (cls) btn.classList.add(cls); }
       btn.hidden = false;
     } else if (!isTouch) btn.hidden = true;
     else { $('actionLabel').textContent = '·'; btn.className = 'idle'; btn.hidden = false; }
 
     UI.hud(G);
-    $('starCount').textContent = starTotal();
+    setText($('starCount'), starTotal());
     const chips = [];
     if (buffed()) chips.push('😎 Fresh Start'); if (minty()) chips.push('🌿 Minty');
     [['spicy', '🌶️ Spicy'], ['forest', '🍄 Forest sense'], ['sea', '🌊 Sea legs'], ['dumpling', '🥟 Long combos']].forEach(([id, label]) => dishOn(id) && chips.push(label));
-    $('buff').hidden = !chips.length; $('buff').textContent = chips.join('  ·  ');
+    $('buff').hidden = !chips.length; setText($('buff'), chips.join('  ·  '));
     if (isTouch) {
       const fb = $('flyBtn');
       fb.hidden = P.swimming || UI.busy;
-      $('flyLabel').textContent = G.skills.fly >= 1 ? 'FLY' : 'HOP';
+      setText($('flyLabel'), G.skills.fly >= 1 ? 'FLY' : 'HOP');
     }
     if (isNight()) learn('night');
     if (P.x > PEAKS.left && P.y < PEAKS.snowLine) learn('snow');
@@ -1720,7 +1751,7 @@ const Game = (() => {
     UI.goal(gt);
     if (gt !== lastGoalKey) { lastGoalKey = gt; sameGoalT = 0; hintStep = 0; guideOn = false; UI.goalHint(''); } else if (!busy && !Space.active) sameGoalT += dt;
     // Hint ladder: the longer you are stuck on one goal, the more help you get.
-    if (hintStep < 1 && sameGoalT > 45) { hintStep = 1; const h = hintFor(0); if (h) { P.wow = 0; UI.toast(`<span class="t-small">🤔 Squareface thinks…</span>${h}`, { life: 5 }); } }
+    if (hintStep < 1 && sameGoalT > 45) { hintStep = 1; const h = hintFor(0); if (h) { P.wow = 0; UI.goalHint(h); UI.toast(`<span class="t-small">🤔 Squareface thinks…</span>${h}`, { life: 5 }); } }
     if (hintStep < 2 && sameGoalT > 90) { hintStep = 2; const h = hintFor(1); if (h) UI.goalHint(h); }
     if (hintStep < 3 && sameGoalT > 150) { hintStep = 3; if (goalTarget()) { guideOn = true; UI.toast('<span class="t-small">Need a hand? 🧭</span>Follow the yellow arrow. Tap the goal to hide it.', { life: 3.6 }); } }
     if (hintStep < 4 && sameGoalT > 240) hintStep = 4;
@@ -1755,7 +1786,7 @@ const Game = (() => {
       if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMap(mc, mm.width, mm.height, true); }
     }
     if (G.pin && dist(P.x, P.y, G.pin.x, G.pin.y) < 90) { G.pin = null; Sound.coin(); UI.toast('📍 You reached your pin!', { life: 2 }); }
-    cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(); }
+    cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(true); }
   }
 
   /* ---------- render ---------- */
@@ -1778,7 +1809,7 @@ const Game = (() => {
     const t = now;
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#6fa54a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (cam.x < 0 || cam.y < 0 || cam.x + vw / zoom > WORLD.w || cam.y + vh / zoom > WORLD.h) { ctx.fillStyle = '#6fa54a'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     const k = dpr * zoom;
     ctx.setTransform(k, 0, 0, k, (-cam.x + sx) * k, (-cam.y + sy) * k);
     const viewW = vw / zoom, viewH = vh / zoom;
@@ -1799,7 +1830,7 @@ const Game = (() => {
     }
 
     const dawn = G.time >= POOL_OPEN && G.time < POOL_CLOSE;
-    drawStream(ctx, t, dawn);
+    if (cam.x < 1560 && cam.x + vw / zoom > 1100) drawStream(ctx, t, dawn);   // only when the river is on screen
     if (inView(SPRING.x, SPRING.y)) drawSpring(ctx, SPRING, t);
     if (inView(LAKE.x + LAKE.w / 2, LAKE.y + LAKE.h / 2)) {
       drawLake(ctx, LAKE, t);
@@ -1932,14 +1963,16 @@ const Game = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (L.tint) { ctx.fillStyle = `rgba(${L.tint[0]},${L.tint[1]},${L.tint[2]},${L.tint[3]})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     if (L.dark > 0.01) {
-      if (lightCanvas.width !== canvas.width || lightCanvas.height !== canvas.height) { lightCanvas.width = canvas.width; lightCanvas.height = canvas.height; }
+      // the night layer is soft, so a quarter-size canvas scaled up looks the same and is much cheaper
+      const LQ = 0.25, lw = Math.ceil(canvas.width * LQ), lh = Math.ceil(canvas.height * LQ);
+      if (lightCanvas.width !== lw || lightCanvas.height !== lh) { lightCanvas.width = lw; lightCanvas.height = lh; }
       lctx.globalCompositeOperation = 'source-over';
       lctx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
       lctx.fillStyle = `rgba(22,18,58,${L.dark})`;
       lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
       lctx.globalCompositeOperation = 'destination-out';
       const light = (x, y, r, s = 1) => {
-        const X = (x - cam.x) * k, Y = (y - cam.y) * k, R = r * k;
+        const X = (x - cam.x) * k * LQ, Y = (y - cam.y) * k * LQ, R = r * k * LQ;
         const gr = lctx.createRadialGradient(X, Y, 0, X, Y, R);
         gr.addColorStop(0, `rgba(0,0,0,${s})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
         lctx.fillStyle = gr; lctx.fillRect(X - R, Y - R, R * 2, R * 2);
@@ -1952,7 +1985,7 @@ const Game = (() => {
       glassNoodles().forEach(g => light(g.x, g.y - 10, 90, 0.9));
       bricks().forEach(b => (b.kind === 'gold' || b.kind === 'fortune') && light(b.x, b.y, 80, 0.8));
       if (G.pieces.includes(6) || G.statueStep) light(STATUE.x, STATUE.y - 60, 120, 0.8);
-      ctx.drawImage(lightCanvas, 0, 0);
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(lightCanvas, 0, 0, canvas.width, canvas.height);
       // fireflies
       if (L.dark > 0.3) {
         ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k);
@@ -2009,7 +2042,7 @@ const Game = (() => {
 
   function resize() {
     vw = window.innerWidth; vh = window.innerHeight;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(isTouch ? 1.5 : 2, window.devicePixelRatio || 1);
     canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
     zoom = clamp(Math.min(vw / 900, vh / 620), 0.72, 1.5);
     if (typeof restStick === 'function') restStick();
@@ -2147,6 +2180,7 @@ const Game = (() => {
   });
   $('awayBtn').addEventListener('click', () => { $('menuPop').hidden = true; Care.goAway(); });
   Care.onAway((on) => { Net.away(on); if (on) save(); });
+  Care.onWarn((min) => UI.toast(`<span class="t-small">😴 Break soon</span>${min >= 1 ? 'In 2 minutes' : 'In 30 seconds'} Squareface takes a little rest. Finish what you are doing!`, { life: 4, prio: 2 }));
   Net.on('helped', (m) => { if (m.n > 0) { addCoins(m.n); Sound.secret(); UI.toast(`<span class="t-small">🤝 Welcome back!</span>Your friends crunched ${m.n} brick${m.n > 1 ? 's' : ''} while you were away: +${m.n} coins.`, { big: true, life: 4.4 }); } });
   $('accountBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; openAccount(); });
   $('boardBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; postScore(); openBoard(); });
@@ -2160,7 +2194,7 @@ const Game = (() => {
   $('goal').addEventListener('click', () => {
     Sound.blip();
     const tg = goalTarget();
-    if (!tg) { UI.journal(G, 'story'); return; }
+    if (!tg) { if (/^(📅|🌟)/.test(lastGoalKey)) UI.skills(G, starTotal()); else UI.journal(G, 'story'); return; }
     guideOn = !guideOn; sameGoalT = 0;
     UI.toast(guideOn ? `<span class="t-small">🧭 Showing the way</span>Follow the yellow arrow to: ${tg.label}. Tap the goal again to hide it.` : 'Arrow hidden. Tap the goal to show it again.', { life: 3 });
   });
@@ -2177,6 +2211,7 @@ const Game = (() => {
   /* ---------- multiplayer ---------- */
   const PROFILE_KEY = 'noodle-universe-profile';
   const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
+  const roomCrunched = new Set(); // bricks crunched by anyone in the room (kept apart from the solo save)
   let profile = { name: '', color: COLORS[0] };
   try { Object.assign(profile, JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}); } catch (e) {}
   if (!/^[a-z0-9]{8,24}$/.test(profile.uid || '')) profile.uid = (Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 16);
@@ -2195,8 +2230,8 @@ const Game = (() => {
     const go = pendingStart; pendingStart = null;
     if (go) go();
     // bring in what the room already did
-    m.crunched.forEach(id => { if (typeof id === 'number') { if (!G.crunched.includes(id)) G.crunched.push(id); } else { const k = /^boulder(\d)$/.exec(id); if (k) G.boulderHp[+k[1]] = 0; } });
-    if (m.mode === 'team') m.teamFound.forEach(n => { if (!has(n) && NOODLES.some(x => x.id === n)) G.found.push(n); });
+    roomCrunched.clear(); m.crunched.forEach(id => roomCrunched.add(id));
+    if (m.mode === 'team') m.teamFound.forEach(n => { if (!has(n) && NOODLES.some(x => x.id === n)) { G.found.push(n); G.teamGiven = G.teamGiven || {}; G.teamGiven[n] = true; } });
     roomPot = m.pot; roundEnd = m.round ? now + m.round.secs : 0;
     $('roomPill').hidden = false; $('roomPill').classList.remove('off'); $('emoteBtn').hidden = false; $('emoteMenuBtn').hidden = false;
     updateRoomPill();
@@ -2209,8 +2244,8 @@ const Game = (() => {
   Net.on('scores', () => { updateRoomPill(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends(); });
   Net.on('crunch', (m) => {
     const pos = brickPos(m.b);
-    if (typeof m.b === 'number') { if (!G.crunched.includes(m.b)) G.crunched.push(m.b); }
-    else { const k = /^boulder(\d)$/.exec(m.b); if (k) G.boulderHp[+k[1]] = 0; }
+    roomCrunched.add(m.b);
+    { const k = /^boulder(\d)$/.exec(m.b); if (k) G.boulderHp[+k[1]] = 0; }
     if (pos && running) { burst(pos[0], pos[1] - 16, 12, ['#f4c35a', '#fff3d6'], { speed: 200, up: 180, size: 5 }); if (dist(P.x, P.y, pos[0], pos[1]) < 500) Sound.crunch(0.4); }
   });
   Net.on('found', (m) => {
@@ -2227,6 +2262,7 @@ const Game = (() => {
       UI.toast(`<span class="t-small">🏁 Crunch Race!</span>${Math.round(m.secs / 60)} minutes. Crunch as many bricks as you can!`, { big: true, life: 4 });
     } else {
       roundEnd = 0;
+      if (m.valid === false) { UI.toast('<span class="t-small">🏁 Race over</span>Races count when at least 2 players crunch. Invite a friend!', { life: 4 }); updateRoomPill(); return; }
       const won = m.winners.includes(Net.me);
       const names = m.list.filter(e => m.winners.includes(e.id)).map(e => e.name).join(' & ') || 'Nobody';
       const rank = m.list.findIndex(e => e.id === Net.me), mine = rank >= 0 ? m.list[rank].n : 0;
@@ -2251,7 +2287,7 @@ const Game = (() => {
     }
     if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends();
   });
-  Net.on('respawn', () => { G.crunched = []; G.boulderHp = {}; UI.toast('The bricks grew back!', { life: 2.4 }); });
+  Net.on('respawn', () => { roomCrunched.clear(); G.crunched = []; G.boulderHp = {}; UI.toast('The bricks grew back!', { life: 2.4 }); });
   Net.on('error', (m) => { mpMessage(m.msg, true); if (running) UI.toast(m.msg, { life: 3 }); });
   Net.on('disconnected', () => {
     $('roomPill').classList.add('off'); $('emoteBtn').hidden = true; $('emoteMenuBtn').hidden = true; $('emoteBar').hidden = true;
@@ -2285,28 +2321,39 @@ const Game = (() => {
   const api = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => r.json().catch(() => ({})).then(d => { if (!r.ok) throw new Error(d.error || 'Could not reach the game server.'); return d; }),
       () => { throw new Error('Could not reach the game server. Online saving works on the Render version.'); });
-  function cloudSave() {
+  let cloudBlocked = false, cloudForce = false;
+  const progressScore = () => starTotal() + G.found.length * 10 + G.pieces.length * 20;
+  function cloudSave(auto) {
+    if (auto && cloudBlocked) return Promise.resolve('');
     if (!profile.account || !G || !/^https?:$/.test(location.protocol)) return Promise.resolve('');
     save();
-    return api('api/save', { name: profile.account.name, pin: profile.account.pin, save: G })
-      .then(() => { lastCloud = UI.fmtTime(G.time) + ' (day ' + G.day + ')'; return 'Saved!'; }, e => e.message);
+    return api('api/save', { name: profile.account.name, pin: profile.account.pin, save: G, progress: progressScore(), force: cloudForce })
+      .then(() => { cloudBlocked = false; cloudForce = false; lastCloud = UI.fmtTime(G.time) + ' (day ' + G.day + ')'; return 'Saved!'; }, e => {
+        if (/more progress/.test(e.message)) {
+          if (!cloudBlocked) UI.toast('<span class="t-small">☁️ Not saved online</span>Another device has more progress. Load it from the start screen, or use Save online → Save now to replace it.', { life: 6 });
+          cloudBlocked = true; cloudForce = true;   // the next manual "Save now" replaces it
+          return 'Another device has more progress. Tap Save now again to replace it with this game.';
+        }
+        return e.message;
+      });
   }
   function openAccount() {
     UI.account({ account: profile.account, name: profile.name, last: lastCloud, online: /^https?:$/.test(location.protocol),
-      link: (name, pin) => api('api/save', { name, pin, save: (save(), G) }).then(() => {
+      link: (name, pin) => api('api/save', { name, pin, save: (save(), G), progress: progressScore() }).then(() => {
         profile.account = { name, pin }; profile.name = name; saveProfile(); lastCloud = 'just now'; boardT = 0;
         UI.toast('<span class="t-small">☁️ Saved online</span>Remember your name and PIN to play anywhere.', { life: 3.6 });
       }),
       saveNow: cloudSave,
       unlink: () => { delete profile.account; saveProfile(); UI.toast('This device stopped saving online. Your online save is still there.', { life: 3.4 }); } });
   }
-  function openBoard(by = 'coins') {
+  function openBoard(by = 'stars') {
     UI.leaderboard({ by, uid: profile.uid, name: profile.name, online: /^https?:$/.test(location.protocol),
       load: (key) => fetch('api/leaderboard?by=' + key).then(r => r.ok ? r.json() : Promise.reject()),
       rename: (n) => { profile.name = n.slice(0, 14); saveProfile(); boardT = 0; } });
   }
   function leaveRoom() {
     Net.leave();
+    roomCrunched.clear();
     $('roomPill').hidden = true; $('emoteBtn').hidden = true; $('emoteMenuBtn').hidden = true; $('emoteBar').hidden = true;
     UI.closeSheet();
     UI.toast('You left the room. Playing solo now.', { life: 2.6 });
@@ -2342,6 +2389,11 @@ const Game = (() => {
     const codeIn = $('mpCode');
     const cleanCode = (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     codeIn.addEventListener('input', () => { const c = cleanCode(codeIn.value); if (c !== codeIn.value) codeIn.value = c; });
+    $('mpNameDice').addEventListener('click', () => {
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      let n; do { n = pick(NAME_ADJ) + ' ' + pick(NAME_NOODLE); } while (n.length > 14);
+      nameIn.value = n;
+    });
     $('mpDice').addEventListener('click', () => {
       const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ', D = '23456789';
       const pick = (set) => set[Math.floor(Math.random() * set.length)];
@@ -2427,6 +2479,8 @@ const Game = (() => {
       const b = $('resetBtn');
       if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to erase your save'; return; }
       try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+      if (profile.account) { delete profile.account; saveProfile(); }
+      $('mpMsg').textContent = '';
       b.dataset.wiped = '1'; b.hidden = true; $('startBtn').textContent = 'Wake up ☀';
     });
     if (hotData && hotData.G) begin(hotData.G);

@@ -589,3 +589,7 @@ body:not(.touch) .buff { left: 250px; }
 .quiz-opt:disabled { cursor: default; }
 .quiz-why { font-weight: 700; font-size: 16px; line-height: 1.4; background: #fbe3dc; border-radius: 12px; padding: 10px 14px 8px; margin: 0 0 12px; }
 .quiz-why.ok { background: #e3f4d3; }
+/* readable small text on touch screens */
+body.touch .goal-label, body.touch .badge, body.touch .rarity { font-size: 13px; }
+body.touch .badge.dot { font-size: 0; }
+.go-pin { display: block; margin: 12px auto 0; }

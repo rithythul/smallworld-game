@@ -332,7 +332,10 @@ const LEVEL_REWARDS = {
 const levelReward = (L) => LEVEL_REWARDS[L] || { coins: 10 * L, text: `${10 * L} coins` };
 const SHINY_CHANCE = 1 / 40;
 // What Grandma pays for food you collected (coins each)
-const FOOD_PRICES = { egg: 3, chili: 2, shiitake: 4, shoot: 3, naruto: 4, corn: 2, scallion: 2, nori: 3, dumpling: 5 };
+const FOOD_PRICES = { egg: 2, chili: 1, shiitake: 2, shoot: 2, naruto: 2, corn: 1, scallion: 1, nori: 2, dumpling: 3 };
+// Safe, fun public names for kids: an adjective + a noodle
+const NAME_ADJ = ['Brave', 'Happy', 'Sleepy', 'Crunchy', 'Speedy', 'Sunny', 'Jolly', 'Clever', 'Bouncy', 'Cosmic', 'Minty', 'Golden', 'Tiny', 'Mighty', 'Silly'];
+const NAME_NOODLE = ['Udon', 'Soba', 'Ramen', 'Somen', 'Penne', 'Noodle', 'Macaroni', 'Rigatoni', 'Fusilli', 'Dumpling', 'Pho', 'Orzo'];
 
 // The Udon Snail's week-long walk from the canyon to the summit (real time)
 const SNAIL_TRIP_DAYS = 7;
