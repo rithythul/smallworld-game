@@ -593,3 +593,52 @@ body:not(.touch) .buff { left: 250px; }
 body.touch .goal-label, body.touch .badge, body.touch .rarity { font-size: 13px; }
 body.touch .badge.dot { font-size: 0; }
 .go-pin { display: block; margin: 12px auto 0; }
+
+/* ---------- room chat & voice ---------- */
+#talkBar { position: absolute; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); display: flex; gap: 8px; z-index: 4; }
+#talkBar[hidden] { display: none; }
+body.touch #talkBar { right: calc(env(safe-area-inset-right, 0px) + 22px); bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); }
+#talkBar .icon-btn { font-size: 22px; position: relative; }
+#chatBtn.on { background: var(--broth); }
+#micBtn { background: #c9f0b4; }
+#micBtn.muted { background: #f1e6cf; }
+#chatBadge { background: var(--chili); color: #fff; }
+#chat {
+  position: absolute; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); z-index: 6;
+  width: min(360px, calc(100vw - 32px)); max-height: min(560px, calc(100% - 120px));
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 22px; box-shadow: var(--pop);
+}
+#chat[hidden] { display: none; }
+body.touch #chat { left: 12px; right: 12px; width: auto; bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom, 0px) + 12px); max-height: calc(100% - var(--kb, 0px) - env(safe-area-inset-top, 0px) - 70px); }
+.chat-head { display: flex; align-items: center; justify-content: space-between; }
+.chat-head h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 24px; }
+.chat-people { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chat-people button { display: inline-flex; align-items: center; gap: 5px; border: 2.5px solid var(--ink); border-radius: 999px; background: #fff; font-weight: 800; font-size: 13px; padding: 4px 10px 2px 6px; min-height: 32px; }
+.chat-people button.off { opacity: .55; text-decoration: line-through; }
+.chat-people .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); }
+.chat-people small, .chat-note { color: var(--ink-soft); font-size: 12px; font-weight: 700; margin: 0; }
+.chat-note:empty { display: none; }
+.chat-voice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: #e3f4d3; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 8px; font-weight: 800; font-size: 14px; }
+.chat-voice:empty { display: none; }
+.chat-voice span { flex: 1 1 140px; }
+.chat-voice .choice { padding: 4px 12px 2px; font-size: 14px; min-height: 36px; }
+.chat-log { flex: 1 1 auto; min-height: 70px; max-height: 220px; overflow-y: auto; background: #fff; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 10px; }
+.chat-log[hidden], .chat-phrases[hidden], .chat-form[hidden] { display: none; }
+.chat-line { margin: 3px 0; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+.chat-line b { color: var(--ink); border-left: 5px solid var(--c); padding-left: 5px; margin-right: 2px; }
+.chat-line.me b { opacity: .7; }
+.chat-sys { margin: 3px 0; font-size: 13px; color: var(--ink-soft); font-weight: 700; }
+.chat-phrases { flex: none; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.chat-phrases button { flex: none; border: 2.5px solid var(--ink); border-radius: 999px; background: var(--cream); font-weight: 800; font-size: 14px; padding: 5px 12px 3px; min-height: 36px; white-space: nowrap; }
+.chat-phrases button:active { background: var(--broth); }
+.chat-form { flex: none; display: flex; gap: 6px; }
+.chat-form input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 16px; font-weight: 700; border: 2.5px solid var(--ink); border-radius: 12px; padding: 6px 10px; }
+@media (max-height: 500px) {
+  body.touch #talkBar { bottom: calc(env(safe-area-inset-bottom, 0px) + 34px); right: calc(env(safe-area-inset-right, 0px) + 236px); }
+  body.touch #chat { left: auto; width: min(440px, 62vw); max-height: calc(100% - var(--kb, 0px) - 20px); gap: 6px; padding: 10px; }
+  .chat-head h2 { font-size: 20px; }
+  .chat-people small { display: none; }
+  .chat-log { min-height: 44px; max-height: 110px; }
+}
+.care-row select { font: inherit; }

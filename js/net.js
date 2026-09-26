@@ -63,6 +63,7 @@ const Net = (() => {
         if (m.p.id === me) { emit('me', m.p); break; }
         if (!others.has(m.p.id)) { others.set(m.p.id, { ...m.p, x: null, y: null }); emit('arrived', m.p); }
         else Object.assign(others.get(m.p.id), m.p);
+        emit('player', m.p);
         break;
       case 'left':
         others.delete(m.id); emit('left', m);
@@ -76,7 +77,7 @@ const Net = (() => {
         });
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
-      default: emit(m.t, m); // crunch, found, emote, respawn, error
+      default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
     }
   }
 
@@ -106,6 +107,10 @@ const Net = (() => {
     emote(e) { if (code) send({ t: 'emote', e }); },
     color(c) { if (code) send({ t: 'color', color: c }); },
     away(on) { if (code) send({ t: 'away', on: !!on }); },
+    chat(text) { if (code) send({ t: 'chat', text: String(text).slice(0, 80) }); },
+    phrase(q) { if (code) send({ t: 'chat', q }); },
+    voice(on, mute) { if (code) send({ t: 'voice', on: !!on, mute: !!mute }); },
+    rtc(to, data) { if (code) send({ t: 'rtc', to, data }); },
     get active() { return !!code; },
     get code() { return code; },
     get mode() { return mode; },

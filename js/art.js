@@ -174,12 +174,32 @@ function drawPlayer(ctx, p, t) {
 }
 
 // Name tag and emote bubble over a player
-function drawTag(ctx, x, y, name, color, emote) {
+function drawTag(ctx, x, y, name, color, emote, say, speak = 0) {
   ctx.font = '800 14px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const w = ctx.measureText(name).width + 18;
+  if (speak > 0.02) {  // a glowing ring while this player is talking in voice chat
+    const g = Math.min(1, speak * 8);
+    rr(ctx, x - w / 2 - 4 - g * 3, y - 15 - g * 3, w + 8 + g * 6, 30 + g * 6, 15 + g * 3);
+    ctx.fillStyle = `rgba(140,191,90,${0.35 + g * 0.5})`; ctx.fill();
+  }
   rr(ctx, x - w / 2, y - 11, w, 22, 11); fillStroke(ctx, '#fff8e8', 2.5);
   ctx.fillStyle = color; circle(ctx, x - w / 2 + 9, y, 4); ctx.fill();
   ctx.fillStyle = INK; ctx.fillText(name, x + 4, y + 1);
+  if (say) {
+    // speech bubble with up to 3 wrapped lines
+    ctx.font = '700 15px "Baloo 2", sans-serif';
+    const words = String(say).split(' '), lines = [];
+    let line = '';
+    for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (ctx.measureText(tryL).width > 190 && line) { lines.push(line); line = wd; } else line = tryL; }
+    if (line) lines.push(line);
+    if (lines.length > 3) { lines.length = 3; lines[2] += '…'; }
+    const bw = Math.min(214, Math.max(...lines.map(l => ctx.measureText(l).width)) + 24), bh = lines.length * 18 + 14, by = y - 22 - bh;
+    rr(ctx, x - bw / 2, by, bw, bh, 12); fillStroke(ctx, '#ffffff', 2.5);
+    ctx.beginPath(); ctx.moveTo(x - 7, by + bh - 1.5); ctx.lineTo(x, by + bh + 8); ctx.lineTo(x + 7, by + bh - 1.5); ctx.closePath(); fillStroke(ctx, '#ffffff', 0);
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 7, by + bh); ctx.lineTo(x, by + bh + 8); ctx.lineTo(x + 7, by + bh); ctx.stroke();
+    ctx.fillStyle = INK; lines.forEach((l, i) => ctx.fillText(l, x, by + 16 + i * 18));
+    return;
+  }
   if (emote) {
     const by = y - 40;
     rr(ctx, x - 24, by - 20, 48, 40, 14); fillStroke(ctx, '#fff8e8', 2.5);

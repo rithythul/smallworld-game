@@ -46,6 +46,13 @@ function topList(by) {
 }
 function handleApi(req, res, urlPath, query) {
   const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  if (urlPath === '/api/ice' && req.method === 'GET') {
+    // Network helpers for voice chat. STUN works for most homes; set TURN_URL, TURN_USER and TURN_PASS
+    // to add a relay server for strict school or phone networks.
+    const ice = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+    if (process.env.TURN_URL) ice.push({ urls: process.env.TURN_URL.split(','), username: process.env.TURN_USER || '', credential: process.env.TURN_PASS || '' });
+    return json(200, { iceServers: ice });
+  }
   if (urlPath === '/api/leaderboard' && req.method === 'GET') {
     const by = new URLSearchParams(query).get('by');
     return json(200, { list: topList(by), total: Object.keys(board).length });
@@ -145,11 +152,28 @@ function newCode() {
 const BLOCK = ['fuck', 'shit', 'bitch', 'cunt', 'dick', 'cock', 'pussy', 'slut', 'whore', 'nigg', 'fag', 'rape', 'nazi', 'porn', 'piss', 'bastard'];
 const clean = (s, n) => String(s || '').replace(/[<>&"'`]/g, '').trim().slice(0, n);
 const safeName = (s) => { const c = clean(s, 14), flat = c.toLowerCase().replace(/[^a-z]/g, ''); return BLOCK.some(w => flat.includes(w)) ? 'Squareface' : c; };
+// Room chat: bad words become stars; links, emails and long numbers (phone numbers, addresses) are hidden
+// so kids don't share personal details. Nothing is stored: messages only go to the players in the room.
+const CHAT_MAX = 80, PHRASE_COUNT = 12;
+function cleanChat(s) {
+  let t = String(s || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
+  t = t.replace(/\S+@\S+/g, '***').replace(/(https?:\/\/|www\.)\S*/gi, '***').replace(/\b\S+\.(com|net|org|io|gg|me|co|tv|app|xyz|ly)\b\S*/gi, '***');
+  t = t.replace(/(\d[\s.-]*){5,}/g, '*** ');
+  t = t.split(' ').map(w => { const flat = w.toLowerCase().replace(/[^a-z]/g, ''); return flat && BLOCK.some(b => flat.includes(b)) ? '*'.repeat(Math.min(w.length, 6)) : w; }).join(' ');
+  return t.trim();
+}
+// A small token bucket per player: `n` messages per `sec` seconds.
+function allow(p, key, n, sec) {
+  const t = Date.now(), b = p[key] || (p[key] = { tokens: n, at: t });
+  b.tokens = Math.min(n, b.tokens + (t - b.at) / 1000 * (n / sec)); b.at = t;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1; return true;
+}
 const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo);
 const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
 
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host };
+  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host, voice: p.voice || 0 };
 }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(room, msg, except) {
@@ -209,7 +233,7 @@ function leave(ws) {
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16384 });
 wss.on('connection', (ws) => {
   ws.alive = true;
   ws.on('pong', () => { ws.alive = true; });
@@ -299,6 +323,31 @@ wss.on('connection', (ws) => {
       case 'emote':
         broadcast(room, { t: 'emote', id: p.id, e: clean(m.e, 4) });
         break;
+      case 'chat': {
+        if (!allow(p, 'chatBucket', 5, 10)) return send(ws, { t: 'chat-slow' });
+        const q = Number.isInteger(m.q) && m.q >= 0 && m.q < PHRASE_COUNT ? m.q : null;
+        const text = q === null ? cleanChat(m.text) : '';
+        if (q === null && !text) return;
+        broadcast(room, { t: 'chat', id: p.id, name: p.name, color: p.color, q, text });
+        break;
+      }
+      case 'voice': {
+        // 0 = not in voice, 1 = talking, 2 = in voice with the mic muted
+        const v = m.on ? (m.mute ? 2 : 1) : 0;
+        if (v === (p.voice || 0)) return;
+        p.voice = v;
+        broadcast(room, { t: 'player', p: publicPlayer(p) });
+        break;
+      }
+      case 'rtc': {
+        // WebRTC signalling for voice: offers, answers and network candidates go only to the one player they are for,
+        // and only while both players have voice switched on.
+        const to = room.players.get(m.to);
+        if (!to || to === p || !p.voice || !to.voice || !m.data || typeof m.data !== 'object') return;
+        if (!allow(p, 'rtcBucket', 80, 10)) return;
+        send(to.ws, { t: 'rtc', from: p.id, data: m.data });
+        break;
+      }
       case 'leave':
         leave(ws);
         break;

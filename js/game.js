@@ -1777,6 +1777,8 @@ const Game = (() => {
       }
     }
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
+    for (const [id, e] of says) if (e.until < now) says.delete(id);
+    checkWelcome();
     if (roundEnd && Net.active) updateRoomPill();
     boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
     mapT -= dt;
@@ -1900,7 +1902,8 @@ const Game = (() => {
     draw.push({ y: P.y + (P.swimming ? 1000 : 0) + (P.z > 40 ? 3000 : 0), fn: () => {
       drawPlayer(ctx, P, t);
       const me = emotes.get('me');
-      if (Net.active || me) drawTag(ctx, P.x, P.y - (P.swimming ? 60 : 108) - (P.z || 0), Net.active ? (profile.name || 'You') : 'You', profile.color || '#2fa4b5', me && me.e);
+      const mySay = says.get('me');
+      if (Net.active || me) drawTag(ctx, P.x, P.y - (P.swimming ? 60 : 108) - (P.z || 0), Net.active ? (profile.name || 'You') : 'You', profile.color || '#2fa4b5', me && me.e, mySay && mySay.text, Talk.level('me'));
     } });
     for (const [id, o] of Net.others) {
       if (o.x === null || !inView(o.x, o.y)) continue;
@@ -1908,7 +1911,8 @@ const Game = (() => {
         const ghost = { hat: o.h, goldAntenna: o.ga, suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
         drawPlayer(ctx, ghost, t);
         const e = emotes.get(id);
-        drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.a ? o.name + ' 💤' : o.name, o.color, e ? e.e : o.a ? '🍽️' : null);
+        const sy = Talk.isHidden(id) ? null : says.get(id);
+        drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.a ? o.name + ' 💤' : o.name, o.color, e ? e.e : o.a ? '🍽️' : null, sy && sy.text, Talk.level(id));
       } });
     }
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
@@ -1922,6 +1926,8 @@ const Game = (() => {
       const tg = goalTarget();
       if (tg && dist(P.x, P.y, tg.x, tg.y) > 90) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(tg.y - P.y, tg.x - P.x), t, tg.label);
     }
+    const nw = welcome && Net.others.get(welcome.id);
+    if (nw && nw.x !== null && dist(P.x, P.y, nw.x, nw.y) > 130) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(nw.y - P.y, nw.x - P.x), t + 2, 'Help ' + nw.name, '#ff8fb1');
     if (G.pin) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(G.pin.y - P.y, G.pin.x - P.x), t + 1, 'Pin', '#8fd3ef');
     // the sky layer: flight rings, the cloud, and stamina meters
     if (G.lesson && G.lesson.id === 'fly2') RINGS.forEach(([rx, ry], i) => inView(rx, ry) && drawRing(ctx, rx, ry, RING_Z, t, G.lesson.rings[i]));
@@ -2081,6 +2087,7 @@ const Game = (() => {
     if (!running) return;
     if (k === 'n' && !UI.talking) { $('sheet').hidden ? UI.dex(G) : UI.closeSheet(); return; }
     if (k === 'm' && !UI.talking) { $('sheet').hidden ? openMap() : UI.closeSheet(); return; }
+    if (k === 'c' && !UI.talking && Net.active) { e.preventDefault(); Talk.toggle(); return; }
     if (k === 'j' && !UI.talking) { $('sheet').hidden ? UI.journal(G) : UI.closeSheet(); return; }
     if (k.startsWith('arrow') || k === 'f') e.preventDefault();
     if ((k === 'f' || k === 'shift') && !e.repeat) jumpQueued = true;
@@ -2179,7 +2186,8 @@ const Game = (() => {
     UI.toast(G.flags.wearSuit ? '🧑‍🚀 Space suit on!' : 'Space suit off.', { life: 2 });
   });
   $('awayBtn').addEventListener('click', () => { $('menuPop').hidden = true; Care.goAway(); });
-  Care.onAway((on) => { Net.away(on); if (on) save(); });
+  $('grownBtn').addEventListener('click', () => { $('menuPop').hidden = true; Care.grownUp(); });
+  Care.onAway((on) => { Net.away(on); if (on) { save(); Talk.pauseVoice(); } });
   Care.onWarn((min) => UI.toast(`<span class="t-small">😴 Break soon</span>${min >= 1 ? 'In 2 minutes' : 'In 30 seconds'} Squareface takes a little rest. Finish what you are doing!`, { life: 4, prio: 2 }));
   Net.on('helped', (m) => { if (m.n > 0) { addCoins(m.n); Sound.secret(); UI.toast(`<span class="t-small">🤝 Welcome back!</span>Your friends crunched ${m.n} brick${m.n > 1 ? 's' : ''} while you were away: +${m.n} coins.`, { big: true, life: 4.4 }); } });
   $('accountBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; openAccount(); });
@@ -2218,6 +2226,23 @@ const Game = (() => {
   let roomPot = null, roundEnd = 0;
   const saveProfile = () => { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {} };
   const emotes = new Map(); // id (or 'me') -> { e, until }
+  const says = new Map();   // id (or 'me') -> { text, until }: chat bubbles over heads
+  const escHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // A new friend joined: point everyone already here to them, and thank whoever goes to say hi.
+  let welcome = null;
+  const welcomed = new Set();
+  function checkWelcome() {
+    if (!welcome) return;
+    const o = Net.others.get(welcome.id);
+    if (!o || now > welcome.until) { welcome = null; return; }
+    if (o.x === null || dist(P.x, P.y, o.x, o.y) > 130) return;
+    const first = !welcomed.has(o.name); welcomed.add(o.name);
+    welcome = null;
+    sendEmote('👋');
+    if (first) addCoins(5);
+    Sound.secret();
+    UI.toast(`<span class="t-small">🤝 Good helper!</span>You found ${escHtml(o.name)}.${first ? ' +5 coins.' : ''} Show them around and help them find their first noodle!`, { big: true, life: 4.2 });
+  }
   let pendingStart = null;
 
   function brickPos(id) {
@@ -2235,11 +2260,16 @@ const Game = (() => {
     roomPot = m.pot; roundEnd = m.round ? now + m.round.secs : 0;
     $('roomPill').hidden = false; $('roomPill').classList.remove('off'); $('emoteBtn').hidden = false; $('emoteMenuBtn').hidden = false;
     updateRoomPill();
-    UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>${m.created ? `You made room <b>${m.code}</b>! Tap the room button to share it.` : `You joined room <b>${m.code}</b> with ${m.players.length - 1} friend${m.players.length > 2 ? 's' : ''}.`}`, { life: 5 });
+    UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>${m.created ? `You made room <b>${m.code}</b>! Tap the room button to share it.` : `You joined room <b>${m.code}</b> with ${m.players.length - 1} friend${m.players.length > 2 ? 's' : ''}. They are coming to help you. Say hi with 💬!`}`, { life: 5 });
     if (m.created) setTimeout(openFriends, 700);
     save();
   });
-  Net.on('arrived', (p) => { Sound.blip(); UI.toast(`<span class="t-small">👋 New player</span>${p.name} joined the room`, { life: 2.6 }); updateRoomPill(); });
+  Net.on('arrived', (p) => {
+    Sound.secret(); buzz(30);
+    welcome = { id: p.id, until: now + 120 };
+    UI.toast(`<span class="t-small">👋 A new friend is here!</span><b>${escHtml(p.name)}</b> just joined. Follow the pink arrow to help them!`, { big: true, life: 5, prio: 2 });
+    updateRoomPill();
+  });
   Net.on('left', (m) => { UI.toast(`${m.name} left the room`, { life: 2.2 }); updateRoomPill(); });
   Net.on('scores', () => { updateRoomPill(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') openFriends(); });
   Net.on('crunch', (m) => {
@@ -2352,6 +2382,7 @@ const Game = (() => {
       rename: (n) => { profile.name = n.slice(0, 14); saveProfile(); boardT = 0; } });
   }
   function leaveRoom() {
+    Talk.leave(); welcome = null;
     Net.leave();
     roomCrunched.clear();
     $('roomPill').hidden = true; $('emoteBtn').hidden = true; $('emoteMenuBtn').hidden = true; $('emoteBar').hidden = true;
@@ -2424,6 +2455,11 @@ const Game = (() => {
       mpMessage(`You were invited to room ${fromLink}. Type your name and tap Enter room!`);
     }
     $('roomPill').addEventListener('click', () => { Sound.blip(); openFriends(); });
+    Talk.init({
+      say: (id, text) => says.set(id, { text, until: now + Math.min(8, 3 + text.length / 12) }),
+      toast: (name, text) => UI.toast(`<span class="t-small">💬 ${escHtml(name)}</span>${escHtml(text)}`, { life: 3 }),
+      touch: () => isTouch,
+    });
     $('emoteBtn').addEventListener('click', () => { $('emoteBar').hidden = !$('emoteBar').hidden; });
   $('emoteMenuBtn').addEventListener('click', () => { $('menuPop').hidden = true; $('emoteBar').hidden = false; });
     $('emoteBar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendEmote(b.dataset.e); });
