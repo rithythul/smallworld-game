@@ -1341,3 +1341,28 @@ function drawHat(ctx, x, y, id, t, flying) {
   }
   ctx.restore();
 }
+
+/* ---------------- Professor Pho ---------------- */
+function drawProfessor(ctx, x, y, t, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  const b = Math.sin(t * 2) * 1.2;
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(0, 2, 26, 7, 0, 0, TAU); ctx.fill();
+  // body: a big bowl of pho
+  ctx.beginPath(); ctx.moveTo(-26, -30); ctx.quadraticCurveTo(-26, 2, 0, 2); ctx.quadraticCurveTo(26, 2, 26, -30); ctx.closePath(); fillStroke(ctx, '#fff3d6', 3);
+  ctx.strokeStyle = '#2fa4b5'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-22, -18); for (let i = -22; i <= 22; i += 6) ctx.lineTo(i, -18 + ((i / 6) % 2 ? -3 : 0)); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, -30, 26, 8, 0, 0, TAU); fillStroke(ctx, '#e0a45e', 2.5);
+  // face on the broth
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.2;
+  [-9, 9].forEach(ex => { circle(ctx, ex, -44 + b, 6); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); ctx.fillStyle = INK; circle(ctx, ex + 1, -43 + b, 2.2); ctx.fill(); });
+  ctx.beginPath(); ctx.moveTo(-3, -44 + b); ctx.lineTo(3, -44 + b); ctx.stroke();
+  // head of noodles
+  ctx.beginPath(); ctx.arc(0, -46 + b, 17, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  noodleStroke(ctx, () => { ctx.beginPath(); for (let k = -14; k <= 14; k += 2) ctx.lineTo(k, -58 + b + Math.sin(k * 0.6 + t * 2) * 2); }, '#f7dc7a', 3);
+  // graduation cap
+  ctx.beginPath(); ctx.moveTo(-20, -64 + b); ctx.lineTo(0, -72 + b); ctx.lineTo(20, -64 + b); ctx.lineTo(0, -56 + b); ctx.closePath(); fillStroke(ctx, '#34233f', 2);
+  ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -64 + b); ctx.lineTo(16, -58 + b); ctx.lineTo(16, -48 + b); ctx.stroke();
+  // smile and a little book
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(0, -36 + b, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+  rr(ctx, 16, -26, 16, 12, 2); fillStroke(ctx, '#e4572e', 2); ctx.fillStyle = '#fff8e8'; ctx.fillRect(23, -24, 2, 8);
+  ctx.restore();
+}

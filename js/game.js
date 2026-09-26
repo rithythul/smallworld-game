@@ -27,7 +27,7 @@ const Game = (() => {
   const cam = { x: 0, y: 0 };
   const P = { x: 0, y: 0, z: 0, vz: 0, wing: 0, flapping: false, wings: false, stamina: 0, airT: 0, moving: false, walk: 0, face: 0, mood: 'happy', crunching: 0, wow: 0, antennaPulse: 0, swimming: false, area: null };
   const lastGround = { x: 0, y: 0 };
-  let flyTouch = false, waterHintT = 0;
+  let flyTouch = false, waterHintT = 0, jumpQueued = false; // a quick tap still counts as a hop
   const keys = new Set();
   const stick = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
   let particles = [];
@@ -134,6 +134,7 @@ const Game = (() => {
       if (dist(x, y, DRUM.x, DRUM.y - 8) < 50) return true;
       for (const c of Object.values(COACHES)) if (dist(x, y, c.x, c.y) < 20) return true;
       if (dist(x, y, 420, 1470) < 34) return true;
+      if (dist(x, y, 1068, 890) < 26) return true;
       if (x > PEAKS.left - 40) {
         if (dist(x, y, TROCK.x, TROCK.y) < 38) return true;
         if (dist(x, y, NEST.x, NEST.y - 8) < 42) return true;
@@ -246,6 +247,7 @@ const Game = (() => {
     } else {
       if (G.fortune && G.fortune.crunched && !G.fortune.done) { const f = FORTUNES[G.fortune.idx]; add('LOOK', f.where.x, f.where.y, 64, fortuneFound, 3, 'look'); }
       add('TALK', TALK.x, TALK.y, 80, talkGrandma, 2, 'talk');
+      add('TALK', PROF.x, PROF.y + 24, 70, talkProfessor, 2, 'talk');
       add('LAUNCH', ROCKET_PAD.x, ROCKET_PAD.y + 30, 70, launchRocket, 2, 'swim');
       add('TALK', COACHES.kombu.x, COACHES.kombu.y + 20, 70, () => talkCoach('kombu'), 2, 'talk');
       add('TALK', COACHES.penne.x, COACHES.penne.y + 20, 70, () => talkCoach('penne'), 2, 'talk');
@@ -318,25 +320,28 @@ const Game = (() => {
     const lvl = skillLevel('fly');
     P.wings = lvl >= 1;
     // jump off the ground
-    if (flyHeld() && P.z === 0 && !P.swimming && !drinkHeld && !P.jumpLock) {
+    if ((flyHeld() || jumpQueued) && P.z === 0 && !P.swimming && !drinkHeld && !P.jumpLock) {
+      jumpQueued = false;
       P.vz = PHYS.hop; P.jumpLock = true; P.airT = 0;
       G.stats.hops++;
+      learn('hop'); if (G.stats.hops >= 3) learn('hop3');
       dailyAdd('hop');
       Sound.pop();
       if (G.lesson && G.lesson.id === 'fly1') G.lesson.n = (G.lesson.n || 0) + 1;
     }
     if (!flyHeld()) P.jumpLock = false;
+    if (P.z > 0 || P.swimming) jumpQueued = false;
     if (P.z > 0 || P.vz > 0) {
       P.airT += dt;
       dailyAdd('air', dt);
       P.flapping = false;
       if (flyHeld() && lvl >= 1 && P.wing > 0 && P.z < flyMax(lvl) && P.airT > 0.12) {
         P.vz = Math.min(P.vz + 2600 * dt, 240);
-        P.wing -= dt; P.flapping = true;
+        P.wing -= dt; P.flapping = true; learn('fly');
         if (Math.random() < dt * 6) Sound.step();
       }
       P.vz -= PHYS.gravity * dt;
-      if (lvl >= 1 && !P.flapping && P.vz < -170) P.vz = -170; // wings make you glide down gently
+      if (lvl >= 1 && !P.flapping && P.vz < -170) { P.vz = -170; if (P.z > 30) learn('glide'); } // wings make you glide down gently
       P.z += P.vz * dt;
       if (P.z >= flyMax(lvl) && lvl >= 1) { P.z = flyMax(lvl); P.vz = Math.min(P.vz, 0); }
       if (P.airT > (G.stats.bestAir || 0)) G.stats.bestAir = P.airT;
@@ -351,6 +356,7 @@ const Game = (() => {
       P.stamina -= dt;
       // the stream's current pulls you downstream
       if (!inPond(P.x, P.y) && !inSpring(P.x, P.y)) {
+        learn('current');
         const dir = streamDir(P.x, P.y), push = PHYS.current[G.skills.swim] * (dishOn('sea') ? 0.5 : 1) * dt;
         const nx = P.x + dir[0] * push, ny = P.y + dir[1] * push;
         if (!blocked(nx, ny, 0, false)) { P.x = nx; P.y = ny; }
@@ -386,6 +392,7 @@ const Game = (() => {
     return dir;
   }
   function startOpenSwim() {
+    learn('swim');
     if (P.area === 'open') return;
     P.swimming = true; P.area = 'open'; P.z = 0; P.vz = 0;
     P.stamina = PHYS.swimStamina[G.skills.swim] * (dishOn('sea') ? 2 : 1);
@@ -518,6 +525,7 @@ const Game = (() => {
     if (!pool.length) return false;
     const id = pool[Math.floor(Math.random() * pool.length)], n = NOODLES.find(x => x.id === id);
     G.shiny[id] = true;
+    learn('shiny');
     G.bonusStars = (G.bonusStars || 0) + 1;
     Sound.secret(); P.wow = 1.6;
     burst(P.x, P.y - 70, 28, ['#ffd23f', '#fff1a8', '#ffffff'], { type: 'spark', speed: 240, grav: 100 });
@@ -531,8 +539,9 @@ const Game = (() => {
   function buyHat(id) {
     const h = HATS[id]; if (!h || G.hats[id]) return 'You already have it.';
     if (G.coins < h.price) return `You need ${h.price - G.coins} more coins.`;
-    G.coins -= h.price; G.hats[id] = true; G.hat = id; Sound.coin(); save();
-    UI.toast(`<span class="t-small">🛍️ New hat</span>${h.name}. Looking good!`, { life: 2.8 });
+    const before = G.coins;
+    G.coins -= h.price; G.hats[id] = true; G.hat = id; Sound.coin(); save(); learn('buy');
+    UI.toast(`<span class="t-small">🧾 ${before} − ${h.price} = ${G.coins} coins left</span>New hat: ${h.name}. Looking good!`, { life: 3.4 });
     return '';
   }
   function wearHat(id) { G.hat = id && G.hats[id] ? id : null; Sound.blip(); save(); }
@@ -542,7 +551,9 @@ const Game = (() => {
     if (id === 'rocket' && G.launchDay !== G.day) return 'Your rocket is already fueled for today!';
     if (id === 'fortune' && G.fortune && !G.fortune.done) return G.fortune.crunched ? 'Solve today\'s riddle first (check your journal).' : 'Today\'s Fortune Cracker is still out there somewhere. Find it first!';
     if (id === 'broth' && G.water >= 99) return 'Your water is already full.';
-    G.coins -= g.price; Sound.coin();
+    const before = G.coins;
+    G.coins -= g.price; Sound.coin(); learn('buy');
+    setTimeout(() => UI.toast(`<span class="t-small">🧾 Receipt</span>${before} − ${g.price} = ${G.coins} coins left`, { life: 2.6 }), 400);
     if (id === 'rocket') { G.launchDay = -1; UI.toast('<span class="t-small">🚀 Rocket fueled</span>Launch it from the pad in Crunch Meadow.', { life: 3 }); }
     if (id === 'fortune') {
       G.fortuneN = (G.fortuneN || 0) + 1;
@@ -599,6 +610,7 @@ const Game = (() => {
   function crunch(b) {
     faceStep('crunch');
     dailyAdd('crunch');
+    learn('crunch');
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
     Sound.crunch(b.kind === 'gold' ? 1.4 : 1); buzz(b.kind === 'boulder' ? 35 : 18);
@@ -613,7 +625,7 @@ const Game = (() => {
     combo.last = t;
     UI.combo(combo.n);
     G.stats.maxCombo = Math.max(G.stats.maxCombo || 0, combo.n);
-    if (combo.n >= 3) dailyAdd('combo');
+    if (combo.n >= 3) { dailyAdd('combo'); learn('combo'); }
     if (combo.n >= 2) Sound.combo(combo.n);
     if (combo.n >= 5 && !has('macaroni')) setTimeout(() => giveNoodle('macaroni'), 350);
 
@@ -667,6 +679,7 @@ const Game = (() => {
     Sound.crunch(0.9);
     burst(rx, ry - 50, 12, ['#c9784a', '#e9a36b'], { speed: 200, up: 200, size: 5 });
     faceStep('crunch');
+    learn('echo');
     const isTrue = i === CANYON.trueRock;
     // every rock echoes once; the true one echoes twice, then booms
     if (isTrue) {
@@ -749,6 +762,7 @@ const Game = (() => {
     return SNAIL_PATH[SNAIL_PATH.length - 1];
   }
   function talkSnail() {
+    learn('snail');
     if (G.pieces.includes(5)) {
       const p = snailTrip();
       if (p >= 1) {
@@ -855,14 +869,16 @@ const Game = (() => {
   function startDrink(where = 'stream') {
     drinkHeld = true; drinkWhere = where;
     G.drinks++;
+    learn('drink');
     dailyAdd('drink');
     Sound.gulp();
     if (where === 'spring') {
       if (!minty()) UI.toast('<span class="t-small">Minty 🌿</span>So fresh! You walk faster for a while.', { life: 2.8 });
+      learn('mint');
       G.mintDay = G.day; G.mintUntil = G.time + 120;
       if (!has('mint')) setTimeout(() => giveNoodle('mint'), 500);
     }
-    if (where === 'mirror') mirrorTimer = 0;
+    if (where === 'mirror') { mirrorTimer = 0; learn('mirror'); }
     if (!has('soba') && G.drinks >= 3) setTimeout(() => giveNoodle('soba'), 500);
   }
 
@@ -878,6 +894,7 @@ const Game = (() => {
     burst(tx, ty - 60, 10, ['#8cbf5a', '#6fa54a', FOOD_COLORS[food]], { speed: 180, up: 120, size: 5 });
     floatText(tx, ty - 110, '+1 ' + FOODS[food].name, '#fff8e8');
     dailyAdd('food');
+    G.stats.shakes = (G.stats.shakes || 0) + 1; learn('shake'); if (G.stats.shakes >= 5) learn('shake5');
     maybeShiny();
     if (first) UI.toast(`<span class="t-small">New food · ${TREE_NAMES[kind]}</span>${FOODS[food].name}. Grandma can cook with it!`, { food, life: 3.2 });
     save();
@@ -897,6 +914,7 @@ const Game = (() => {
     if (!r || !canCook(r)) return false;
     Object.entries(r.needs).forEach(([f, n]) => { G.pantry[f] -= n; });
     const first = !G.cooked[id];
+    learn('cook'); if (Object.keys(G.cooked).length >= 1 && first) learn('cook2');
     G.cooked[id] = (G.cooked[id] || 0) + 1;
     G.dishes = G.dishes || {};
     if (id === 'classic' || id === 'feast') { G.water = 100; addCoins(id === 'feast' ? 40 : 15); }
@@ -971,6 +989,7 @@ const Game = (() => {
   }
 
   function enterLake() {
+    learn('ice');
     P.swimming = true; P.area = 'lake'; swim = null;
     P.x = LAKE.x + 50; P.y = LAKE.y + LAKE.h / 2;
     Sound.splash();
@@ -985,6 +1004,7 @@ const Game = (() => {
   }
 
   function talkBird() {
+    learn('bird');
     G.birdTalks++;
     if (!has('feather')) {
       return UI.say('bird', [
@@ -1016,6 +1036,7 @@ const Game = (() => {
       UI.say('me', (G.time < POOL_OPEN ? 'The gate is locked. The sign says the Morning Pool opens at 6:00 AM.' : 'The Morning Pool is closed. It opens every day from 6 to 8 AM.') + ' (Coach Kombu can let you in for a swimming lesson.)');
       return;
     }
+    learn('swim'); if (G.time < 7 * 60) learn('dawn');
     P.swimming = true; P.area = 'pool'; P.x = GATE.x; P.y = POOL.y + 40;
     swim = { t: 25, score: 0, bubbles: [], spawn: 0, dawn: G.time < POOL_OPEN + 60 && !has('dawn') ? { x: POOL.x + 200, y: POOL.y + 120 } : null, done: false };
     Sound.splash();
@@ -1266,9 +1287,11 @@ const Game = (() => {
     return [`Today's challenges: ${d || 'crunch, drink and explore'}.`, 'Shake the trees and cook with Grandma for special powers.', 'Race your friends, or fill the Team Pot together. The universe never ends!'];
   }
   function startDaydream(why) {
+    learn('space');
     drinkHeld = false; stick.active = false;
     Space.start({ seed: G.day * 31 + Math.floor(G.time), lines: dreamLines(), color: profile.color, onEnd: (r) => {
       if (r.coins) addCoins(r.coins);
+      G.flags.dreams = (G.flags.dreams || 0) + 1; learn('space2'); if (G.flags.dreams >= 2) learn('comet');
       if (r.stars === 3) { guideOn = true; G.bonusStars = (G.bonusStars || 0) + 1; }
       const firstSuit = !G.flags.suit;
       G.flags.suit = true;
@@ -1281,6 +1304,7 @@ const Game = (() => {
     Sound.secret();
   }
   function launchRocket() {
+    learn('rocket');
     if (G.launchDay === G.day) return UI.say('me', 'The rocket needs a whole day to refuel with broth. Come back tomorrow!');
     G.launchDay = G.day;
     shake = 12; Sound.thunder();
@@ -1322,6 +1346,7 @@ const Game = (() => {
       { x: TALK.x, y: TALK.y - 60, icon: '🍜', label: 'Grandma' },
       { x: POOL.x + POOL.w / 2, y: POOL.y + POOL.h / 2, icon: '🏊', label: 'Morning Pool' },
       { x: 900, y: 850, icon: '🔮', label: 'Oracle' },
+      { x: PROF.x, y: PROF.y - 20, icon: '🎓', label: 'Professor' },
       { x: ROCKET_PAD.x, y: ROCKET_PAD.y - 20, icon: '🚀', label: 'Rocket' },
       { x: COACHES.penne.x, y: COACHES.penne.y - 20, icon: '🪽', label: 'Flight school' },
       { x: MIRROR.x, y: MIRROR.y, icon: '🪞', label: 'Mirror Pond' },
@@ -1380,6 +1405,7 @@ const Game = (() => {
     if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText('You', P.x * k, P.y * k + pr + 12); }
   }
   function openMap() {
+    learn('map');
     markSeen();
     UI.map({
       draw: (c, W, H) => drawMap(c, W, H, false),
@@ -1394,6 +1420,67 @@ const Game = (() => {
       },
       clearPin: () => { G.pin = null; save(); },
     });
+  }
+
+  /* ---------- learning: science snacks and the Brain Noodle quiz ---------- */
+  const PROF = { x: 1068, y: 900 };
+  const factQueue = [];
+  let lastFactT = -99;
+  function learn(trigger) {
+    if (!G) return;
+    G.facts = G.facts || {};
+    (FACT_BY_TRIGGER[trigger] || []).forEach(f => { if (!G.facts[f.id] && !factQueue.includes(f)) factQueue.push(f); });
+  }
+  function factTick() {
+    if (!factQueue.length || UI.busy || now - lastFactT < 14 || roundEnd > now || G.lesson) return;
+    const f = factQueue.shift();
+    if (G.facts[f.id]) return;
+    G.facts[f.id] = true; lastFactT = now;
+    G.coins += 2;
+    Sound.blip();
+    // Kids need time to read, so the professor tells it in a speech bubble (the game waits).
+    UI.say('prof', [`${SUBJECTS[f.subject].icon} <em>Science snack: ${f.title}!</em> ${f.text}`], { onDone: () => UI.toast(`<span class="t-small">🔬 +2 coins</span>Saved in your journal, Science tab.`, { life: 2.2 }) });
+    G.journalNew = true;
+    save();
+  }
+  function makeQuiz() {
+    const rnd = mulberry(G.day * 104729 + 7);
+    const seen = new Set(G.quizSeen || []);
+    let pool = QUIZ_BANK.map((q, i) => ({ ...q, i })).filter(q => !seen.has(q.i));
+    if (pool.length < 2) { G.quizSeen = []; pool = QUIZ_BANK.map((q, i) => ({ ...q, i })); }
+    const picks = [];
+    while (picks.length < 2) {
+      const q = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+      if (!picks.some(p => p.s === q.s) || pool.length < 3) picks.push(q);
+    }
+    picks.splice(Math.floor(rnd() * 3), 0, makeMathQuestion(rnd, noodleLevel()));
+    return picks;
+  }
+  function talkProfessor() {
+    const n = Object.keys(G.facts || {}).length;
+    if (G.quiz && G.quiz.day === G.day) {
+      return UI.say('prof', [`Splendid work today! You scored ${G.quiz.score} out of 3.`, `You have collected ${n} of ${FACTS.length} Science Snacks. Keep exploring: everything you do in the Noodle Universe hides a real science fact!`, 'Come back tomorrow for 3 new Brain Noodle questions.']);
+    }
+    UI.say('prof', [
+      n ? 'Ah, my favorite young scientist! Ready for today\'s Brain Noodle quiz?' : 'Hello! I am Professor Pho. I study everything: noodles, stars, rivers, numbers...',
+      '3 questions. Every right answer gives you a star and 5 coins. Wrong answers are fine: that is how we learn!',
+    ], { choices: [
+      { label: '🧠 Start the quiz', fn: () => {
+        const qs = makeQuiz();
+        UI.quiz(qs, (q, right) => {
+          if (q.i !== undefined) G.quizSeen = [...(G.quizSeen || []), q.i];
+          if (right) { G.bonusStars = (G.bonusStars || 0) + 1; addCoins(5); Sound.coin(); } else Sound.wrong();
+        }, (score) => {
+          G.quiz = { day: G.day, score };
+          G.quizStreak = G.lastQuizDay === G.day - 1 ? (G.quizStreak || 0) + 1 : 1; G.lastQuizDay = G.day;
+          dailyAdd('quiz');
+          if (score === 3) { G.bonusStars = (G.bonusStars || 0) + 1; Sound.secret(); P.wow = 1.6; }
+          UI.toast(`<span class="t-small">🧠 Brain Noodle · ${score}/3${score === 3 ? ' · perfect! ⭐ +1 bonus' : ''}</span>Quiz streak: ${G.quizStreak} day${G.quizStreak > 1 ? 's' : ''}. New questions tomorrow!`, { big: true, life: 4 });
+          save();
+        });
+      } },
+      { label: 'Later', alt: true },
+    ] });
   }
 
   function update(dt) {
@@ -1438,10 +1525,11 @@ const Game = (() => {
     if (minty()) speed *= 1.2;
     if (dishOn('spicy')) speed *= 1.25;
     if (G.water < 25) faceStep('thirsty');
-    if (!busy) { lessonTick(dt); challengeTick(dt); masteryTick(dt); if (P.swimming) dailyAdd('swim', dt); }
+    if (!busy) { lessonTick(dt); challengeTick(dt); masteryTick(dt); factTick(); if (P.swimming) dailyAdd('swim', dt); }
     if (P.swimming && P.area === 'lake' && !has('ice') && dist(P.x, P.y, LAKE.x + LAKE.w * 0.62 + Math.sin(now) * 40, LAKE.y + LAKE.h * 0.55) < 34) giveNoodle('ice');
     stormFlash = Math.max(0, stormFlash - dt * 3);
     if (stormy() && inPeaks(P.x) && !busy) {
+      learn('storm');
       if (stormWarnDay !== G.day) { stormWarnDay = G.day; UI.toast('<span class="t-small">Storm ⛈</span>Dark clouds roll over the peaks!', { life: 3 }); }
       if (Math.random() < dt * 0.12) { stormFlash = 1; setTimeout(() => Sound.thunder(), 300); }
     }
@@ -1620,6 +1708,8 @@ const Game = (() => {
       fb.hidden = P.swimming || UI.busy;
       $('flyLabel').textContent = G.skills.fly >= 1 ? 'FLY' : 'HOP';
     }
+    if (isNight()) learn('night');
+    if (P.x > PEAKS.left && P.y < PEAKS.snowLine) learn('snow');
     P.suit = !!(G.flags.suit && G.flags.wearSuit);
     P.hat = G.hat; P.goldAntenna = !!G.flags.goldAntenna;
     if ((G.flags.trail || G.flags.rainbow) && P.moving && Math.random() < dt * 14) {
@@ -1762,6 +1852,7 @@ const Game = (() => {
       drawRidge(ctx, CANYON.wallY + 30, WORLD.h);
       if (!fogGone()) drawFog(ctx, t, 0, CANYON.wallY);
     } });
+    if (inView(PROF.x, PROF.y)) draw.push({ y: PROF.y, fn: () => drawProfessor(ctx, PROF.x, PROF.y, t) });
     Object.entries(COACHES).forEach(([key, c]) => inView(c.x, c.y) && draw.push({ y: c.y, fn: () => key === 'kombu' ? drawKombu(ctx, c.x, c.y, t) : drawPenne(ctx, c.x, c.y, t) }));
     if (inView(ROCKET_PAD.x, ROCKET_PAD.y)) draw.push({ y: ROCKET_PAD.y, fn: () => {
       ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(ROCKET_PAD.x, ROCKET_PAD.y + 4, 50, 14, 0, 0, Math.PI * 2); ctx.fill();
@@ -1959,6 +2050,7 @@ const Game = (() => {
     if (k === 'm' && !UI.talking) { $('sheet').hidden ? openMap() : UI.closeSheet(); return; }
     if (k === 'j' && !UI.talking) { $('sheet').hidden ? UI.journal(G) : UI.closeSheet(); return; }
     if (k.startsWith('arrow') || k === 'f') e.preventDefault();
+    if ((k === 'f' || k === 'shift') && !e.repeat) jumpQueued = true;
     keys.add(k);
   });
   window.addEventListener('keyup', (e) => {
@@ -2044,7 +2136,7 @@ const Game = (() => {
   document.addEventListener('webkitfullscreenchange', fsSync);
 
   const flyBtn = $('flyBtn');
-  flyBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { flyBtn.setPointerCapture(e.pointerId); } catch (err) {} flyTouch = true; flyBtn.classList.add('pressed'); });
+  flyBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); jumpQueued = true; try { flyBtn.setPointerCapture(e.pointerId); } catch (err) {} flyTouch = true; flyBtn.classList.add('pressed'); });
   const flyUp = () => { flyTouch = false; flyBtn.classList.remove('pressed'); };
   flyBtn.addEventListener('pointerup', flyUp); flyBtn.addEventListener('pointercancel', flyUp); flyBtn.addEventListener('lostpointercapture', flyUp);
   $('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); const pop = $('menuPop'); pop.hidden = !pop.hidden; $('menuBtn').setAttribute('aria-expanded', String(!pop.hidden)); });
@@ -2344,5 +2436,5 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { levelReward: () => levelReward(noodleLevel() + 1), level: () => noodleLevel(), tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; } };
+  return { facts: () => G.facts || {}, levelReward: () => levelReward(noodleLevel() + 1), level: () => noodleLevel(), tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; } };
 })();

@@ -84,12 +84,13 @@ const UI = (() => {
     } else if (kind === 'snail') drawSnail(c, 52, 96, t, 1, 1.05);
     else if (kind === 'bird') drawSobaBird(c, 56, 66, t, 2.4, false);
     else if (kind === 'kombu') drawKombu(c, 60, 150, t, 1.7);
+    else if (kind === 'prof') drawProfessor(c, 60, 118, t, 1.35);
     else if (kind === 'penne') drawPenne(c, 50, 150, t, 1.6);
     else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
     c.restore();
   }
 
-  const names = { kombu: 'Coach Kombu', penne: 'Captain Penne', bird: 'Soba Bird', snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
+  const names = { prof: 'Professor Pho', kombu: 'Coach Kombu', penne: 'Captain Penne', bird: 'Soba Bird', snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
 
   function say(who, lines, { choices = null, onDone = null } = {}) {
     dlg = { who, lines: Array.isArray(lines) ? lines : [lines], i: 0, choices, onDone };
@@ -266,7 +267,7 @@ const UI = (() => {
     G.journalNew = false;
     openSheet('Clue Journal', (body) => {
       const tabs = document.createElement('div'); tabs.className = 'tabs';
-      const list = [['story', 'Story'], ['clues', 'Clues'], ['map', 'Map pieces']];
+      const list = [['story', 'Story'], ['clues', 'Clues'], ['science', 'Science'], ['map', 'Map pieces']];
       if (G.flags.decoder) list.push(['alpha', 'Noodle alphabet']);
       list.forEach(([id, label]) => {
         const b = document.createElement('button'); b.type = 'button';
@@ -299,6 +300,21 @@ const UI = (() => {
           if (!done) open = false;
         });
         body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">The story keeps growing, and the world never ends: daily challenges, races and cooking are always waiting.</p>');
+      }
+
+      if (tab === 'science') {
+        const known = Game.facts();
+        const n = FACTS.filter(f => known[f.id]).length;
+        body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">🔬 You collected <b>${n} of ${FACTS.length}</b> Science Snacks. Each one unlocks when you do something in the game. Professor Pho in Ramen Village has a quiz every day.</p><div class="progress"><div style="width:${n / FACTS.length * 100}%"></div></div>`);
+        Object.entries(SUBJECTS).forEach(([key, sub]) => {
+          const facts = FACTS.filter(f => f.subject === key);
+          const el = document.createElement('div'); el.className = 'clue';
+          el.innerHTML = `<span class="where">${facts.filter(f => known[f.id]).length} / ${facts.length}</span><h3>${sub.icon} ${sub.name}</h3>`;
+          facts.forEach(f => el.insertAdjacentHTML('beforeend', known[f.id]
+            ? `<div class="lesson done"><span class="mark">✓</span><span><b>${f.title}</b><br><small>${f.text}</small></span></div>`
+            : `<div class="lesson locked"><span class="mark">?</span><span><b>???</b><br><small>Try this: ${f.tryit}</small></span></div>`));
+          body.appendChild(el);
+        });
       }
 
       if (tab === 'clues') {
@@ -604,7 +620,7 @@ const UI = (() => {
       const wrap = document.createElement('div'); wrap.className = 'map-wrap';
       const c = document.createElement('canvas'); c.className = 'map-canvas'; c.setAttribute('aria-label', 'World map');
       wrap.appendChild(c); body.appendChild(wrap);
-      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🏠 Home · 🍜 Grandma · 🏊 Pool · 🔮 Oracle · 🚀 Rocket · 🪽 Flight school · 🪞 Mirror Pond · 🥁 Drum · 🌿 Spring · 🗿 Statue · 🧊 Lake · 🐌 Snail · 🔒 Locked</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🏠 Home · 🍜 Grandma · 🎓 Professor · 🏊 Pool · 🔮 Oracle · 🚀 Rocket · 🪽 Flight school · 🪞 Mirror Pond · 🥁 Drum · 🌿 Spring · 🗿 Statue · 🧊 Lake · 🐌 Snail · 🔒 Locked</p>');
       if (opts.pin) { body.insertAdjacentHTML('beforeend', '<button class="choice alt" type="button" id="clearPin">Remove pin</button>'); $('clearPin').addEventListener('click', () => { opts.clearPin(); closeSheet(); }); }
       const size = () => {
         const W = wrap.clientWidth, H = Math.round(W * opts.aspect), dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -621,6 +637,30 @@ const UI = (() => {
         closeSheet();
       });
     });
+  }
+  function quiz(questions, onAnswer, onDone) {
+    let i = 0, score = 0;
+    const show = () => openSheet('Brain Noodle quiz', (body) => {
+      const q = questions[i];
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Question ${i + 1} of ${questions.length} · ${SUBJECTS[q.s].icon} ${SUBJECTS[q.s].name}</p><h3 class="quiz-q">${q.q}</h3>`);
+      const box = document.createElement('div'); box.className = 'quiz-opts';
+      q.o.forEach((opt, k) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'quiz-opt'; b.textContent = opt;
+        b.addEventListener('click', () => {
+          const right = k === q.a;
+          if (right) score++;
+          onAnswer(q, right);
+          box.querySelectorAll('button').forEach((x, j) => { x.disabled = true; if (j === q.a) x.classList.add('right'); else if (j === k) x.classList.add('wrong'); });
+          body.insertAdjacentHTML('beforeend', `<p class="quiz-why ${right ? 'ok' : ''}">${right ? '✓ Right! ⭐ +1 and 5 coins. ' : 'Not quite, and that is okay! '}${q.why}</p>`);
+          const next = document.createElement('button'); next.type = 'button'; next.className = 'big-btn small'; next.textContent = i < questions.length - 1 ? 'Next question' : 'Finish';
+          next.addEventListener('click', () => { i++; if (i < questions.length) show(); else { closeSheet(); onDone(score); } });
+          body.appendChild(next);
+        });
+        box.appendChild(b);
+      });
+      body.appendChild(box);
+    });
+    show();
   }
   function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
 
@@ -666,7 +706,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook, account, goalHint, shop, map,
+    players, openSheet, skills, leaderboard, cook, account, goalHint, shop, map, quiz,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

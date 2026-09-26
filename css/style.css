@@ -579,3 +579,13 @@ body:not(.touch) .buff { left: 250px; }
 .care-settings h3 { margin: 0 0 8px; }
 .care-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 700; margin-bottom: 8px; }
 .care-row select { font: inherit; font-weight: 800; border: 2.5px solid var(--ink); border-radius: 10px; padding: 4px 8px 2px; background: #fff; color: var(--ink); min-height: 40px; }
+/* ---------- Brain Noodle quiz ---------- */
+.quiz-q { margin: 4px 0 14px; font-size: 21px; line-height: 1.3; text-wrap: balance; }
+.quiz-opts { display: grid; gap: 10px; margin-bottom: 12px; }
+.quiz-opt { text-align: left; font-weight: 800; font-size: 18px; min-height: 52px; padding: 10px 16px 7px; border: 3px solid var(--ink); border-radius: 16px; background: #fff; box-shadow: 0 3px 0 var(--ink); }
+.quiz-opt:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.quiz-opt.right { background: #d8f0c4; }
+.quiz-opt.wrong { background: #fbd6cc; }
+.quiz-opt:disabled { cursor: default; }
+.quiz-why { font-weight: 700; font-size: 16px; line-height: 1.4; background: #fbe3dc; border-radius: 12px; padding: 10px 14px 8px; margin: 0 0 12px; }
+.quiz-why.ok { background: #e3f4d3; }

@@ -253,6 +253,7 @@ const DAILY_POOL = [
   { id: 'combo', title: 'Get a x3 crunch combo', min: 1, max: 1 },
   { id: 'food', title: 'Pick {n} foods from trees', min: 3, max: 6 },
   { id: 'talk', title: 'Say good morning to Grandma Ramen', min: 1, max: 1 },
+  { id: 'quiz', title: 'Answer Professor Pho\'s Brain Noodle quiz', min: 1, max: 1 },
 ];
 
 // ---------- Trees, food and cooking ----------
