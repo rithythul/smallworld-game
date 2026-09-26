@@ -47,6 +47,10 @@ Multiplayer needs a **Web Service** (a Static Site can't run the server). `rende
 
 Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Build Command `npm install`, Start Command `npm start`.
 
+**Check it works:** open `https://<your-site>.onrender.com/healthz`. It should show `ok`. If it says Not Found, the site is still a Static Site and multiplayer will not work.
+
+**Warning "package-lock.json found … Yarn"?** Render picked `yarn` as the build command. It is harmless, but set **Settings → Build Command** to `npm install` to match this project's `package-lock.json` (do not delete the lock file).
+
 **Keep saves and the leaderboard:** the free plan sleeps after about 15 minutes without players and its disk is wiped on every restart or deploy, which erases online saves and the leaderboard. To keep them, use a paid instance, add a **Disk** (mount path `/var/data`) and set the environment variable `DATA_DIR=/var/data`. The free plan also takes about 30 seconds to wake up for the first visitor.
 
 **How many players?** Each room holds up to 8 players, and there can be many rooms at the same time. A single free Render instance comfortably handles a few dozen players at once.
