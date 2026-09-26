@@ -1274,11 +1274,11 @@ function drawSignpost(ctx, x, y, signs) {
     ctx.restore();
   });
 }
-function drawGuideArrow(ctx, x, y, angle, t, label) {
+function drawGuideArrow(ctx, x, y, angle, t, label, color = '#ffd23f') {
   const r = 58 + Math.sin(t * 5) * 4;
   ctx.save(); ctx.translate(x + Math.cos(angle) * r, y + Math.sin(angle) * r * 0.6); ctx.rotate(angle);
   ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, -13); ctx.lineTo(-3, 0); ctx.lineTo(-8, 13); ctx.closePath();
-  fillStroke(ctx, '#ffd23f', 3);
+  fillStroke(ctx, color, 3);
   ctx.restore();
   if (label) {
     ctx.font = '800 12px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

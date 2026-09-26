@@ -598,6 +598,30 @@ const UI = (() => {
       body.appendChild(grid);
     });
   }
+  function map(opts) {
+    openSheet('World map', (body) => {
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">You explored <b>${opts.explored}%</b> of the Noodle Universe. ⭐ is your goal. Tap anywhere to drop a 📍 pin and follow the blue arrow.</p>`);
+      const wrap = document.createElement('div'); wrap.className = 'map-wrap';
+      const c = document.createElement('canvas'); c.className = 'map-canvas'; c.setAttribute('aria-label', 'World map');
+      wrap.appendChild(c); body.appendChild(wrap);
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🏠 Home · 🍜 Grandma · 🏊 Pool · 🔮 Oracle · 🚀 Rocket · 🪽 Flight school · 🪞 Mirror Pond · 🥁 Drum · 🌿 Spring · 🗿 Statue · 🧊 Lake · 🐌 Snail · 🔒 Locked</p>');
+      if (opts.pin) { body.insertAdjacentHTML('beforeend', '<button class="choice alt" type="button" id="clearPin">Remove pin</button>'); $('clearPin').addEventListener('click', () => { opts.clearPin(); closeSheet(); }); }
+      const size = () => {
+        const W = wrap.clientWidth, H = Math.round(W * opts.aspect), dpr = Math.min(2, window.devicePixelRatio || 1);
+        c.width = W * dpr; c.height = H * dpr; c.style.height = H + 'px';
+        const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); opts.draw(x, W, H);
+      };
+      setTimeout(size);
+      let alive = true;
+      const loop = () => { if (!alive || $('sheet').hidden || $('sheetTitle').textContent !== 'World map') { alive = false; return; } const x = c.getContext('2d'); const W = wrap.clientWidth; opts.draw(x, W, Math.round(W * opts.aspect)); setTimeout(loop, 250); };
+      setTimeout(loop, 300);
+      c.addEventListener('click', (e) => {
+        const r = c.getBoundingClientRect();
+        opts.tap((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+        closeSheet();
+      });
+    });
+  }
   function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
 
   function skills(G, stars) {
@@ -642,7 +666,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook, account, goalHint, shop,
+    players, openSheet, skills, leaderboard, cook, account, goalHint, shop, map,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

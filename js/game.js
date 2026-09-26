@@ -1288,6 +1288,114 @@ const Game = (() => {
     setTimeout(() => startDaydream('rocket'), 600);
   }
 
+  /* ---------- world map ---------- */
+  const CELL = 200, COLS = Math.ceil(WORLD.w / CELL), ROWS = Math.ceil(WORLD.h / CELL);
+  let mapImg = null, mapT = 0;
+  function buildMapImage() {
+    mapImg = document.createElement('canvas'); mapImg.width = 900; mapImg.height = Math.round(900 * WORLD.h / WORLD.w);
+    const m = mapImg.getContext('2d'), k = mapImg.width / WORLD.w;
+    m.drawImage(ground, 0, 0, mapImg.width, mapImg.height);
+    m.save(); m.scale(k, k);
+    drawStream(m, 0, false);
+    rr(m, POOL.x, POOL.y, POOL.w, POOL.h, 10); m.fillStyle = '#5ed0e6'; m.fill();
+    rr(m, LAKE.x, LAKE.y, LAKE.w, LAKE.h, 50); m.fillStyle = '#8fd3ef'; m.fill();
+    m.beginPath(); m.ellipse(SPRING.x, SPRING.y, SPRING.rx, SPRING.ry, 0, 0, Math.PI * 2); m.fillStyle = '#9ff0c8'; m.fill();
+    m.fillStyle = '#b8693e'; m.fillRect(0, CANYON.wallY - 20, WORLD.w, 40);
+    m.restore();
+  }
+  function markSeen() {
+    if (!G.seen || G.seen.length !== COLS * ROWS) G.seen = '0'.repeat(COLS * ROWS);
+    const cx = Math.floor(P.x / CELL), cy = Math.floor(P.y / CELL);
+    let arr = null;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= COLS || y >= ROWS || dx * dx + dy * dy > 5) continue;
+      const i = y * COLS + x;
+      if (G.seen[i] !== '1') { arr = arr || G.seen.split(''); arr[i] = '1'; }
+    }
+    if (arr) G.seen = arr.join('');
+  }
+  const seenAt = (x, y) => { const i = Math.floor(y / CELL) * COLS + Math.floor(x / CELL); return G.seen && G.seen[i] === '1'; };
+  function mapLandmarks() {
+    const L = [
+      { x: H0.x + 120, y: H0.y + 110, icon: '🏠', label: 'Home' },
+      { x: TALK.x, y: TALK.y - 60, icon: '🍜', label: 'Grandma' },
+      { x: POOL.x + POOL.w / 2, y: POOL.y + POOL.h / 2, icon: '🏊', label: 'Morning Pool' },
+      { x: 900, y: 850, icon: '🔮', label: 'Oracle' },
+      { x: ROCKET_PAD.x, y: ROCKET_PAD.y - 20, icon: '🚀', label: 'Rocket' },
+      { x: COACHES.penne.x, y: COACHES.penne.y - 20, icon: '🪽', label: 'Flight school' },
+      { x: MIRROR.x, y: MIRROR.y, icon: '🪞', label: 'Mirror Pond' },
+      { x: DRUM.x, y: DRUM.y - 30, icon: '🥁', label: 'Drum' },
+      { x: SPRING.x, y: SPRING.y, icon: '🌿', label: 'Minty Spring' },
+      { x: STATUE.x, y: STATUE.y - 40, icon: '🗿', label: 'Statue' },
+      { x: LAKE.x + LAKE.w / 2, y: LAKE.y + LAKE.h / 2, icon: '🧊', label: 'Lake' },
+      { x: NEST.x, y: NEST.y - 20, icon: '🐦', label: 'Soba Birds' },
+    ];
+    return L.filter(l => seenAt(l.x, l.y));
+  }
+  const H0 = PLACES.house;
+  // Draws the map into any canvas. mini = the small corner map.
+  function drawMap(c, W, H, mini) {
+    const k = W / WORLD.w, t = now;
+    c.clearRect(0, 0, W, H);
+    c.drawImage(mapImg, 0, 0, W, H);
+    // fog of war over places you have not explored yet
+    const fog = document.createElement('canvas'); fog.width = W; fog.height = H;
+    const f = fog.getContext('2d');
+    f.fillStyle = '#e9dcc0'; f.fillRect(0, 0, W, H);
+    f.strokeStyle = 'rgba(160,120,80,0.25)'; f.lineWidth = 1;
+    for (let i = -H; i < W; i += 10) { f.beginPath(); f.moveTo(i, 0); f.lineTo(i + H, H); f.stroke(); }
+    f.globalCompositeOperation = 'destination-out';
+    const r = CELL * k * 1.25;
+    for (let i = 0; i < (G.seen || '').length; i++) {
+      if (G.seen[i] !== '1') continue;
+      const x = ((i % COLS) + 0.5) * CELL * k, y = (Math.floor(i / COLS) + 0.5) * CELL * k;
+      const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      f.fillStyle = g; f.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    c.drawImage(fog, 0, 0);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    if (!mini) {
+      // region names
+      c.font = `${Math.max(12, W / 55)}px "Bagel Fat One", sans-serif`; c.fillStyle = 'rgba(52,35,63,0.55)';
+      [['Ramen Village', 700, 250], ['Crunch Meadow', 780, 1450], ['Spaghetti Woods', 1960, 900], ['Crunch Canyon', 1300, 2350], ['Soba Peaks', 3100, 1200]].forEach(([n, x, y]) => { if (seenAt(x, y)) c.fillText(n, x * k, y * k); });
+      c.font = `${Math.max(14, W / 45)}px sans-serif`;
+      mapLandmarks().forEach(l => { c.fillText(l.icon, l.x * k, l.y * k); });
+      if (!canyonOpen() && seenAt(CANYON.gate.x, CANYON.wallY - 100)) c.fillText('🔒', CANYON.gate.x * k, CANYON.wallY * k);
+      if (G.pieces.includes(5) && seenAt(snail.x, snail.y)) c.fillText('🐌', snail.x * k, snail.y * k);
+    }
+    // goal and pin
+    const tg = goalTarget();
+    if (tg) { c.font = `${mini ? 12 : Math.max(16, W / 40)}px sans-serif`; c.fillText('⭐', tg.x * k, tg.y * k); if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(tg.label, tg.x * k, tg.y * k + 16); } }
+    if (G.pin) { c.font = `${mini ? 12 : Math.max(16, W / 40)}px sans-serif`; c.fillText('📍', G.pin.x * k, G.pin.y * k - 6); }
+    // friends and you
+    for (const o of Net.others.values()) {
+      if (o.x === null) continue;
+      circle(c, o.x * k, o.y * k, mini ? 3.5 : 6); fillStroke(c, o.color, 2);
+      if (!mini) { c.font = '800 11px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(o.name, o.x * k, o.y * k - 12); }
+    }
+    const pr = (mini ? 4 : 7) + Math.sin(t * 5) * 1.5;
+    c.fillStyle = 'rgba(255,255,255,0.6)'; circle(c, P.x * k, P.y * k, pr + 5); c.fill();
+    circle(c, P.x * k, P.y * k, pr); fillStroke(c, profile.color || '#2fa4b5', 2.5);
+    if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText('You', P.x * k, P.y * k + pr + 12); }
+  }
+  function openMap() {
+    markSeen();
+    UI.map({
+      draw: (c, W, H) => drawMap(c, W, H, false),
+      aspect: WORLD.h / WORLD.w,
+      explored: Math.round(100 * ((G.seen || '').split('1').length - 1) / (COLS * ROWS)),
+      pin: !!G.pin,
+      tap: (fx, fy) => {
+        const x = fx * WORLD.w, y = fy * WORLD.h;
+        if (G.pin && dist(x, y, G.pin.x, G.pin.y) < 150) { G.pin = null; UI.toast('Pin removed.', { life: 1.8 }); }
+        else { G.pin = { x, y }; UI.toast('<span class="t-small">📍 Pin placed</span>Follow the blue arrow to get there.', { life: 2.8 }); }
+        save();
+      },
+      clearPin: () => { G.pin = null; save(); },
+    });
+  }
+
   function update(dt) {
     if (Space.active) {
       let mx = 0, my = 0;
@@ -1549,6 +1657,13 @@ const Game = (() => {
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
     if (roundEnd && Net.active) updateRoomPill();
     boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
+    mapT -= dt;
+    if (mapT <= 0) {
+      mapT = 0.3; markSeen();
+      const mm = $('minimap');
+      if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMap(mc, mm.width, mm.height, true); }
+    }
+    if (G.pin && dist(P.x, P.y, G.pin.x, G.pin.y) < 90) { G.pin = null; Sound.coin(); UI.toast('📍 You reached your pin!', { life: 2 }); }
     cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(); }
   }
 
@@ -1684,6 +1799,7 @@ const Game = (() => {
       const tg = goalTarget();
       if (tg && dist(P.x, P.y, tg.x, tg.y) > 90) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(tg.y - P.y, tg.x - P.x), t, tg.label);
     }
+    if (G.pin) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(G.pin.y - P.y, G.pin.x - P.x), t + 1, 'Pin', '#8fd3ef');
     // the sky layer: flight rings, the cloud, and stamina meters
     if (G.lesson && G.lesson.id === 'fly2') RINGS.forEach(([rx, ry], i) => inView(rx, ry) && drawRing(ctx, rx, ry, RING_Z, t, G.lesson.rings[i]));
     if (inView(SKY_CLOUD.x, SKY_CLOUD.y - SKY_CLOUD.z)) drawSkyCloud(ctx, { ...SKY_CLOUD, alpha: P.z > 60 ? 1 : 0.55 }, t, !has('sky'));
@@ -1839,6 +1955,7 @@ const Game = (() => {
     if (k === 'escape') { UI.closeSheet(); return; }
     if (!running) return;
     if (k === 'n' && !UI.talking) { $('sheet').hidden ? UI.dex(G) : UI.closeSheet(); return; }
+    if (k === 'm' && !UI.talking) { $('sheet').hidden ? openMap() : UI.closeSheet(); return; }
     if (k === 'j' && !UI.talking) { $('sheet').hidden ? UI.journal(G) : UI.closeSheet(); return; }
     if (k.startsWith('arrow') || k === 'f') e.preventDefault();
     keys.add(k);
@@ -1937,6 +2054,9 @@ const Game = (() => {
   });
   $('accountBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; openAccount(); });
   $('boardBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; postScore(); openBoard(); });
+  $('mapBtn').addEventListener('click', () => { Sound.blip(); openMap(); });
+  $('minimap').addEventListener('click', () => { Sound.blip(); openMap(); });
+  $('skillsMenuBtn').addEventListener('click', () => { $('menuPop').hidden = true; Sound.blip(); UI.skills(G, starTotal()); });
   $('skillsBtn').addEventListener('click', () => { Sound.blip(); UI.skills(G, starTotal()); });
 
   $('dexBtn').addEventListener('click', () => { Sound.blip(); UI.dex(G); });
@@ -2184,6 +2304,7 @@ const Game = (() => {
     buildStreamSamples();
     try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch (e) {}
     ground = buildGround();
+    buildMapImage();
     requestAnimationFrame(titleLoop);
     requestAnimationFrame(frame);
 

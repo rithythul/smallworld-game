@@ -542,3 +542,19 @@ body.touch #roomPill { min-height: 38px; }
 .shop-card .answer-row { width: 100%; margin-top: auto; }
 .goodie-icon { font-size: 44px; line-height: 1.2; align-self: center; }
 .shop-coins b { color: var(--ink); }
+/* ---------- world map ---------- */
+.map-wrap { width: 100%; border: 3px solid var(--ink); border-radius: 16px; overflow: hidden; background: #e9dcc0; }
+.map-canvas { display: block; width: 100%; cursor: crosshair; }
+.map-legend { font-size: 13px; margin-top: 10px; }
+#minimap {
+  position: absolute; left: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: 220px; height: 159px; border: 3px solid var(--ink); border-radius: 14px; box-shadow: var(--pop);
+  background: #e9dcc0; cursor: pointer; display: none;
+}
+@media (min-width: 900px) and (min-height: 600px) { body:not(.touch) #minimap { display: block; } }
+body:not(.touch) .buff { left: 250px; }
+#skillsMenuBtn { display: none; }
+@media (max-width: 420px) {
+  #skillsBtn { display: none !important; }
+  #skillsMenuBtn { display: block; }
+}
