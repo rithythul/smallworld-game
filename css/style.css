@@ -471,3 +471,4 @@ body.touch .toast { font-size: 15px; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
 #boardName { text-transform: none; letter-spacing: normal; }
+.locked-chapter { opacity: .65; }

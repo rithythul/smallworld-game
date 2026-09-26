@@ -41,6 +41,7 @@
       <button class="icon-btn" id="journalBtn" type="button" aria-label="Clue journal"><span class="icon-book"></span><span class="badge dot" id="journalDot" hidden></span></button>
       <button class="icon-btn" id="menuBtn" type="button" aria-label="More" aria-expanded="false">⋯</button>
       <div id="menuPop" hidden>
+        <button type="button" id="accountBtn">☁️ Save online</button>
         <button type="button" id="boardBtn">🏆 Leaderboard</button>
         <button type="button" id="soundBtn"><span id="soundIcon">🔊</span> Sound</button>
         <button type="button" id="fsBtn" hidden>⛶ Full screen</button>
@@ -94,6 +95,14 @@
       <p class="tagline">Collect every noodle. Crack the Golden Noodle mystery.</p>
       <button class="big-btn" id="startBtn" type="button">Wake up ☀</button>
       <button class="big-btn friends" id="friendsBtn" type="button">Play with friends 👥</button>
+      <button class="link-btn" id="loadBtn" type="button">Load my saved game ☁️</button>
+      <form id="loadPanel" class="mp-panel" hidden>
+        <p class="mp-msg" style="margin:0">Type the name and 4-number PIN you saved with.</p>
+        <div class="mp-row"><label for="loadName">Name</label><input id="loadName" maxlength="14" autocomplete="off" placeholder="Your name"></div>
+        <div class="mp-row"><label for="loadPin">PIN</label><input id="loadPin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4 numbers"></div>
+        <button class="big-btn small" type="submit">Load game</button>
+        <p class="mp-msg" id="loadMsg"></p>
+      </form>
       <button class="link-btn" id="resetBtn" type="button" hidden>Start a new game</button>
       <div id="mpPanel" class="mp-panel" hidden>
         <div class="mp-row">

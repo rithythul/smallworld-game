@@ -280,3 +280,14 @@ const RECIPES = [
   { id: 'dumpling', name: 'Dumpling Soup', needs: { dumpling: 3 }, effect: 'Longer crunch combos, all day.' },
   { id: 'feast', name: "Grandma's Feast", needs: { egg: 1, chili: 1, shiitake: 1, shoot: 1, corn: 1, nori: 1 }, effect: 'Every bonus at once, all day, plus 40 coins.' },
 ];
+
+// Wooden signposts at road junctions: [x, y, [[label, angle in degrees (0 = east, 90 = south)], ...]]
+const SIGNPOSTS = [
+  [640, 660, [['Grandma', -30], ['Pool', 90], ['Woods', 0]]],
+  [960, 640, [['Village', 180], ['Bridge', 20], ['Oracle', 100]]],
+  [1110, 760, [['Spaghetti Woods', 0], ['Village', 200]]],
+  [830, 1180, [['Crunch Meadow', 110], ['Oracle', -80]]],
+  [700, 1760, [['Crunch Canyon', 90], ['Meadow', -90]]],
+  [2390, 1520, [['Soba Peaks', 0], ['Woods', 180]]],
+  [1195, 1000, [['Mirror Pond', 0]]],
+];

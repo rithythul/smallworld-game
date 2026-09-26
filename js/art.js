@@ -1247,3 +1247,33 @@ function drawTree(ctx, x, y, t, kind, fruit, shake = 0) {
       break;
   }
 }
+
+function drawSignpost(ctx, x, y, signs) {
+  ctx.fillStyle = 'rgba(52,35,63,0.18)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 16, 5, 0, 0, TAU); ctx.fill();
+  rr(ctx, x - 4, y - 70, 8, 72, 3); fillStroke(ctx, '#a0673b', 2.5);
+  ctx.font = '800 12px "Baloo 2", sans-serif'; ctx.textBaseline = 'middle';
+  signs.forEach(([label, deg], i) => {
+    const right = Math.cos(deg * Math.PI / 180) >= -0.01;
+    const w = ctx.measureText(label).width + 26, sy = y - 62 + i * 20;
+    ctx.save(); ctx.translate(x, sy);
+    ctx.beginPath();
+    if (right) { ctx.moveTo(-4, -8); ctx.lineTo(w - 8, -8); ctx.lineTo(w, 0); ctx.lineTo(w - 8, 8); ctx.lineTo(-4, 8); }
+    else { ctx.moveTo(4, -8); ctx.lineTo(-w + 8, -8); ctx.lineTo(-w, 0); ctx.lineTo(-w + 8, 8); ctx.lineTo(4, 8); }
+    ctx.closePath(); fillStroke(ctx, '#f3dca0', 2.2);
+    ctx.fillStyle = INK; ctx.textAlign = 'center';
+    ctx.fillText(label + (Math.abs(Math.sin(deg * Math.PI / 180)) > 0.6 ? (Math.sin(deg * Math.PI / 180) > 0 ? ' ↓' : ' ↑') : ''), right ? w / 2 - 4 : -w / 2 + 4, 1);
+    ctx.restore();
+  });
+}
+function drawGuideArrow(ctx, x, y, angle, t, label) {
+  const r = 58 + Math.sin(t * 5) * 4;
+  ctx.save(); ctx.translate(x + Math.cos(angle) * r, y + Math.sin(angle) * r * 0.6); ctx.rotate(angle);
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, -13); ctx.lineTo(-3, 0); ctx.lineTo(-8, 13); ctx.closePath();
+  fillStroke(ctx, '#ffd23f', 3);
+  ctx.restore();
+  if (label) {
+    ctx.font = '800 12px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lx = x + Math.cos(angle) * (r + 30), ly = y + Math.sin(angle) * (r + 30) * 0.6;
+    ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText(label, lx, ly); ctx.fillStyle = '#fff8e8'; ctx.fillText(label, lx, ly);
+  }
+}

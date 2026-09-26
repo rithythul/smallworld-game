@@ -251,11 +251,11 @@ const UI = (() => {
     return row;
   }
 
-  function journal(G, tab = 'clues') {
+  function journal(G, tab = 'story') {
     G.journalNew = false;
     openSheet('Clue Journal', (body) => {
       const tabs = document.createElement('div'); tabs.className = 'tabs';
-      const list = [['clues', 'Clues'], ['map', 'Map pieces']];
+      const list = [['story', 'Story'], ['clues', 'Clues'], ['map', 'Map pieces']];
       if (G.flags.decoder) list.push(['alpha', 'Noodle alphabet']);
       list.forEach(([id, label]) => {
         const b = document.createElement('button'); b.type = 'button';
@@ -264,6 +264,31 @@ const UI = (() => {
         tabs.appendChild(b);
       });
       body.appendChild(tabs);
+
+      if (tab === 'story') {
+        body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">Your adventure so far, and what to do next. Stuck? Tap the goal at the top to get a yellow arrow, or ask the Noodle Oracle for a hint.</p>');
+        let open = true;
+        Game.story().forEach(chap => {
+          const el = document.createElement('div'); el.className = 'clue';
+          const done = chap.steps.every(st => st.done);
+          el.innerHTML = `<span class="where">${done ? 'Complete' : open ? 'In progress' : 'Locked'}</span><h3>${chap.title}</h3>`;
+          if (!open) {
+            el.classList.add('locked-chapter');
+            el.insertAdjacentHTML('beforeend', '<p class="empty">🔒 Finish the chapter before this one to unlock it.</p>');
+          } else {
+            let shownNext = false;
+            chap.steps.forEach(st => {
+              if (st.done) el.insertAdjacentHTML('beforeend', `<div class="lesson done"><span class="mark">✓</span><span><b>${st.text}</b></span></div>`);
+              else if (!shownNext) { shownNext = true; el.insertAdjacentHTML('beforeend', `<div class="lesson next"><span class="mark">•</span><span><b>${st.text}</b><br><small>${st.where}</small></span></div>`); }
+              else el.insertAdjacentHTML('beforeend', '<div class="lesson locked"><span class="mark">?</span><span><b>???</b><br><small>Keep going to find out.</small></span></div>');
+            });
+          }
+          if (done) el.classList.add('solved');
+          body.appendChild(el);
+          if (!done) open = false;
+        });
+        body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">The story keeps growing, and the world never ends: daily challenges, races and cooking are always waiting.</p>');
+      }
 
       if (tab === 'clues') {
         const has = G.clues;
@@ -432,6 +457,37 @@ const UI = (() => {
       }).catch(() => { list.innerHTML = '<p class="empty">Could not load the leaderboard. Check your connection and try again.</p>'; });
     });
   }
+  function account(opts) {
+    openSheet('Save online', (body) => {
+      if (opts.account) {
+        body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">☁️ Your game saves online as <b>${opts.account.name}</b> every minute while you play. ${opts.last ? 'Last saved at ' + opts.last + '.' : ''}</p>
+          <p class="sheet-sub">To play on another phone or computer: tap <b>Load my saved game</b> on the start screen and type your name and PIN.</p>
+          <div class="answer-row"><button class="choice" type="button" id="saveNow">Save now</button><button class="choice alt" type="button" id="unlink">Stop saving on this device</button></div>
+          <p class="answer-msg" id="accMsg"></p>`);
+        $('saveNow').addEventListener('click', () => opts.saveNow().then(m => { $('accMsg').textContent = m; }));
+        $('unlink').addEventListener('click', () => { opts.unlink(); closeSheet(); });
+        return;
+      }
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Pick a name and a 4-number PIN. Then you can keep playing on any device.</p>
+        <p class="sheet-sub"><b>Remember them!</b> There is no way to get them back. If you forget, you start a new game.</p>
+        <form id="accForm" class="mp-panel" style="box-shadow:none">
+          <div class="mp-row"><label for="accName">Name</label><input id="accName" maxlength="14" autocomplete="off" value="${(opts.name || '').replace(/"/g, '')}" placeholder="Your name"></div>
+          <div class="mp-row"><label for="accPin">PIN</label><input id="accPin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4 numbers, like 2468"></div>
+          <button class="big-btn small" type="submit">Save my game</button>
+          <p class="mp-msg" id="accMsg"></p>
+        </form>`);
+      if (!opts.online) { $('accMsg').textContent = 'Online saving needs the game server. Play at your Render link to use it.'; $('accMsg').classList.add('err'); }
+      $('accForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = $('accName').value.trim(), pin = $('accPin').value.trim();
+        if (name.length < 2) { $('accMsg').textContent = 'Names need at least 2 letters.'; $('accMsg').classList.add('err'); return; }
+        if (!/^\d{4}$/.test(pin)) { $('accMsg').textContent = 'The PIN is 4 numbers, like 2468.'; $('accMsg').classList.add('err'); return; }
+        $('accMsg').classList.remove('err'); $('accMsg').textContent = 'Saving…';
+        opts.link(name, pin).then(() => account({ ...opts, account: { name }, last: 'just now' }))
+          .catch(err => { $('accMsg').textContent = err.message; $('accMsg').classList.add('err'); });
+      });
+    });
+  }
   function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
 
   function skills(G, stars) {
@@ -473,7 +529,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook,
+    players, openSheet, skills, leaderboard, cook, account,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

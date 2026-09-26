@@ -967,6 +967,66 @@ const Game = (() => {
     return true;
   }
 
+  /* ---------- hints: story steps, where to go, and the guide arrow ---------- */
+  function story() {
+    const c = (id) => G.clues.includes(id), p = (n) => G.pieces.includes(n), n = G.found.length;
+    const ch = (title, steps) => ({ title, steps });
+    return [
+      ch('Chapter 1 · The Pillow Note', [
+        { text: 'Swim in the Morning Pool', where: 'The pool is just south of your house. It opens 6 to 8 AM.', done: !!G.flags.swam },
+        { text: 'Say good morning to Grandma Ramen', where: 'Her noodle stand is north-east of your house, in Ramen Village.', done: !!G.flags.metGrandma },
+        { text: 'Collect 3 noodles', where: 'Crunch the bricks in Crunch Meadow, south of the village.', done: n >= 3 },
+        { text: 'Check your house', where: 'Your antenna twitches... something is waiting at home.', done: c('pillow') },
+        { text: 'Solve the Pillow Note riddle', where: 'Read it in your journal. Think about the early morning and water.', done: p(1) },
+        { text: 'Find the place on Map Piece 1', where: 'Cross the stream into Spaghetti Woods and look for a tree that breaks the rules.', done: p(2) },
+        { text: 'Learn to read the noodle letters', where: 'Grandma collects old signs. Look around her stand.', done: !!G.flags.decoder },
+        { text: 'Decode the note', where: 'Journal, Clues tab. Match each shape using the Noodle alphabet tab.', done: G.solved.includes('cipher') },
+      ]),
+      ch('Chapter 2 · Crunch Canyon', [
+        { text: 'Break through the boulder wall', where: 'South of Crunch Meadow. It cracked when you decoded the note.', done: canyonOpen() },
+        { text: 'Find the echo that crunches twice', where: 'Crunch the tall rocks in the canyon and listen.', done: p(3) },
+        { text: 'Play the rhythm you heard', where: 'Something big you can hit, east across the canyon bridge.', done: p(4) },
+        { text: 'Drink where the water lies', where: 'Water that lies... like a mirror. Follow the stream.', done: c('mirror') },
+        { text: 'Read the reflection', where: 'It is backwards in your journal. Then find who it talks about in the canyon.', done: p(5) },
+      ]),
+      ch('Chapter 3 · Soba Peaks', [
+        { text: 'Climb the Soba Peaks', where: 'East, past Spaghetti Woods. Follow the road out of the woods and up the zigzag.', done: c('statue') },
+        { text: 'Show the statue your faces', where: 'Crunchy, thirsty, cool, sleepy, in that order. Look at what makes your face change.', done: p(6) },
+      ]),
+      ch('Chapter 4 · The Glass Noodle Caves', [
+        { text: 'Coming in the next update', where: 'Map Piece 6 shows a dark cave full of glowing noodles.', done: false, soon: true },
+      ]),
+    ];
+  }
+  // Where the yellow arrow points: the area to explore, not the exact answer.
+  function goalTarget() {
+    const c = (id) => G.clues.includes(id), p = (n) => G.pieces.includes(n);
+    if (G.lesson) {
+      const l = LESSONS.find(x => x.id === G.lesson.id);
+      if (l.id.startsWith('swim') && l.id !== 'swim3') return { x: GATE.x, y: GATE.y, label: 'Pool' };
+      if (l.id === 'swim3') return { x: 1280, y: 760, label: 'Bridge' };
+      return { x: 1000, y: 1250, label: 'Meadow' };
+    }
+    if (hour() >= 21 || hour() < 5) return { ...DOOR, label: 'Home' };
+    if (!G.flags.swam && G.day === 1 && G.time < POOL_CLOSE) return { ...GATE, label: 'Pool' };
+    if (!G.flags.metGrandma) return { ...TALK, label: 'Grandma' };
+    if (G.found.length < 3) return { x: 760, y: 1300, label: 'Meadow' };
+    if (G.flags.pillowReady && !c('pillow')) return { ...DOOR, label: 'Home' };
+    if (c('pillow') && !p(1)) return { ...GATE, label: 'Pool' };
+    if (p(1) && !p(2)) return { x: 2100, y: 450, label: 'Deep woods' };
+    if (c('cipher') && !G.flags.decoder) return { ...TALK, label: "Grandma's stand" };
+    if (G.flags.decoder && !G.solved.includes('cipher')) return null;
+    if (G.solved.includes('cipher') && !canyonOpen()) return { x: CANYON.gate.x, y: CANYON.wallY - 40, label: 'Boulder wall' };
+    if (canyonOpen() && !p(3)) return { x: 600, y: 2150, label: 'Canyon rocks' };
+    if (p(3) && !p(4)) return { x: 1900, y: 2350, label: 'East canyon' };
+    if (p(4) && !c('mirror')) return { x: 1250, y: 900, label: 'The stream' };
+    if (c('mirror') && !p(5)) return { x: 800, y: 2380, label: 'Canyon' };
+    if (p(5) && !c('statue')) return { x: STATUE.x, y: STATUE.y + 80, label: 'Summit' };
+    if (c('statue') && !p(6)) return G.statueStep === 2 ? { ...PEAKS.lakeEntry, label: 'Lake' } : G.statueStep === 3 ? { x: STATUE.x, y: STATUE.y + 80, label: 'Statue' } : null;
+    return null;
+  }
+  let guideOn = false, sameGoalT = 0, lastGoalKey = '';
+
   function goalText() {
     const lt = lessonText(); if (lt) return lt;
     const n = G.found.length;
@@ -1192,7 +1252,10 @@ const Game = (() => {
       fb.hidden = P.swimming || UI.busy;
       $('flyLabel').textContent = G.skills.fly >= 1 ? 'FLY' : 'HOP';
     }
-    UI.goal(goalText());
+    const gt = goalText();
+    UI.goal(gt);
+    if (gt !== lastGoalKey) { lastGoalKey = gt; sameGoalT = 0; } else if (!busy) sameGoalT += dt;
+    if (sameGoalT > 120 && !guideOn && goalTarget()) { guideOn = true; UI.toast('<span class="t-small">Need a hint? 🧭</span>Follow the yellow arrow. Tap the goal to hide it.', { life: 3.6 }); }
 
     // camera
     const viewW = vw / zoom, viewH = vh / zoom;
@@ -1217,6 +1280,7 @@ const Game = (() => {
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
     if (roundEnd && Net.active) updateRoomPill();
     boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
+    cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(); }
   }
 
   /* ---------- render ---------- */
@@ -1313,6 +1377,7 @@ const Game = (() => {
       if (!fogGone()) drawFog(ctx, t, 0, CANYON.wallY);
     } });
     Object.entries(COACHES).forEach(([key, c]) => inView(c.x, c.y) && draw.push({ y: c.y, fn: () => key === 'kombu' ? drawKombu(ctx, c.x, c.y, t) : drawPenne(ctx, c.x, c.y, t) }));
+    SIGNPOSTS.forEach(([sx, sy, signs]) => inView(sx, sy) && draw.push({ y: sy, fn: () => drawSignpost(ctx, sx, sy, signs) }));
     const H = PLACES.house, S = PLACES.shop;
     draw.push({ y: H.y + 170, fn: () => drawHouse(ctx, H, t, night) });
     draw.push({ y: S.y + 150, fn: () => drawShop(ctx, S, t, night) });
@@ -1333,6 +1398,11 @@ const Game = (() => {
     }
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
 
+    // guide arrow toward the current goal
+    if (guideOn) {
+      const tg = goalTarget();
+      if (tg && dist(P.x, P.y, tg.x, tg.y) > 90) drawGuideArrow(ctx, P.x, P.y - 20 - (P.z || 0), Math.atan2(tg.y - P.y, tg.x - P.x), t, tg.label);
+    }
     // the sky layer: flight rings, the cloud, and stamina meters
     if (G.lesson && G.lesson.id === 'fly2') RINGS.forEach(([rx, ry], i) => inView(rx, ry) && drawRing(ctx, rx, ry, RING_Z, t, G.lesson.rings[i]));
     if (inView(SKY_CLOUD.x, SKY_CLOUD.y - SKY_CLOUD.z)) drawSkyCloud(ctx, { ...SKY_CLOUD, alpha: P.z > 60 ? 1 : 0.55 }, t, !has('sky'));
@@ -1577,12 +1647,19 @@ const Game = (() => {
   flyBtn.addEventListener('pointerup', flyUp); flyBtn.addEventListener('pointercancel', flyUp); flyBtn.addEventListener('lostpointercapture', flyUp);
   $('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); const pop = $('menuPop'); pop.hidden = !pop.hidden; $('menuBtn').setAttribute('aria-expanded', String(!pop.hidden)); });
   document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#menuPop') && !e.target.closest('#menuBtn')) $('menuPop').hidden = true; });
+  $('accountBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; openAccount(); });
   $('boardBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; postScore(); openBoard(); });
   $('skillsBtn').addEventListener('click', () => { Sound.blip(); UI.skills(G, starTotal()); });
 
   $('dexBtn').addEventListener('click', () => { Sound.blip(); UI.dex(G); });
   $('journalBtn').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
-  $('goal').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
+  $('goal').addEventListener('click', () => {
+    Sound.blip();
+    const tg = goalTarget();
+    if (!tg) { UI.journal(G, 'story'); return; }
+    guideOn = !guideOn; sameGoalT = 0;
+    UI.toast(guideOn ? `<span class="t-small">🧭 Showing the way</span>Follow the yellow arrow to: ${tg.label}. Tap the goal again to hide it.` : 'Arrow hidden. Tap the goal to show it again.', { life: 3 });
+  });
   $('soundBtn').addEventListener('click', () => { const m = Sound.toggle(); $('soundIcon').textContent = m ? '🔇' : '🔊'; $('menuPop').hidden = true; });
 
   /* ---------- boot ---------- */
@@ -1691,6 +1768,26 @@ const Game = (() => {
       .then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => { myRank = d.rank; boardFails = 0; })
       .catch(e => { if (e !== 429) boardFails++; });
   }
+  // Online saves: a name + 4-digit PIN. The server keeps the save; nothing to recover if forgotten.
+  let cloudT = 60, lastCloud = '';
+  const api = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json().catch(() => ({})).then(d => { if (!r.ok) throw new Error(d.error || 'Could not reach the game server.'); return d; }),
+      () => { throw new Error('Could not reach the game server. Online saving works on the Render version.'); });
+  function cloudSave() {
+    if (!profile.account || !G || !/^https?:$/.test(location.protocol)) return Promise.resolve('');
+    save();
+    return api('api/save', { name: profile.account.name, pin: profile.account.pin, save: G })
+      .then(() => { lastCloud = UI.fmtTime(G.time) + ' (day ' + G.day + ')'; return 'Saved!'; }, e => e.message);
+  }
+  function openAccount() {
+    UI.account({ account: profile.account, name: profile.name, last: lastCloud, online: /^https?:$/.test(location.protocol),
+      link: (name, pin) => api('api/save', { name, pin, save: (save(), G) }).then(() => {
+        profile.account = { name, pin }; profile.name = name; saveProfile(); lastCloud = 'just now'; boardT = 0;
+        UI.toast('<span class="t-small">☁️ Saved online</span>Remember your name and PIN to play anywhere.', { life: 3.6 });
+      }),
+      saveNow: cloudSave,
+      unlink: () => { delete profile.account; saveProfile(); UI.toast('This device stopped saving online. Your online save is still there.', { life: 3.4 }); } });
+  }
   function openBoard(by = 'coins') {
     UI.leaderboard({ by, uid: profile.uid, name: profile.name, online: /^https?:$/.test(location.protocol),
       load: (key) => fetch('api/leaderboard?by=' + key).then(r => r.ok ? r.json() : Promise.reject()),
@@ -1779,6 +1876,20 @@ const Game = (() => {
     const startGame = () => { if (!running) begin(saved && !$('resetBtn').dataset.wiped ? saved : null); };
     $('startBtn').addEventListener('click', () => { Sound.init(); startGame(); });
     setupMultiplayerUI(startGame);
+    // Load a game saved online (name + PIN)
+    $('loadBtn').addEventListener('click', () => { $('loadPanel').hidden = !$('loadPanel').hidden; if (!$('loadPanel').hidden) $('loadName').focus(); });
+    $('loadPanel').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = $('loadName').value.trim(), pin = $('loadPin').value.trim(), msg = $('loadMsg');
+      msg.classList.remove('err'); msg.textContent = 'Loading…';
+      api('api/load', { name, pin }).then(d => {
+        profile.account = { name: d.name || name, pin }; profile.name = d.name || name; saveProfile();
+        try { localStorage.setItem(SAVE_KEY, JSON.stringify(d.save)); } catch (err) {}
+        Sound.init();
+        begin(Object.assign(fresh(), d.save));
+        UI.toast(`<span class="t-small">☁️ Welcome back, ${profile.name}</span>Your game is loaded.`, { life: 3.4 });
+      }).catch(err => { msg.textContent = err.message; msg.classList.add('err'); });
+    });
     $('resetBtn').addEventListener('click', () => {
       const b = $('resetBtn');
       if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to erase your save'; return; }
@@ -1792,5 +1903,5 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { tryCipher, eat: eatFood, get state() { return G; }, get player() { return P; } };
+  return { tryCipher, story, eat: eatFood, get state() { return G; }, get player() { return P; } };
 })();

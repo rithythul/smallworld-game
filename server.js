@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
@@ -20,7 +21,10 @@ const ROUND_SECS = +process.env.ROUND_SECS || 120;               // one Crunch R
 const potNeed = (level) => 20 + level * 10; // team pot grows every time it fills
 
 /* ---------- leaderboard (saved to a JSON file) ---------- */
-const BOARD_FILE = process.env.LEADERBOARD_FILE || path.join(ROOT, 'data', 'leaderboard.json');
+// Everything the server remembers lives in DATA_DIR. On Render, point it at a persistent disk.
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
+const BOARD_FILE = process.env.LEADERBOARD_FILE || path.join(DATA_DIR, 'leaderboard.json');
+const SAVE_DIR = path.join(DATA_DIR, 'saves');
 let board = {};
 try { board = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8')) || {}; } catch (e) { board = {}; }
 let boardDirty = false;
@@ -30,9 +34,9 @@ setInterval(() => {
   fs.mkdir(path.dirname(BOARD_FILE), { recursive: true }, () => fs.writeFile(BOARD_FILE, JSON.stringify(board), () => {}));
 }, 10000);
 const lastPost = new Map();
-function readBody(req, cb) {
+function readBody(req, cb, limit = 2000) {
   let data = '';
-  req.on('data', (c) => { data += c; if (data.length > 2000) req.destroy(); });
+  req.on('data', (c) => { data += c; if (data.length > limit) req.destroy(); });
   req.on('end', () => { try { cb(JSON.parse(data)); } catch (e) { cb(null); } });
 }
 function topList(by) {
@@ -61,7 +65,44 @@ function handleApi(req, res, urlPath, query) {
       json(200, { rank, total: Object.keys(board).length });
     });
   }
+  if ((urlPath === '/api/save' || urlPath === '/api/load') && req.method === 'POST') {
+    return readBody(req, (m) => handleAccount(urlPath, m, req, json), 300000);
+  }
   json(404, { error: 'not found' });
+}
+
+/* ---------- online saves: a name and a 4-digit PIN, no recovery ---------- */
+const nameKey = (n) => String(n || '').trim().toLowerCase().replace(/[^a-z0-9 _-]/g, '').replace(/\s+/g, '-');
+const hashPin = (pin, salt) => crypto.scryptSync(String(pin), salt, 32).toString('hex');
+const attempts = new Map(); // ip -> [timestamps] of failed PINs
+function tooManyTries(ip) {
+  const t = Date.now(), list = (attempts.get(ip) || []).filter(x => t - x < 60000);
+  attempts.set(ip, list);
+  return list.length >= 6;
+}
+function handleAccount(urlPath, m, req, json) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?';
+  if (!m) return json(400, { error: 'Something went wrong. Try again.' });
+  const key = nameKey(m.name), pin = String(m.pin || '');
+  if (key.length < 2 || key.length > 14) return json(400, { error: 'Names need 2 to 14 letters or numbers.' });
+  if (!/^\d{4}$/.test(pin)) return json(400, { error: 'The PIN is 4 numbers, like 2468.' });
+  if (tooManyTries(ip)) return json(429, { error: 'Too many wrong PINs. Wait a minute and try again.' });
+  const file = path.join(SAVE_DIR, key + '.json');
+  fs.readFile(file, 'utf8', (err, text) => {
+    let rec = null; try { rec = err ? null : JSON.parse(text); } catch (e) { rec = null; }
+    const wrongPin = () => { attempts.get(ip).push(Date.now()); };
+    if (urlPath === '/api/load') {
+      if (!rec) return json(404, { error: 'No saved game with that name. Check the spelling.' });
+      if (hashPin(pin, rec.salt) !== rec.hash) { wrongPin(); return json(403, { error: 'Wrong PIN for that name.' }); }
+      return json(200, { name: rec.name, save: rec.save, updated: rec.updated });
+    }
+    // save
+    if (!m.save || typeof m.save !== 'object') return json(400, { error: 'Nothing to save.' });
+    if (rec && hashPin(pin, rec.salt) !== rec.hash) { wrongPin(); return json(403, { error: 'That name is already taken. Wrong PIN? Pick a different name.' }); }
+    const salt = rec ? rec.salt : crypto.randomBytes(12).toString('hex');
+    const out = { name: clean(m.name, 14), salt, hash: rec ? rec.hash : hashPin(pin, salt), save: m.save, created: rec ? rec.created : Date.now(), updated: Date.now() };
+    fs.mkdir(SAVE_DIR, { recursive: true }, () => fs.writeFile(file, JSON.stringify(out), (e) => e ? json(500, { error: 'Could not save right now.' }) : json(200, { ok: true, created: !rec })));
+  });
 }
 
 /* ---------- static files ---------- */
