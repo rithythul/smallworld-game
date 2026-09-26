@@ -115,16 +115,20 @@
           <span class="mp-label">Hoodie color</span>
           <div class="swatches" id="mpColors"></div>
         </div>
+        <div class="mp-row">
+          <label for="mpCode">Room name</label>
+          <div class="mp-join">
+            <input id="mpCode" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="67NM" aria-describedby="mpHelp">
+            <button class="choice alt dice" id="mpDice" type="button" aria-label="Make up a room name">🎲</button>
+          </div>
+          <small class="mp-help" id="mpHelp">Pick any name with 3 to 8 letters or numbers. Friends type the same name to join you.</small>
+        </div>
+        <span class="mp-label">If it's a new room, play as:</span>
         <div class="mp-modes">
           <button type="button" class="mode-card on" data-mode="team"><strong>🤝 Team up</strong><span>Share one Noodle-dex. Every noodle a friend finds is yours too.</span></button>
           <button type="button" class="mode-card" data-mode="race"><strong>🏁 Race</strong><span>Everyone collects alone. Race for the same bricks. Most noodles wins.</span></button>
         </div>
-        <button class="big-btn small" id="mpCreate" type="button">Create a room</button>
-        <div class="mp-or">or join a friend</div>
-        <form class="mp-join" id="mpJoinForm">
-          <input id="mpCode" maxlength="4" autocomplete="off" placeholder="CODE" aria-label="Room code">
-          <button class="choice" type="submit">Join</button>
-        </form>
+        <button class="big-btn small" id="mpEnter" type="button">Enter room</button>
         <p class="mp-msg" id="mpMsg"></p>
       </div>
       <p class="touch-how">Drag anywhere to walk · Tap the big button to crunch, drink and swim</p>

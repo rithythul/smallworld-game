@@ -422,16 +422,25 @@ const UI = (() => {
   function players(Net, onLeave, extra = {}) {
     openSheet('Friends', (body) => {
       const team = Net.mode === 'team';
+      const link = location.origin + location.pathname + '?room=' + Net.code;
       body.insertAdjacentHTML('beforeend', `
-        <div class="code-box"><span class="code">${Net.code}</span>
-          <button class="choice" type="button" id="copyCode">Copy invite link</button></div>
-        <p class="sheet-sub">${team ? '🤝 <b>Team up</b>: every noodle anyone finds goes into everyone\'s Noodle-dex. Bricks are shared too.' : '🏁 <b>Race</b>: everyone collects on their own. Bricks are shared, so grab them first! Most noodles wins, then coins.'}</p>
-        <p class="sheet-sub" id="linkLine" style="user-select:text">${location.origin + location.pathname}#${Net.code}</p>`);
+        <div class="code-box"><div><span class="mp-label">Room name</span><span class="code">${Net.code}</span></div>
+          <button class="big-btn small" type="button" id="shareRoom">Share invite 📨</button></div>
+        <p class="sheet-sub">Friends can tap your invite link, or open the game, tap <b>Play with friends</b> and type <b>${Net.code}</b>.</p>
+        <p class="sheet-sub link-line" id="linkLine">${link}</p>
+        <p class="sheet-sub">${team ? '🤝 <b>Team up</b>: every noodle anyone finds goes into everyone\'s Noodle-dex. Bricks are shared too.' : '🏁 <b>Race</b>: everyone collects on their own. Bricks are shared, so grab them first! Most noodles wins, then coins.'}</p>`);
+      $('shareRoom').addEventListener('click', () => {
+        const text = `Come play Noodle Universe with me! Room: ${Net.code}`;
+        const copied = () => { $('shareRoom').textContent = 'Link copied! ✓'; };
+        const copy = () => { try { navigator.clipboard.writeText(text + ' ' + link).then(copied, () => selectText($('linkLine'))); } catch (e) { selectText($('linkLine')); } };
+        if (navigator.share) navigator.share({ title: 'Noodle Universe', text, url: link }).catch(err => { if (err && err.name !== 'AbortError') copy(); });
+        else copy();
+      });
       const list = document.createElement('div'); list.className = 'players';
       const rows = Net.scores.length ? Net.scores : [];
       rows.forEach((p, i) => {
         const me = p.id === Net.me;
-        list.insertAdjacentHTML('beforeend', `<div class="player-row"><span class="rank">${team ? '·' : i + 1}</span><span class="dot" style="background:${p.color}"></span>
+        list.insertAdjacentHTML('beforeend', `<div class="player-row"><span class="rank">${team ? '' : i + 1}</span><span class="dot" style="background:${p.color}"></span>
           <span class="who">${p.name}${me ? ' (you)' : ''}</span><span class="stats">${p.trophies ? `<span class="stat">🏆 ${p.trophies}</span>` : ''}${p.round ? `<span class="stat">🧱 ${p.round}</span>` : ''}<span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></span></div>`);
       });
       body.appendChild(list);
@@ -463,11 +472,6 @@ const UI = (() => {
       body.appendChild(sw);
       body.insertAdjacentHTML('beforeend', '<p class="sheet-sub" style="margin-top:14px">Tap 😊 to send an emote. Everyone sees it over your head.</p><button class="choice alt" type="button" id="leaveRoom">Leave room</button>');
       $('leaveRoom').addEventListener('click', onLeave);
-      $('copyCode').addEventListener('click', () => {
-        const link = location.origin + location.pathname + '#' + Net.code;
-        const done = () => { $('copyCode').textContent = 'Copied!'; };
-        try { navigator.clipboard.writeText(link).then(done, () => { selectText($('linkLine')); }); } catch (e) { selectText($('linkLine')); }
-      });
     });
   }
   function leaderboard(opts) {

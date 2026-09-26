@@ -60,7 +60,8 @@ const Net = (() => {
     on(evt, fn) { (handlers[evt] = handlers[evt] || []).push(fn); },
     async create(name, color, roomMode, uid) { await connect(); send({ t: 'create', name, color, mode: roomMode, uid }); },
     async join(roomCode, name, color, uid) { await connect(); send({ t: 'join', code: roomCode, name, color, uid }); },
-    startRound() { if (code) send({ t: 'round' }); },
+    async enter(roomCode, name, color, roomMode, uid) { await connect(); send({ t: 'enter', code: roomCode, name, color, mode: roomMode, uid }); },
+        startRound() { if (code) send({ t: 'round' }); },
     leave() { send({ t: 'leave' }); code = null; others.clear(); },
     state(p) {
       if (!code) return;

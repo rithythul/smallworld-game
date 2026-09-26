@@ -1857,7 +1857,8 @@ const Game = (() => {
     roomPot = m.pot; roundEnd = m.round ? now + m.round.secs : 0;
     $('roomPill').hidden = false; $('roomPill').classList.remove('off'); $('emoteBtn').hidden = false; $('emoteMenuBtn').hidden = false;
     updateRoomPill();
-    UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>Tell friends to join with code <b>${m.code}</b>`, { life: 5 });
+    UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>${m.created ? `You made room <b>${m.code}</b>! Tap the room button to share it.` : `You joined room <b>${m.code}</b> with ${m.players.length - 1} friend${m.players.length > 2 ? 's' : ''}.`}`, { life: 5 });
+    if (m.created) setTimeout(openFriends, 700);
     save();
   });
   Net.on('arrived', (p) => { Sound.blip(); UI.toast(`<span class="t-small">👋 New player</span>${p.name} joined the room`, { life: 2.6 }); updateRoomPill(); });
@@ -1994,16 +1995,29 @@ const Game = (() => {
     });
     const ready = () => { profile.name = nameIn.value.trim().slice(0, 14) || 'Squareface'; saveProfile(); Sound.init(); pendingStart = startFn; };
     const fail = () => { pendingStart = null; mpMessage('Could not reach the game server. Multiplayer works on the online version (Render) or when you run "npm start". Solo play works everywhere.', true); };
-    $('mpCreate').addEventListener('click', () => { ready(); mpMessage('Creating a room…'); Net.create(profile.name, profile.color, mode, profile.uid).catch(fail); });
-    $('mpJoinForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const code = $('mpCode').value.trim().toUpperCase();
-      if (!/^[A-Z]{4}$/.test(code)) return mpMessage('Room codes are 4 letters, like KFPR.', true);
-      ready(); mpMessage('Joining ' + code + '…'); Net.join(code, profile.name, profile.color, profile.uid).catch(fail);
+    const codeIn = $('mpCode');
+    const cleanCode = (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    codeIn.addEventListener('input', () => { const c = cleanCode(codeIn.value); if (c !== codeIn.value) codeIn.value = c; });
+    $('mpDice').addEventListener('click', () => {
+      const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ', D = '23456789';
+      const pick = (set) => set[Math.floor(Math.random() * set.length)];
+      codeIn.value = pick(D) + pick(D) + pick(L) + pick(L);
+      mpMessage('');
     });
+    const enter = () => {
+      const code = cleanCode(codeIn.value);
+      if (code.length < 3) { codeIn.focus(); return mpMessage('Type a room name with 3 to 8 letters or numbers, like 67NM. Or tap 🎲.', true); }
+      ready(); mpMessage('Entering room ' + code + '…');
+      Net.enter(code, profile.name, profile.color, mode, profile.uid).catch(fail);
+    };
+    $('mpEnter').addEventListener('click', enter);
+    codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); enter(); } });
     // a link like .../#KFPR opens the panel with the code filled in
-    const hash = (location.hash || '').replace('#', '').toUpperCase();
-    if (/^[A-Z]{4}$/.test(hash)) { $('mpPanel').hidden = false; $('mpCode').value = hash; }
+    const fromLink = (new URLSearchParams(location.search).get('room') || (location.hash || '').replace('#', '')).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (fromLink.length >= 3 && fromLink.length <= 8) {
+      $('mpPanel').hidden = false; codeIn.value = fromLink;
+      mpMessage(`You were invited to room ${fromLink}. Type your name and tap Enter room!`);
+    }
     $('roomPill').addEventListener('click', () => { Sound.blip(); openFriends(); });
     $('emoteBtn').addEventListener('click', () => { $('emoteBar').hidden = !$('emoteBar').hidden; });
   $('emoteMenuBtn').addEventListener('click', () => { $('menuPop').hidden = true; $('emoteBar').hidden = false; });
