@@ -13,18 +13,33 @@ python3 -m http.server 8000
 
 **Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk), `N` Noodle-dex, `J` clue journal. On phones, drag anywhere to move and tap the big button.
 
-## What's in this version (Chapters 1 and 2)
+## What's in this version (Chapters 1 to 3)
 
 - Ramen Village, Crunch Meadow, the stream and Spaghetti Woods
 - Crunching with combos, a hydration meter, and drinking from the stream
 - A day/night clock, with the Morning Pool open only from 6 to 8 AM (bubble mini-game + Fresh Start buff)
-- 18 noodles to collect in the Noodle-dex
+- 24 noodles to collect in the Noodle-dex
 - The first part of the Golden Noodle hunt: the Pillow Note, pool tile arrows, the Backwards Willow, and a noodle-letter cipher
 - **Chapter 2, Crunch Canyon:** a boulder wall to crunch open, the Echo Rock, the rhythm drum, the Mirror Pond with backwards writing, the Udon Snail, the Minty Spring and 3-hit boulder bricks
+- **Chapter 3, Soba Peaks:** the mountain fog lifts, a snowy climb, the Face Statue puzzle, an icy mountain lake, the Soba Birds, and afternoon storms with Thunder Udon
 - Daily Fortune Cracker riddles and the Noodle Oracle hint shop
 - Auto-save in the browser
 
 See [GAME_DESIGN.md](GAME_DESIGN.md) for the full design.
+
+## Deploy on Render
+
+This repo includes a `render.yaml`, so Render can set everything up for you.
+
+1. Push this branch to GitHub (or merge it into `main`).
+2. Go to [dashboard.render.com](https://dashboard.render.com), click **New +** then **Blueprint**.
+3. Connect your GitHub account and pick the `squarefaceguy` repository and branch.
+4. Render reads `render.yaml` and creates a free **static site** called `noodle-universe`. Click **Apply**.
+5. After a minute you get a public link like `https://noodle-universe.onrender.com`.
+
+Manual setup works too: **New +** then **Static Site**, pick the repo, leave the build command empty (or `echo ok`), and set the publish directory to `.`.
+
+Every push to the connected branch redeploys the site automatically.
 
 ## Code
 

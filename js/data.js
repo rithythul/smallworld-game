@@ -38,11 +38,24 @@ const NOODLES = [
     desc: 'Its reflection is a different noodle. Nobody knows which one is real.', hint: 'Drink where the water lies.' },
   { id: 'slowudon', name: 'Slow Udon', rarity: 'rare', shape: 'slow', color: '#fff3d6',
     desc: 'The Udon Snail\'s favorite. Takes a week to slurp.', hint: 'Make friends with the Udon Snail.' },
+  // Chapter 3: Soba Peaks
+  { id: 'peaksoba', name: 'Peak Soba', rarity: 'common', shape: 'peak', color: '#9a7b5b',
+    desc: 'Grown on the side of a mountain. Very good at climbing.', hint: 'Crunch bricks on the Soba Peaks.' },
+  { id: 'somen', name: 'Snowflake Somen', rarity: 'common', shape: 'snow', color: '#f4f7fb',
+    desc: 'No two are the same. Melts if you stare too long.', hint: 'Crunch a snowy brick near the summit.' },
+  { id: 'feather', name: 'Feather Fettuccine', rarity: 'rare', shape: 'feather', color: '#f2cf6a',
+    desc: 'Light enough to fly. The Soba Birds use it for nests.', hint: 'Make friends with the Soba Birds.' },
+  { id: 'ice', name: 'Ice Ramen', rarity: 'rare', shape: 'ice', color: '#bfe9ff',
+    desc: 'Frozen in the mountain lake since the first winter.', hint: 'Swim in the mountain lake.' },
+  { id: 'thunder', name: 'Thunder Udon', rarity: 'legendary', shape: 'thunder', color: '#ffd23f',
+    desc: 'Crackles when you slurp it. Your antenna will buzz for days.', hint: 'Waits on a scorched rock during a storm.' },
+  { id: 'smile', name: 'Smiley Somen', rarity: 'secret', shape: 'smile', color: '#9ff3ff',
+    desc: 'Shaped like a face you know very well.', hint: 'Show someone all your faces.' },
 ];
 const TOTAL_IN_UNIVERSE = 48;
 
 // World size in pixels
-const WORLD = { w: 2600, h: 2600 };
+const WORLD = { w: 3600, h: 2600 };
 
 // Stream: centreline polyline, flows north to south
 const STREAM = {
@@ -77,7 +90,24 @@ const BRICK_SPOTS = [
   // Crunch Canyon (index 24+)
   [700, 2080], [760, 2200], [1080, 2020], [1120, 2480], [560, 2500], [1600, 2020], [1760, 2140],
   [2200, 2080], [2420, 2300], [1700, 2450], [2250, 2480], [2020, 2010],
+  // Soba Peaks (index 36+)
+  [2780, 1320], [2920, 1180], [3060, 1520], [3300, 1520], [3450, 1720], [2800, 900], [3380, 860],
+  [2760, 600], [3320, 640], [2920, 420], [3460, 300], [2800, 250],
 ];
+
+// Soba Peaks, east of the woods, behind the mountain fog
+const PEAKS = {
+  left: 2620,
+  bottom: 1860,
+  snowLine: 700,
+  statue: { x: 3150, y: 300 },
+  lake: { x: 3250, y: 1060, w: 280, h: 170 },
+  lakeEntry: { x: 3205, y: 1150 },
+  nest: { x: 2860, y: 1640 },
+  thunderRock: { x: 3440, y: 500 },
+  pines: [[2700, 1100], [2690, 1700], [3000, 1700], [3520, 1300], [3560, 1000], [2700, 350], [3000, 1000], [3500, 1850 - 120], [2900, 700], [3250, 400]],
+  path: [[2600, 1500], [2900, 1440], [3100, 1300], [2950, 1050], [3150, 860], [3000, 650], [3150, 470], [3150, 380]],
+};
 
 // Crunch Canyon, south of the boulder wall
 const CANYON = {
@@ -147,6 +177,20 @@ Object.assign(CLUES, {
     hints: ['The words are backwards, like in a mirror. Read them from right to left.', 'It says: UNDER THE SNAIL\'S HOUSE. A snail\'s house is its shell.', 'The Udon Snail lives in the canyon. It only moves for someone who found the Dawn Noodle (pool, around 6 AM).'],
   },
 });
+
+Object.assign(CLUES, {
+  piece5: {
+    title: 'Map Piece 5', where: 'Under the Udon Snail',
+    text: 'Tall mountains. On the very top, a little statue with a square head.\nIt looks just like you.',
+    hints: ['The mountains are east, past Spaghetti Woods. The fog has lifted.', 'Follow the zigzag path up the Soba Peaks.', 'The statue is at the very top of the peaks, in the snow.'],
+  },
+  statue: {
+    title: 'The Face Statue', where: 'Top of the Soba Peaks',
+    text: 'SHOW ME YOUR FACES, IN THIS ORDER.',
+    hints: ['Each screen is one of your own faces. What makes your face look like that?', 'Crunch something. Then get very thirsty. Then swim. Then sleep.', 'Crunch a brick, wait until the water bar is almost empty, swim in the mountain lake, then sleep next to the statue.'],
+  },
+});
+const STATUE_FACES = ['crunch', 'thirsty', 'cool', 'sleepy'];
 
 // Noodle cipher: each letter A-Z is a noodle glyph (shape x dots x bar)
 function glyphFor(letter) {

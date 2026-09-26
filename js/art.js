@@ -249,7 +249,7 @@ function brickSprite(kind) {
   if (brickSprites[kind]) return brickSprites[kind];
   const c = document.createElement('canvas'); c.width = 64; c.height = 56;
   const x = c.getContext('2d');
-  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8', canyon: '#e59866', boulder: '#c9784a' }[kind];
+  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8', canyon: '#e59866', boulder: '#c9784a', peak: '#a9a39a', snow: '#f4f7fb' }[kind];
   x.translate(32, 30);
   x.fillStyle = 'rgba(52,35,63,0.2)'; x.beginPath(); x.ellipse(0, 18, 26, 7, 0, 0, TAU); x.fill();
   rr(x, -25, -16, 50, 32, 9); fillStroke(x, base, 3);
@@ -479,29 +479,6 @@ function buildGround() {
     g.fillStyle = rnd() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(80,140,60,0.10)';
     circle(g, x, y, r); g.fill();
   }
-  // paths (sandy noodle-crumb paths)
-  const path = (pts, w) => {
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    const draw = () => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); };
-    draw(); g.strokeStyle = '#d9b877'; g.lineWidth = w + 8; g.stroke();
-    draw(); g.strokeStyle = '#f3dca0'; g.lineWidth = w; g.stroke();
-    // noodle crumbs scattered along the path
-    for (let i = 1; i < pts.length; i++) {
-      const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
-      const n = Math.hypot(bx - ax, by - ay) / 14;
-      for (let k = 0; k < n; k++) {
-        const f = rnd();
-        g.fillStyle = 'rgba(201,139,90,0.45)';
-        circle(g, ax + (bx - ax) * f + (rnd() - 0.5) * w * 0.7, ay + (by - ay) * f + (rnd() - 0.5) * w * 0.7, 1.5 + rnd() * 2); g.fill();
-      }
-    }
-  };
-  path([[480, 575], [520, 640], [700, 600], [885, 510]], 44);
-  path([[520, 640], [520, 760]], 40);
-  path([[700, 600], [820, 760], [900, 900]], 36);
-  path([[885, 510], [1000, 600], [1160, 700], [1400, 700], [1560, 640], [1760, 560], [2020, 520], [2200, 460]], 40);
-  path([[900, 900], [860, 1100], [760, 1300]], 34);
-  path([[1000, 1000], [1250, 1265], [1460, 1260], [1700, 1150]], 34);
   // grass tufts
   g.strokeStyle = 'rgba(70,120,50,0.55)'; g.lineWidth = 2; g.lineCap = 'round';
   for (let i = 0; i < 900; i++) {
@@ -535,14 +512,76 @@ function buildGround() {
     const x = rnd() * WORLD.w, y = CANYON.top + rnd() * (WORLD.h - CANYON.top);
     g.fillStyle = rnd() > 0.5 ? 'rgba(120,70,40,0.35)' : 'rgba(255,240,210,0.5)'; circle(g, x, y, 1.5 + rnd() * 2.5); g.fill();
   }
-  path([[760, 1790], [760, 1960], [700, 2150], [900, 2250], [1210, 2245], [1450, 2245], [1700, 2300], [1900, 2300]], 36);
-  path([[700, 2150], [480, 2200], [360, 2380]], 30);
+  // Soba Peaks: slate slopes, soba-brown contour lines, snow on top
+  g.fillStyle = '#b8c2cc';
+  g.beginPath(); g.moveTo(PEAKS.left, 0);
+  for (let y = 0; y <= WORLD.h; y += 40) g.lineTo(PEAKS.left - 20 + Math.sin(y * 0.02) * 14, y);
+  g.lineTo(WORLD.w, WORLD.h); g.lineTo(WORLD.w, 0); g.closePath(); g.fill();
+  const snow = g.createLinearGradient(0, 0, 0, PEAKS.snowLine + 160);
+  snow.addColorStop(0, 'rgba(250,252,255,1)'); snow.addColorStop(0.75, 'rgba(244,247,251,0.9)'); snow.addColorStop(1, 'rgba(244,247,251,0)');
+  g.fillStyle = snow; g.fillRect(PEAKS.left - 30, 0, WORLD.w - PEAKS.left + 30, PEAKS.snowLine + 160);
+  for (let i = 0; i < 90; i++) {
+    const x = PEAKS.left + rnd() * (WORLD.w - PEAKS.left), y = rnd() * PEAKS.bottom, r = 30 + rnd() * 90;
+    g.fillStyle = rnd() > 0.5 ? 'rgba(255,255,255,0.14)' : 'rgba(90,100,120,0.08)'; circle(g, x, y, r); g.fill();
+  }
+  g.lineWidth = 3; g.strokeStyle = 'rgba(154,123,91,0.28)';
+  for (let k = 0; k < 9; k++) {
+    const cx = 3150, cy = 250, r = 180 + k * 150;
+    g.beginPath(); for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.05) { const w = Math.sin(a * 7 + k) * 10; g.lineTo(cx + Math.cos(a) * (r + w) * 1.1, cy + Math.sin(a) * (r + w) * 0.9); } g.stroke();
+  }
+  for (let i = 0; i < 400; i++) {
+    const x = PEAKS.left + rnd() * (WORLD.w - PEAKS.left), y = rnd() * WORLD.h;
+    g.fillStyle = rnd() > 0.5 ? 'rgba(80,90,110,0.3)' : 'rgba(255,255,255,0.6)'; circle(g, x, y, 1.5 + rnd() * 2.5); g.fill();
+  }
+
+  // Roads. Every edge first, then every surface, then crumbs, so junctions merge smoothly.
+  const smooth = (pts) => {
+    let out = pts;
+    for (let it = 0; it < 3; it++) {
+      const n = [out[0]];
+      for (let i = 0; i < out.length - 1; i++) {
+        const [ax, ay] = out[i], [bx, by] = out[i + 1];
+        n.push([ax * 0.75 + bx * 0.25, ay * 0.75 + by * 0.25], [ax * 0.25 + bx * 0.75, ay * 0.25 + by * 0.75]);
+      }
+      n.push(out[out.length - 1]);
+      out = n;
+    }
+    return out;
+  };
+  const ROADS = [
+    [[[480, 575], [520, 640], [700, 600], [885, 510]], 44],
+    [[[520, 640], [520, 760]], 40],
+    [[[700, 600], [820, 760], [900, 900]], 36],
+    [[[885, 510], [1000, 600], [1160, 700], [1400, 700], [1560, 640], [1760, 560], [2020, 520], [2200, 460]], 40],
+    [[[900, 900], [860, 1100], [760, 1300]], 34],
+    [[[1000, 1000], [1250, 1265], [1460, 1260], [1700, 1150]], 34],
+    [[[1700, 1150], [1980, 1200], [2200, 1300], [2400, 1420], ...PEAKS.path], 36],
+    [[[760, 1300], [760, 1790], [760, 1960], [700, 2150], [900, 2250], [1210, 2245], [1450, 2245], [1700, 2300], [1900, 2300]], 36],
+    [[[700, 2150], [480, 2200], [360, 2380]], 30],
+  ].map(([pts, w]) => [smooth(pts), w]);
+  const trace = (pts) => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); };
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  ROADS.forEach(([pts, w]) => { trace(pts); g.strokeStyle = '#d9b877'; g.lineWidth = w + 8; g.stroke(); });
+  ROADS.forEach(([pts, w]) => { trace(pts); g.strokeStyle = '#f3dca0'; g.lineWidth = w; g.stroke(); });
+  ROADS.forEach(([pts, w]) => { trace(pts); g.strokeStyle = 'rgba(255,248,225,0.55)'; g.lineWidth = w * 0.35; g.stroke(); });
+  g.fillStyle = 'rgba(201,139,90,0.45)';
+  ROADS.forEach(([pts, w]) => {
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+      const n = Math.hypot(bx - ax, by - ay) / 14;
+      for (let k = 0; k < n; k++) {
+        const f = rnd();
+        circle(g, ax + (bx - ax) * f + (rnd() - 0.5) * w * 0.7, ay + (by - ay) * f + (rnd() - 0.5) * w * 0.7, 1.5 + rnd() * 2); g.fill();
+      }
+    }
+  });
   // region lettering painted on the ground
   g.font = '44px "Bagel Fat One", sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(52,35,63,0.14)';
   g.fillText('Ramen Village', 700, 270);
   g.fillText('Spaghetti Woods', 1960, 120);
   g.fillText('Crunch Meadow', 780, 1700);
   g.fillStyle = 'rgba(110,55,30,0.16)'; g.fillText('Crunch Canyon', 1900, 1990);
+  g.fillStyle = 'rgba(60,70,90,0.16)'; g.fillText('Soba Peaks', 3150, 1600);
   // world edge: hedges of noodles
   g.strokeStyle = '#6fa54a'; g.lineWidth = 40;
   g.strokeRect(0, 0, WORLD.w, WORLD.h);
@@ -642,6 +681,32 @@ function drawNoodleIcon(ctx, n, size, locked = false) {
       noodleStroke(ctx, () => { ctx.beginPath(); for (let a = 0; a < TAU * 2; a += 0.15) { const r = 2 + a * 2.2; ctx.lineTo(34 + Math.cos(a) * r, 30 + Math.sin(a) * r); } }, c, 7);
       ctx.fillStyle = INK; circle(ctx, 18, 46, 2.5); ctx.fill(); circle(ctx, 24, 46, 2.5); ctx.fill();
       break;
+    case 'peak':
+      ctx.beginPath(); ctx.moveTo(10, 50); ctx.lineTo(28, 16); ctx.lineTo(38, 32); ctx.lineTo(46, 22); ctx.lineTo(56, 50); ctx.closePath(); fillStroke(ctx, '#b8c2cc', 2.5);
+      ctx.beginPath(); ctx.moveTo(22, 28); ctx.lineTo(28, 16); ctx.lineTo(33, 25); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+      [40, 46].forEach((y, i) => noodleStroke(ctx, wave(y, 2.5, i), c, 3.5));
+      break;
+    case 'snow':
+      noodleStroke(ctx, wave(40, 4, 0), c, 4.5);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+      for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3; ctx.beginPath(); ctx.moveTo(32 - Math.cos(a) * 12, 20 - Math.sin(a) * 12); ctx.lineTo(32 + Math.cos(a) * 12, 20 + Math.sin(a) * 12); ctx.stroke(); }
+      break;
+    case 'feather':
+      ctx.beginPath(); ctx.moveTo(16, 50); ctx.quadraticCurveTo(20, 18, 48, 12); ctx.quadraticCurveTo(46, 40, 16, 50); ctx.closePath(); fillStroke(ctx, c, 2.5);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14, 52); ctx.quadraticCurveTo(28, 34, 46, 14); ctx.stroke();
+      break;
+    case 'thunder':
+      noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(38, 10); ctx.lineTo(24, 32); ctx.lineTo(38, 32); ctx.lineTo(26, 54); }, c, 7);
+      break;
+    case 'ice':
+      rr(ctx, 16, 16, 32, 32, 6); fillStroke(ctx, 'rgba(191,233,255,0.8)', 2.5);
+      [26, 34, 42].forEach((y, i) => noodleStroke(ctx, () => { ctx.beginPath(); for (let x = 20; x <= 44; x += 2) ctx.lineTo(x, y + Math.sin(x * 0.4 + i) * 2); }, '#fff3d6', 2.5));
+      ctx.fillStyle = '#fff'; ctx.fillRect(20, 19, 8, 3);
+      break;
+    case 'smile':
+      noodleStroke(ctx, () => { ctx.beginPath(); ctx.arc(32, 32, 16, 0.2 * Math.PI, 0.8 * Math.PI); }, c, 5);
+      noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(24, 22); ctx.lineTo(24, 28); ctx.moveTo(40, 22); ctx.lineTo(40, 28); }, c, 5);
+      break;
     case 'updown':
       for (let i = 0; i < 4; i++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(20 + i * 8, 50); ctx.bezierCurveTo(16 + i * 8, 38, 26 + i * 8, 28, 20 + i * 8, 14); }, c, 4);
       ctx.fillStyle = '#e4572e'; ctx.beginPath(); ctx.moveTo(50, 22); ctx.lineTo(56, 30); ctx.lineTo(44, 30); ctx.closePath(); ctx.fill();
@@ -717,6 +782,13 @@ function drawMapPiece(ctx, n, size) {
     rr(ctx, 100, 10, 20, 18, 4); ctx.stroke();
     ctx.fillStyle = INK; circle(ctx, 106, 18, 1.8); ctx.fill(); circle(ctx, 114, 18, 1.8); ctx.fill();
     ctx.font = '800 13px "Baloo 2", sans-serif'; ctx.fillText('Soba Peaks', 30, 150);
+  } else if (n === 6) {
+    // a dark cave full of glowing noodles
+    ctx.fillStyle = '#34233f';
+    ctx.beginPath(); ctx.moveTo(24, 140); ctx.quadraticCurveTo(30, 30, 80, 28); ctx.quadraticCurveTo(130, 30, 136, 140); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#9ff3ff';
+    [[60, 90], [92, 72], [80, 112], [108, 104], [54, 124]].forEach(([x, y]) => { circle(ctx, x, y, 4); ctx.fill(); });
+    ctx.fillStyle = INK; ctx.font = '800 13px "Baloo 2", sans-serif'; ctx.fillText('Glass Noodle Caves', 24, 156);
   }
   ctx.restore();
 }
@@ -861,4 +933,114 @@ function drawReflection(ctx, t, alpha, words) {
     drawHead(ctx, 0, 0, 'happy', t, {});
   }
   ctx.restore();
+}
+
+/* ---------------- Soba Peaks ---------------- */
+function drawPine(ctx, x, y, t, snowy) {
+  ctx.fillStyle = 'rgba(52,35,63,0.18)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 34, 10, 0, 0, TAU); ctx.fill();
+  rr(ctx, x - 6, y - 26, 12, 28, 3); fillStroke(ctx, '#8a5a36', 2.5);
+  for (let k = 0; k < 3; k++) {
+    const w = 42 - k * 10, top = y - 40 - k * 30;
+    ctx.beginPath(); ctx.moveTo(x - w, top + 30); ctx.quadraticCurveTo(x, top + 38, x + w, top + 30); ctx.lineTo(x, top - 18); ctx.closePath();
+    fillStroke(ctx, '#5f9a6b', 3);
+    ctx.strokeStyle = '#9a7b5b'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); for (let i = -w + 8; i <= w - 8; i += 3) ctx.lineTo(x + i, top + 26 + Math.sin(i * 0.5 + t * 2) * 2); ctx.stroke();
+    if (snowy) { ctx.beginPath(); ctx.moveTo(x - 9, top - 4); ctx.lineTo(x, top - 18); ctx.lineTo(x + 9, top - 4); ctx.closePath(); fillStroke(ctx, '#fff', 2); }
+  }
+}
+
+function drawSobaBird(ctx, x, y, t, s = 1, flap = true) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  const f = flap ? Math.sin(t * 12) * 0.6 : 0.2;
+  ctx.beginPath(); ctx.ellipse(0, 0, 16, 11, 0, 0, TAU); fillStroke(ctx, '#9a7b5b', 2.5);
+  ctx.save(); ctx.rotate(-f); ctx.beginPath(); ctx.ellipse(-4, -6, 12, 5, -0.4, 0, TAU); fillStroke(ctx, '#c9a47a', 2.2); ctx.restore();
+  circle(ctx, 12, -6, 8); fillStroke(ctx, '#9a7b5b', 2.5);
+  ctx.fillStyle = INK; circle(ctx, 14, -8, 1.8); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(19, -6); ctx.lineTo(26, -4); ctx.lineTo(19, -2); ctx.closePath(); fillStroke(ctx, '#f4b942', 1.8);
+  ctx.strokeStyle = '#f7dc7a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-14, i * 3 - 2); ctx.quadraticCurveTo(-22, i * 3 - 6 + Math.sin(t * 6 + i) * 2, -30, i * 4); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawNest(ctx, x, y, t) {
+  ctx.fillStyle = 'rgba(52,35,63,0.18)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 44, 12, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y - 8, 40, 16, 0, 0, TAU); fillStroke(ctx, '#c9a47a', 3);
+  ctx.strokeStyle = '#8a5a36'; ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(x - 36 + i * 12, y - 14); ctx.quadraticCurveTo(x - 30 + i * 12, y, x - 24 + i * 12, y - 16); ctx.stroke(); }
+  drawSobaBird(ctx, x - 6, y - 26 + Math.sin(t * 3) * 1.5, t, 1.1, false);
+}
+
+function drawLake(ctx, L, t) {
+  const { x, y, w, h } = L;
+  rr(ctx, x - 16, y - 14, w + 32, h + 28, 60); fillStroke(ctx, '#e9eef4', 3);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#d9f4ff'); g.addColorStop(0.5, '#8fd3ef'); g.addColorStop(1, '#4fa9cf');
+  rr(ctx, x, y, w, h, 50); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.save(); rr(ctx, x, y, w, h, 50); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  [[x + 40, y + 30, 36, 14], [x + w - 70, y + h - 40, 44, 16]].forEach(([ix, iy, rx, ry]) => { ctx.beginPath(); ctx.ellipse(ix, iy, rx, ry, 0.2, 0, TAU); ctx.fill(); });
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2.5;
+  for (let i = 0; i < 6; i++) { const sx = x + ((i * 83 + t * 12) % w), sy = y + 30 + ((i * 41) % (h - 50)); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + 6, sy - 3, sx + 12, sy); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawStatue(ctx, x, y, t, lit, open) {
+  ctx.fillStyle = 'rgba(52,35,63,0.22)'; ctx.beginPath(); ctx.ellipse(x, y + 6, 70, 16, 0, 0, TAU); ctx.fill();
+  // pedestal with four face screens
+  rr(ctx, x - 62, y - 70, 124, 76, 10); fillStroke(ctx, '#a9a39a', 3);
+  STATUE_FACES.forEach((mood, i) => {
+    const sx = x - 55 + i * 28, sy = y - 58;
+    rr(ctx, sx, sy, 26, 24, 5); fillStroke(ctx, '#1f1a2e', 2);
+    ctx.save(); rr(ctx, sx, sy, 26, 24, 5); ctx.clip();
+    ctx.globalAlpha = i < lit ? 1 : 0.28;
+    drawFace(ctx, mood, t, sx + 13, sy + 12, 0.48);
+    ctx.restore();
+    if (i < lit) { ctx.fillStyle = 'rgba(159,243,255,0.25)'; circle(ctx, sx + 13, sy + 12, 18); ctx.fill(); }
+  });
+  ctx.fillStyle = '#6e685f'; ctx.font = '800 9px "Baloo 2", sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SHOW ME YOUR FACES', x, y - 18);
+  ctx.fillText('IN THIS ORDER', x, y - 8);
+  // stone body and square head
+  if (open) {
+    ctx.fillStyle = '#34233f'; rr(ctx, x - 20, y - 66, 40, 30, 6); ctx.fill();
+    ctx.fillStyle = 'rgba(255,210,63,0.5)'; circle(ctx, x, y - 52, 24 + Math.sin(t * 3) * 4); ctx.fill();
+  }
+  rr(ctx, x - 20, y - 104, 40, 36, 10); fillStroke(ctx, '#bdb6ab', 3);
+  rr(ctx, x - 36, y - 156, 72, 58, 14); fillStroke(ctx, '#cfc8bc', 3);
+  rr(ctx, x - 28, y - 148, 56, 42, 8); fillStroke(ctx, lit >= 4 ? '#1f1a2e' : '#8d867c', 2.5);
+  if (lit >= 4) drawFace(ctx, 'wow', t, x, y - 127, 1.1);
+  else { ctx.fillStyle = '#6e685f'; circle(ctx, x - 10, y - 130, 3); ctx.fill(); circle(ctx, x + 10, y - 130, 3); ctx.fill(); ctx.strokeStyle = '#6e685f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 8, y - 118); ctx.lineTo(x + 8, y - 118); ctx.stroke(); }
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 8, y - 156); ctx.lineTo(x + 12, y - 176); ctx.stroke();
+  circle(ctx, x + 12, y - 180, 6); fillStroke(ctx, lit >= 4 ? '#ffd23f' : '#a9a39a', 2.5);
+  // snow cap
+  ctx.beginPath(); ctx.moveTo(x - 36, y - 146); ctx.quadraticCurveTo(x - 30, y - 162, x, y - 160); ctx.quadraticCurveTo(x + 30, y - 162, x + 36, y - 146); ctx.quadraticCurveTo(x, y - 152, x - 36, y - 146); ctx.closePath(); fillStroke(ctx, '#fff', 2);
+}
+
+function drawThunderRock(ctx, x, y, t, storm, hasNoodle) {
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 40, 11, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - 36, y); ctx.lineTo(x - 26, y - 46); ctx.lineTo(x + 4, y - 60); ctx.lineTo(x + 32, y - 40); ctx.lineTo(x + 38, y); ctx.closePath(); fillStroke(ctx, '#6e685f', 3);
+  ctx.strokeStyle = '#34233f'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x - 4, y - 56); ctx.lineTo(x + 6, y - 38); ctx.lineTo(x - 4, y - 30); ctx.lineTo(x + 8, y - 12); ctx.stroke();
+  if (storm && hasNoodle) {
+    ctx.fillStyle = `rgba(255,210,63,${0.35 + Math.sin(t * 8) * 0.15})`; circle(ctx, x, y - 70, 26); ctx.fill();
+    noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(x + 6, y - 90); ctx.lineTo(x - 6, y - 72); ctx.lineTo(x + 6, y - 72); ctx.lineTo(x - 4, y - 52); }, '#ffd23f', 5);
+  }
+}
+
+function drawFog(ctx, t, top, bottom) {
+  for (let y = top; y < bottom; y += 46) {
+    for (let k = 0; k < 3; k++) {
+      const x = PEAKS.left - 30 + k * 40 + Math.sin(t * 0.6 + y * 0.03 + k) * 16;
+      ctx.fillStyle = `rgba(255,255,255,${0.8 - k * 0.2})`;
+      circle(ctx, x, y + Math.cos(t * 0.5 + k + y) * 6, 44 - k * 6); ctx.fill();
+    }
+  }
+}
+
+function drawRidge(ctx, y0, y1) {
+  for (let y = y0; y < y1; y += 60) {
+    const x = PEAKS.left + ((y * 7) % 13) - 6;
+    ctx.beginPath(); ctx.moveTo(x - 40, y + 30); ctx.quadraticCurveTo(x - 44, y - 30, x, y - 36); ctx.quadraticCurveTo(x + 44, y - 30, x + 40, y + 30); ctx.closePath();
+    fillStroke(ctx, '#8d8579', 3);
+  }
 }

@@ -70,11 +70,12 @@ const UI = (() => {
       c.strokeStyle = '#c7b48a'; c.lineWidth = 3;
       for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(-24, -24 + i * 12); c.lineTo(24 - (i === 4 ? 20 : 0), -24 + i * 12); c.stroke(); }
     } else if (kind === 'snail') drawSnail(c, 52, 96, t, 1, 1.05);
+    else if (kind === 'bird') drawSobaBird(c, 56, 66, t, 2.4, false);
     else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
     c.restore();
   }
 
-  const names = { snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
+  const names = { bird: 'Soba Bird', snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
 
   function say(who, lines, { choices = null, onDone = null } = {}) {
     dlg = { who, lines: Array.isArray(lines) ? lines : [lines], i: 0, choices, onDone };
@@ -216,6 +217,19 @@ const UI = (() => {
                 });
               });
             }
+          } else if (id === 'statue') {
+            const row = document.createElement('div'); row.className = 'faces';
+            STATUE_FACES.forEach((mood, i) => {
+              const cv = document.createElement('canvas'); cv.width = 112; cv.height = 96;
+              const x = cv.getContext('2d'); x.scale(2, 2);
+              rr(x, 3, 3, 50, 42, 8); fillStroke(x, '#1f1a2e', 3);
+              x.globalAlpha = solved || i < G.statueStep ? 1 : 0.35;
+              drawFace(x, mood, 0, 28, 24, 0.9);
+              row.appendChild(cv);
+            });
+            el.insertAdjacentHTML('beforeend', `<blockquote>"${c.text}"</blockquote>`);
+            el.appendChild(row);
+            el.insertAdjacentHTML('beforeend', solved ? '<span class="solved-tag">✓ Solved</span>' : `<p class="empty">Faces shown so far: ${G.statueStep} of 4. They have to happen in order.</p>`);
           } else if (id === 'mirror') {
             const cv = document.createElement('canvas'); cv.width = 560; cv.height = 150; cv.className = 'reflection';
             const x = cv.getContext('2d');

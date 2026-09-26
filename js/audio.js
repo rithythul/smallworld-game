@@ -71,6 +71,7 @@ const Sound = (() => {
       tone(110, 0.2, { type: 'triangle', vol: 0.2 * vol, slide: -40, delay });
     },
     drum(n = 0) { tone(90 + n * 8, 0.35, { type: 'sine', vol: 0.5, slide: -40 }); noise(0.08, { freq: 300, q: 0.7, vol: 0.3, type: 'lowpass' }); },
+    thunder() { noise(1.4, { freq: 180, q: 0.4, vol: 0.7, type: 'lowpass' }); noise(0.5, { freq: 900, q: 0.6, vol: 0.25, delay: 0.05 }); },
     rooster() { [660, 880, 990, 880].forEach((f, i) => tone(f, 0.18, { type: 'sawtooth', vol: 0.05, delay: i * 0.14 })); },
   };
 })();
