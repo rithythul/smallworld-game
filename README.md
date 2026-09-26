@@ -14,7 +14,7 @@ npm start
 
 Opening `index.html` without the server still works for solo play; multiplayer, the leaderboard and online saves need the server.
 
-**Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk, shake), F or Shift to hop and fly, `N` Noodle-dex, `J` journal.
+**Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk, shake), F or Shift to hop and fly, `N` Noodle-dex, `J` journal, `M` map.
 
 **Phones and tablets:** drag anywhere to walk (the joystick follows your thumb), tap the big button to act and hold it to drink, HOP/FLY button to jump and fly. Portrait, landscape and tablets all have their own layout. Use the ⋯ menu for full screen, or **Add to Home Screen** to play it like an app.
 
@@ -25,7 +25,12 @@ Opening `index.html` without the server still works for solo play; multiplayer, 
 - **Physics and skills:** gravity and hopping; deep water needs swimming lessons (Coach Kombu), flying needs flight lessons (Captain Penne). After 3 lessons each skill keeps levelling forever.
 - **Food:** 10 kinds of trees; shake them for food, eat it, or cook 6 recipes with Grandma for special powers.
 - **Endless play:** 25 noodles, 3 new daily challenges every morning, stars and an endless Noodle Level, big challenges, space daydreams with Guide Stars and a space suit.
-- **Multiplayer:** rooms with a 4-letter code, up to 8 players per room. *Team up* shares the Noodle-dex and fills a Team Pot that keeps growing; *Race* runs 2-minute Crunch Races for trophies. Players pick unique colors, see each other's faces and send emotes.
+- **Multiplayer:** type any room name (3 to 8 letters or numbers, like `67NM`) and tap Enter room. If it's new, you create it; friends type the same name or tap your shared invite link. Up to 8 players per room. *Team up* shares the Noodle-dex and fills a Team Pot that keeps growing; *Race* runs 2-minute Crunch Races for trophies. Players pick unique colors, see each other's faces and send emotes.
+- **Grandma's shop:** spend coins on hats (friends see them), rocket fuel, Fortune Crackers and broth; sell the food you pick for coins.
+- **Rewards:** every Noodle Level gives something (coins, hats, sparkle trails, a golden antenna, a crown), forever. 1 in 40 finds turns a noodle golden (shiny).
+- **World map:** press M or tap 🗺️. Explored areas reveal themselves, landmarks appear once found, the goal is starred, and you can drop a pin to follow. Desktop has a minimap.
+- **The Udon Snail's trip:** after Chapter 2 the snail walks to the Soba Peaks over 7 real days and brings a gift.
+- **Healthy play for kids:** a 5-minute break after 20 minutes of play, 60 minutes of play per day, and grown-up settings behind a math question. "Going to eat" pauses the game; in team rooms friends see you are away and earn you thank-you coins.
 - **Leaderboard:** coins, noodles, stars and trophies across everyone playing online.
 - **Online saves:** save with a name and a 4-digit PIN, load it on any device. There is no recovery: forget the PIN and you start a new game.
 
@@ -57,4 +62,5 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 | `js/game.js` | Game loop, movement, physics, rules, story, hints |
 | `js/net.js` | Multiplayer connection |
 | `js/space.js` | Space daydreams |
+| `js/care.js` | Breaks, daily play time and grown-up settings |
 | `server.js` | Node server: static files, rooms, leaderboard, online saves |
