@@ -125,7 +125,8 @@ function drawPlayer(ctx, p, t) {
       ctx.beginPath(); ctx.ellipse(x, y, 26 + k * 22, 10 + k * 8, 0, 0, TAU); ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color });
+    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna });
+    if (p.hat) drawHat(ctx, x, y - 37 + Math.sin(t * 4) * 2, p.hat, t, false);
     ctx.fillStyle = 'rgba(95,208,230,0.75)';
     ctx.beginPath(); ctx.ellipse(x, y + 2, 30, 9, 0, 0, Math.PI); ctx.fill();
     return;
@@ -161,7 +162,8 @@ function drawPlayer(ctx, p, t) {
   ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - 14, y - 26 - bob); ctx.lineTo(x - 19, y - 16 - bob + arm); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob + (air ? arm : -arm)); ctx.stroke();
-  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color });
+  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna });
+  if (p.hat) drawHat(ctx, x, y - 77 - bob, p.hat, t, p.z > 2);
   if (p.suit) {
     // space helmet: a glass bubble over the square head
     circle(ctx, x, y - 58 - bob, 36); ctx.fillStyle = 'rgba(191,233,255,0.22)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
@@ -632,12 +634,13 @@ function buildGround() {
 
 /* ---------------- Icons ---------------- */
 const RARITY_BG = { common: '#fff3d6', rare: '#d6f1ff', legendary: '#ecdcff', secret: '#fff1a8' };
-function drawNoodleIcon(ctx, n, size, locked = false) {
+function drawNoodleIcon(ctx, n, size, locked = false, shiny = false) {
   ctx.save();
   ctx.clearRect(0, 0, size, size);
   const s = size / 64;
   ctx.scale(s, s);
-  circle(ctx, 32, 32, 29); fillStroke(ctx, locked ? '#e7dcc6' : RARITY_BG[n.rarity], 3);
+  if (shiny) { circle(ctx, 32, 32, 31); const gg = ctx.createLinearGradient(0, 0, 64, 64); gg.addColorStop(0, '#fff1a8'); gg.addColorStop(0.5, '#ffd23f'); gg.addColorStop(1, '#f4a100'); ctx.fillStyle = gg; ctx.fill(); }
+  circle(ctx, 32, 32, shiny ? 25 : 29); fillStroke(ctx, locked ? '#e7dcc6' : RARITY_BG[n.rarity], 3);
   if (locked) {
     ctx.fillStyle = 'rgba(52,35,63,0.35)'; ctx.font = '800 30px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('?', 32, 35); ctx.restore(); return;
@@ -1282,4 +1285,59 @@ function drawGuideArrow(ctx, x, y, angle, t, label) {
     const lx = x + Math.cos(angle) * (r + 30), ly = y + Math.sin(angle) * (r + 30) * 0.6;
     ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText(label, lx, ly); ctx.fillStyle = '#fff8e8'; ctx.fillText(label, lx, ly);
   }
+}
+
+/* ---------------- Hats ---------------- */
+// x, y = the top middle of the square head
+function drawHat(ctx, x, y, id, t, flying) {
+  ctx.save(); ctx.translate(x, y);
+  switch (id) {
+    case 'chef':
+      rr(ctx, -14, -12, 28, 12, 3); fillStroke(ctx, '#ffffff', 2.5);
+      [[-10, -18, 9], [0, -24, 11], [10, -18, 9]].forEach(([cx, cy, r]) => { circle(ctx, cx, cy, r); fillStroke(ctx, '#ffffff', 2.5); });
+      ctx.fillStyle = '#fff'; ctx.fillRect(-13, -16, 26, 8);
+      break;
+    case 'beanie':
+      ctx.beginPath(); ctx.arc(0, 0, 18, Math.PI, 0); ctx.closePath(); fillStroke(ctx, '#f7dc7a', 2.5);
+      ctx.strokeStyle = '#e0b04a'; ctx.lineWidth = 2; for (let i = -12; i <= 12; i += 6) { ctx.beginPath(); ctx.moveTo(i, -2); ctx.quadraticCurveTo(i + 3, -9, i, -15); ctx.stroke(); }
+      rr(ctx, -19, -4, 38, 7, 3); fillStroke(ctx, '#e4572e', 2);
+      circle(ctx, 0, -20, 5); fillStroke(ctx, '#e4572e', 2);
+      break;
+    case 'party':
+      ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(0, -34); ctx.lineTo(12, 0); ctx.closePath(); fillStroke(ctx, '#b98cff', 2.5);
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, -10); ctx.lineTo(6, -16); ctx.moveTo(-4, -22); ctx.lineTo(3, -26); ctx.stroke();
+      circle(ctx, 0, -36, 4.5); fillStroke(ctx, '#ff8fb1', 2);
+      break;
+    case 'bowl':
+      ctx.beginPath(); ctx.moveTo(-18, 0); ctx.quadraticCurveTo(-18, -20, 0, -20); ctx.quadraticCurveTo(18, -20, 18, 0); ctx.closePath(); fillStroke(ctx, '#e4572e', 2.5);
+      ctx.strokeStyle = '#fff3d6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, -9); ctx.lineTo(12, -9); ctx.stroke();
+      ctx.strokeStyle = '#a0673b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-6, -18); ctx.lineTo(10, -34); ctx.moveTo(-1, -19); ctx.lineTo(15, -32); ctx.stroke();
+      break;
+    case 'propeller': {
+      ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI, 0); ctx.closePath(); fillStroke(ctx, '#2fa4b5', 2.5);
+      ctx.fillStyle = '#e4572e'; ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI, Math.PI * 1.5); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(0, -22); ctx.stroke();
+      const spin = t * (flying ? 30 : 4), w = Math.abs(Math.cos(spin)) * 16 + 3;
+      ctx.beginPath(); ctx.ellipse(0, -23, w, 3.5, 0, 0, TAU); fillStroke(ctx, '#ffd23f', 2);
+      break;
+    }
+    case 'crown':
+      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-16, -16); ctx.lineTo(-8, -8); ctx.lineTo(0, -20); ctx.lineTo(8, -8); ctx.lineTo(16, -16); ctx.lineTo(16, 0); ctx.closePath();
+      fillStroke(ctx, '#ffd23f', 2.5);
+      [[-16, -16], [0, -20], [16, -16]].forEach(([cx, cy]) => { circle(ctx, cx, cy, 2.8); fillStroke(ctx, '#e4572e', 1.5); });
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-12, -6, 6, 3);
+      break;
+    case 'flower':
+      ctx.strokeStyle = '#6fa54a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-20, -2); ctx.quadraticCurveTo(0, -8, 20, -2); ctx.stroke();
+      [[-16, -3, '#ffb3c8'], [-6, -6, '#fff8e8'], [5, -6, '#ffd23f'], [15, -3, '#b98cff']].forEach(([cx, cy, col]) => {
+        for (let k = 0; k < 5; k++) { ctx.fillStyle = col; circle(ctx, cx + Math.cos(k * 1.26) * 3.5, cy + Math.sin(k * 1.26) * 3.5, 3); ctx.fill(); }
+        ctx.fillStyle = '#f4b942'; circle(ctx, cx, cy, 2); ctx.fill();
+      });
+      break;
+    case 'shell':
+      circle(ctx, 0, -12, 14); fillStroke(ctx, '#ffd23f', 2.5);
+      noodleStroke(ctx, () => { ctx.beginPath(); for (let a = 0; a < TAU * 2; a += 0.2) { const r = 1.5 + a * 1.7; ctx.lineTo(Math.cos(a) * r, -12 + Math.sin(a) * r); } }, '#fff1a8', 3);
+      break;
+  }
+  ctx.restore();
 }

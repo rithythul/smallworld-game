@@ -536,3 +536,9 @@ body.touch #roomPill { min-height: 38px; }
 .dice { font-size: 20px; padding: 4px 12px 2px; }
 .mp-join input { letter-spacing: .2em; }
 .player-row .rank:empty { display: none; }
+.dex-card.shiny { border-color: #d99a00; background: linear-gradient(160deg, #fffbe6, #fff1a8); box-shadow: 0 0 0 3px #ffd23f inset; }
+.shop-card canvas { width: 96px; height: 96px; }
+.shop-card .choice { margin-top: auto; width: 100%; }
+.shop-card .answer-row { width: 100%; margin-top: auto; }
+.goodie-icon { font-size: 44px; line-height: 1.2; align-self: center; }
+.shop-coins b { color: var(--ink); }

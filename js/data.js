@@ -299,3 +299,36 @@ const SIGNPOSTS = [
   [2390, 1520, [['Soba Peaks', 0], ['Woods', 180]]],
   [1195, 1000, [['Mirror Pond', 0]]],
 ];
+
+// ---------- Grandma's shop, level rewards, shiny noodles ----------
+const HATS = {
+  chef: { name: 'Chef Hat', price: 20, desc: 'Puffy and proud. Grandma approves.' },
+  beanie: { name: 'Noodle Beanie', price: 25, desc: 'Knitted from extra-long spaghetti.' },
+  party: { name: 'Party Hat', price: 30, desc: 'Every day is a noodle party.' },
+  bowl: { name: 'Ramen Bowl Hat', price: 35, desc: 'Comes with chopsticks. Do not eat.' },
+  propeller: { name: 'Propeller Cap', price: 45, desc: 'Spins when you fly. Does not help. Looks great.' },
+  crown: { name: 'Golden Crown', price: 80, desc: 'For the ruler of the Noodle Universe.' },
+  flower: { name: 'Flower Crown', price: 0, desc: 'A Noodle Level 3 reward.' },
+  shell: { name: 'Golden Snail Shell', price: 0, desc: 'A gift from the Udon Snail after its long walk.' },
+};
+const SHOP_GOODIES = [
+  { id: 'rocket', name: 'Rocket fuel', price: 15, desc: 'Launch the Noodle Rocket again today.' },
+  { id: 'fortune', name: 'Fortune Cracker', price: 10, desc: 'A fresh riddle with treasure, hidden somewhere today.' },
+  { id: 'broth', name: 'Bottle of broth', price: 5, desc: 'Fills your water all the way up.' },
+];
+// What each Noodle Level gives you. After level 10: 10 coins per level, forever.
+const LEVEL_REWARDS = {
+  2: { coins: 20, text: '20 coins' },
+  3: { hat: 'flower', text: 'the Flower Crown hat' },
+  4: { flag: 'trail', text: 'a sparkle trail when you walk' },
+  5: { coins: 50, text: '50 coins' },
+  6: { flag: 'goldAntenna', text: 'a golden antenna' },
+  7: { hat: 'party', text: 'the Party Hat' },
+  8: { coins: 100, text: '100 coins' },
+  9: { flag: 'rainbow', text: 'a rainbow sparkle trail' },
+  10: { hat: 'crown', text: 'the Golden Crown' },
+};
+const levelReward = (L) => LEVEL_REWARDS[L] || { coins: 10 * L, text: `${10 * L} coins` };
+const SHINY_CHANCE = 1 / 40;
+// What Grandma pays for food you collected (coins each)
+const FOOD_PRICES = { egg: 3, chili: 2, shiitake: 4, shoot: 3, naruto: 4, corn: 2, scallion: 2, nori: 3, dumpling: 5 };

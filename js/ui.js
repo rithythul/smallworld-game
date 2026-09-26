@@ -41,13 +41,13 @@ const UI = (() => {
     const el = $('goal'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
-  function toast(html, { noodle = null, food = null, big = false, life = 2.6 } = {}) {
+  function toast(html, { noodle = null, food = null, shiny = false, big = false, life = 2.6 } = {}) {
     const el = document.createElement('div');
     el.className = 'toast' + (big ? ' big' : '');
     el.style.setProperty('--life', life + 's');
     if (noodle) {
       const c = document.createElement('canvas'); c.width = 128; c.height = 128;
-      drawNoodleIcon(c.getContext('2d'), noodle, 128);
+      drawNoodleIcon(c.getContext('2d'), noodle, 128, false, shiny);
       el.appendChild(c);
     }
     if (food) {
@@ -228,19 +228,22 @@ const UI = (() => {
     openSheet('Noodle-dex', (body) => {
       dexTabs(body, G, tab);
       const n = G.found.length;
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${n} of ${NOODLES.length} noodles found in this part of the universe · ${TOTAL_IN_UNIVERSE} in total, more regions coming</p><div class="progress"><div style="width:${(n / NOODLES.length) * 100}%"></div></div>`);
+      const shinyN = Object.keys(G.shiny || {}).length;
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${n} of ${NOODLES.length} noodles found · ✨ ${shinyN} shiny (1 in 40 finds turns golden) · ${TOTAL_IN_UNIVERSE} in the whole universe, more regions coming</p><div class="progress"><div style="width:${(n / NOODLES.length) * 100}%"></div></div>`);
       const grid = document.createElement('div'); grid.className = 'dex-grid';
       NOODLES.forEach((nd, i) => {
         const got = G.found.includes(nd.id);
         const card = document.createElement('div');
         card.className = 'dex-card' + (got ? '' : ' locked');
         const c = document.createElement('canvas'); c.width = 144; c.height = 144;
-        drawNoodleIcon(c.getContext('2d'), nd, 144, !got);
+        const shiny = got && (G.shiny || {})[nd.id];
+        if (shiny) card.classList.add('shiny');
+        drawNoodleIcon(c.getContext('2d'), nd, 144, !got, shiny);
         card.appendChild(c);
         card.insertAdjacentHTML('beforeend', `
           <span class="num">No. ${String(i + 1).padStart(2, '0')}</span>
           <h3>${got ? nd.name : '???'}</h3>
-          <span class="rarity r-${nd.rarity}">${nd.rarity}</span>
+          <span class="rarity r-${nd.rarity}">${nd.rarity}</span>${shiny ? '<span class="rarity r-secret">✨ shiny</span>' : ''}
           <p>${got ? nd.desc : 'Hint: ' + nd.hint}</p>`);
         grid.appendChild(card);
       });
@@ -532,6 +535,69 @@ const UI = (() => {
       });
     });
   }
+  function hatPreview(id, size = 96) {
+    const c = document.createElement('canvas'); c.width = size * 2; c.height = size * 2;
+    const x = c.getContext('2d'); x.scale(2 * size / 96, 2 * size / 96);
+    drawHead(x, 48, 60, 'happy', 0, {});
+    if (id) drawHat(x, 48, 39, id, 0, false);
+    return c;
+  }
+  function shop(G, api, tab = 'hats', msg = '') {
+    openSheet("Grandma's Shop", (body) => {
+      const tabs = document.createElement('div'); tabs.className = 'tabs';
+      [['hats', '🎩 Hats'], ['goodies', '🎁 Goodies'], ['sell', '🪙 Sell food']].forEach(([id, label]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tab' + (tab === id ? ' on' : ''); b.textContent = label;
+        b.addEventListener('click', () => shop(G, api, id));
+        tabs.appendChild(b);
+      });
+      body.appendChild(tabs);
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub shop-coins">You have <b>🪙 ${G.coins} coins</b>. ${tab === 'sell' ? 'Grandma buys the food you pick from trees.' : 'Earn coins by crunching, cooking, selling food and daily challenges.'}</p>`);
+      if (msg) body.insertAdjacentHTML('beforeend', `<p class="answer-msg" style="color:#e4572e">${msg}</p>`);
+      const grid = document.createElement('div'); grid.className = 'dex-grid';
+      const after = (m) => shop(G, api, tab, m);
+      if (tab === 'hats') {
+        Object.entries(HATS).forEach(([id, h]) => {
+          const own = !!G.hats[id], wearing = G.hat === id;
+          const card = document.createElement('div'); card.className = 'dex-card shop-card' + (own ? '' : ' locked');
+          card.appendChild(hatPreview(id));
+          card.insertAdjacentHTML('beforeend', `<h3>${h.name}</h3><p>${h.desc}</p>`);
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'choice';
+          if (own) { b.textContent = wearing ? 'Take off' : 'Wear'; b.addEventListener('click', () => { api.wearHat(wearing ? null : id); after(''); }); }
+          else if (h.price) { b.textContent = `Buy · 🪙 ${h.price}`; b.disabled = G.coins < h.price; b.addEventListener('click', () => after(api.buyHat(id))); }
+          else { b.textContent = id === 'shell' ? 'Gift from the snail' : 'Level reward'; b.disabled = true; }
+          if (wearing) card.insertAdjacentHTML('beforeend', '<span class="rarity r-rare">wearing</span>');
+          card.appendChild(b); grid.appendChild(card);
+        });
+      }
+      if (tab === 'goodies') {
+        SHOP_GOODIES.forEach(g => {
+          const card = document.createElement('div'); card.className = 'dex-card shop-card';
+          card.insertAdjacentHTML('beforeend', `<div class="goodie-icon">${{ rocket: '🚀', fortune: '🥠', broth: '🍵' }[g.id]}</div><h3>${g.name}</h3><p>${g.desc}</p>`);
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'choice'; b.textContent = `Buy · 🪙 ${g.price}`;
+          b.disabled = G.coins < g.price;
+          b.addEventListener('click', () => after(api.buyGoodie(g.id)));
+          card.appendChild(b); grid.appendChild(card);
+        });
+      }
+      if (tab === 'sell') {
+        let any = false;
+        Object.keys(FOODS).forEach(id => {
+          const n = G.pantry[id] || 0; if (!n) return; any = true;
+          const card = foodCard(G, id, `<p><b>🪙 ${FOOD_PRICES[id]} each</b></p>`);
+          card.classList.add('shop-card');
+          const row = document.createElement('div'); row.className = 'answer-row';
+          const one = document.createElement('button'); one.type = 'button'; one.className = 'choice'; one.textContent = 'Sell 1';
+          one.addEventListener('click', () => after(api.sellFood(id, false)));
+          const all = document.createElement('button'); all.type = 'button'; all.className = 'choice alt'; all.textContent = `All · 🪙 ${n * FOOD_PRICES[id]}`;
+          all.addEventListener('click', () => after(api.sellFood(id, true)));
+          row.appendChild(one); if (n > 1) row.appendChild(all);
+          card.appendChild(row); grid.appendChild(card);
+        });
+        if (!any) body.insertAdjacentHTML('beforeend', '<p class="empty">Your pantry is empty. Shake trees to collect food, then come back to sell it.</p>');
+      }
+      body.appendChild(grid);
+    });
+  }
   function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
 
   function skills(G, stars) {
@@ -539,7 +605,8 @@ const UI = (() => {
       const level = 1 + Math.floor(Math.sqrt(stars / 2));
       const nextAt = 2 * level * level;
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">⭐ <b>${stars} stars</b> · Noodle Level <b>${level}</b>. ${nextAt - stars} more stars to level ${level + 1}. Levels never stop.</p>
-        <div class="progress"><div style="width:${Math.min(100, (stars - 2 * (level - 1) ** 2) / (nextAt - 2 * (level - 1) ** 2) * 100)}%"></div></div>`);
+        <div class="progress"><div style="width:${Math.min(100, (stars - 2 * (level - 1) ** 2) / (nextAt - 2 * (level - 1) ** 2) * 100)}%"></div></div>
+        <p class="sheet-sub">🎁 Level ${level + 1} reward: <b>${Game.levelReward().text}</b></p>`);
       const skillBlock = (skill, title, coach, where) => {
         const lv = G.skills[skill];
         const el = document.createElement('div'); el.className = 'clue';
@@ -575,7 +642,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook, account, goalHint,
+    players, openSheet, skills, leaderboard, cook, account, goalHint, shop,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

@@ -51,7 +51,7 @@ const Game = (() => {
       boulderHp: {}, gateHp: 3, mintDay: 0, mintUntil: 0, statueStep: 0, birdTalks: 0,
       buffUntil: 0, buffDay: 0, fortune: null, hints: {}, journalNew: false,
       px: DOOR.x, py: DOOR.y + 30,
-      pantry: {}, shaken: {}, cooked: {}, dishes: {},
+      pantry: {}, shaken: {}, cooked: {}, dishes: {}, hats: {}, hat: null, shiny: {},
       skills: { swim: 0, fly: 0 }, lessons: {}, challenges: {}, lesson: null, stats: { swimOpen: 0, hops: 0, maxCombo: 0 },
     };
   }
@@ -492,9 +492,82 @@ const Game = (() => {
     const prog = { swim1: `${Math.min(5, L.n).toFixed(0)}/5s afloat`, swim2: `${L.n}/4 walls`, swim3: L.started ? 'swim down to bridge 2!' : 'jump in near bridge 1', fly1: `${L.n}/5 hops`, fly2: `${L.rings.filter(Boolean).length}/3 rings`, fly3: 'fly up to the cloud' }[L.id];
     return `Lesson · ${l.title}: ${prog} (${s})`;
   }
+  // Noodle Level rewards: every level gives something, forever.
+  const noodleLevel = () => 1 + Math.floor(Math.sqrt(starTotal() / 2));
+  function levelTick() {
+    const L = noodleLevel();
+    if (!G.levelClaimed) { G.levelClaimed = 1; }
+    if (G.levelClaimed >= L) return;
+    const got = [];
+    while (G.levelClaimed < L) {
+      G.levelClaimed++;
+      const r = levelReward(G.levelClaimed);
+      if (r.coins) G.coins += r.coins;
+      if (r.hat) { G.hats[r.hat] = true; if (!G.hat) G.hat = r.hat; }
+      if (r.flag) G.flags[r.flag] = true;
+      got.push(r.text);
+    }
+    Sound.secret(); P.wow = 1.6;
+    burst(P.x, P.y - 80, 30, ['#ffd23f', '#b98cff', '#8fe0ea', '#ff8fb1'], { type: 'spark', speed: 260, grav: 120 });
+    UI.toast(`<span class="t-small">🎉 Noodle Level ${L}!</span>You got ${got.join(', ')}.`, { big: true, life: 4.4 });
+    save();
+  }
+  // Shiny noodles: rare golden versions of noodles you already have.
+  function giveShiny(why) {
+    const pool = G.found.filter(id => !G.shiny[id]);
+    if (!pool.length) return false;
+    const id = pool[Math.floor(Math.random() * pool.length)], n = NOODLES.find(x => x.id === id);
+    G.shiny[id] = true;
+    G.bonusStars = (G.bonusStars || 0) + 1;
+    Sound.secret(); P.wow = 1.6;
+    burst(P.x, P.y - 70, 28, ['#ffd23f', '#fff1a8', '#ffffff'], { type: 'spark', speed: 240, grav: 100 });
+    UI.toast(`<span class="t-small">✨ Shiny noodle! ⭐ +1${why ? ' · ' + why : ''}</span>A golden ${n.name}!`, { noodle: n, shiny: true, big: true, life: 4 });
+    save();
+    return true;
+  }
+  const maybeShiny = (chance = SHINY_CHANCE) => { if (Math.random() < chance) setTimeout(() => giveShiny(), 700); };
+
+  // Grandma's shop
+  function buyHat(id) {
+    const h = HATS[id]; if (!h || G.hats[id]) return 'You already have it.';
+    if (G.coins < h.price) return `You need ${h.price - G.coins} more coins.`;
+    G.coins -= h.price; G.hats[id] = true; G.hat = id; Sound.coin(); save();
+    UI.toast(`<span class="t-small">🛍️ New hat</span>${h.name}. Looking good!`, { life: 2.8 });
+    return '';
+  }
+  function wearHat(id) { G.hat = id && G.hats[id] ? id : null; Sound.blip(); save(); }
+  function buyGoodie(id) {
+    const g = SHOP_GOODIES.find(x => x.id === id);
+    if (G.coins < g.price) return `You need ${g.price - G.coins} more coins.`;
+    if (id === 'rocket' && G.launchDay !== G.day) return 'Your rocket is already fueled for today!';
+    if (id === 'fortune' && G.fortune && !G.fortune.done) return G.fortune.crunched ? 'Solve today\'s riddle first (check your journal).' : 'Today\'s Fortune Cracker is still out there somewhere. Find it first!';
+    if (id === 'broth' && G.water >= 99) return 'Your water is already full.';
+    G.coins -= g.price; Sound.coin();
+    if (id === 'rocket') { G.launchDay = -1; UI.toast('<span class="t-small">🚀 Rocket fueled</span>Launch it from the pad in Crunch Meadow.', { life: 3 }); }
+    if (id === 'fortune') {
+      G.fortuneN = (G.fortuneN || 0) + 1;
+      G.fortune = { idx: (G.day * 7 + 3 + G.fortuneN * 5) % FORTUNES.length, spawn: Math.floor(Math.random() * FORTUNE_SPAWNS.length), crunched: false, done: false };
+      UI.toast('<span class="t-small">🥠 New Fortune Cracker</span>A pink sparkly brick appeared somewhere. Find it and crunch it!', { life: 3.4 });
+    }
+    if (id === 'broth') { G.water = 100; floatText(P.x, P.y - 100, 'Ahh!', '#8fe0ea'); }
+    save();
+    return '';
+  }
+
+  function sellFood(id, all) {
+    const have = G.pantry[id] || 0; if (!have) return 'You have none left.';
+    const n = all ? have : 1, coins = n * FOOD_PRICES[id];
+    G.pantry[id] -= n;
+    addCoins(coins);
+    UI.toast(`<span class="t-small">🪙 Sold to Grandma</span>${n} × ${FOODS[id].name} for ${coins} coins.`, { food: id, life: 2.4 });
+    save();
+    return '';
+  }
+
   let chalT = 0;
   function challengeTick(dt) {
     chalT -= dt; if (chalT > 0) return; chalT = 0.5;
+    levelTick();
     const met = {
       combo5: G.stats.maxCombo >= 5, drink10: G.drinks >= 10, early: !!G.flags.early,
       noodles10: G.found.length >= 10, air4: (G.stats.bestAir || 0) >= 4, river30: G.stats.swimOpen >= 30, noodles20: G.found.length >= 20,
@@ -564,6 +637,7 @@ const Game = (() => {
     if (b.kind === 'canyon') G.canyonCrunches++;
     if (b.kind === 'peak' || b.kind === 'snow') G.peakCrunches = (G.peakCrunches || 0) + 1;
     addCoins(1 + (combo.n >= 3 ? 1 : 0) + (buffed() ? 1 : 0), b.x, b.y - 80);
+    maybeShiny();
     if (!has('brick')) return giveNoodle('brick');
     if (b.kind === 'woods' && !has('matcha') && (Math.random() < 0.35 || G.woodsCrunches >= 3)) return giveNoodle('matcha');
     if (b.kind === 'snow' && !has('somen') && (Math.random() < 0.4 || G.peakCrunches >= 3)) return giveNoodle('somen');
@@ -727,6 +801,7 @@ const Game = (() => {
     addCoins(10);
     UI.toast('<span class="t-small">Fortune solved</span>You found the hidden treasure!', { life: 2.8 });
     if (!has('cloud')) setTimeout(() => giveNoodle('cloud'), 600);
+    else maybeShiny(0.25);
     save();
   }
 
@@ -765,6 +840,7 @@ const Game = (() => {
     burst(tx, ty - 60, 10, ['#8cbf5a', '#6fa54a', FOOD_COLORS[food]], { speed: 180, up: 120, size: 5 });
     floatText(tx, ty - 110, '+1 ' + FOODS[food].name, '#fff8e8');
     dailyAdd('food');
+    maybeShiny();
     if (first) UI.toast(`<span class="t-small">New food · ${TREE_NAMES[kind]}</span>${FOODS[food].name}. Grandma can cook with it!`, { food, life: 3.2 });
     save();
   }
@@ -991,6 +1067,7 @@ const Game = (() => {
     ];
     UI.say('grandma', tips[(G.day + G.coins + n) % tips.length], { choices: [
       { label: '🍜 Cook something', fn: () => UI.cook(G, { canCook, cook, eat: eatFood }) },
+      { label: '🛍️ Shop', fn: () => UI.shop(G, { buyHat, wearHat, buyGoodie, sellFood }) },
       { label: 'Bye, Grandma!', alt: true },
     ] });
   }
@@ -1390,6 +1467,11 @@ const Game = (() => {
       $('flyLabel').textContent = G.skills.fly >= 1 ? 'FLY' : 'HOP';
     }
     P.suit = !!(G.flags.suit && G.flags.wearSuit);
+    P.hat = G.hat; P.goldAntenna = !!G.flags.goldAntenna;
+    if ((G.flags.trail || G.flags.rainbow) && P.moving && Math.random() < dt * 14) {
+      const cols = G.flags.rainbow ? ['#e4572e', '#ffd23f', '#8cbf5a', '#2fa4b5', '#b98cff'] : ['#ffd23f', '#fff1a8'];
+      particles.push({ x: P.x + (Math.random() - 0.5) * 20, y: P.y - 6 - (P.z || 0), vx: 0, vy: -20, life: 0.7, max: 0.7, color: cols[Math.floor(Math.random() * cols.length)], size: 5, type: 'spark', grav: 0, rot: 0 });
+    }
     const gt = goalText();
     UI.goal(gt);
     if (gt !== lastGoalKey) { lastGoalKey = gt; sameGoalT = 0; hintStep = 0; guideOn = false; UI.goalHint(''); } else if (!busy && !Space.active) sameGoalT += dt;
@@ -1540,7 +1622,7 @@ const Game = (() => {
     for (const [id, o] of Net.others) {
       if (o.x === null || !inView(o.x, o.y)) continue;
       draw.push({ y: o.y + (o.sw ? 1000 : 0) + ((o.z || 0) > 40 ? 3000 : 0), fn: () => {
-        const ghost = { suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
+        const ghost = { hat: o.h, goldAntenna: o.ga, suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
         drawPlayer(ctx, ghost, t);
         const e = emotes.get(id);
         drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.name, o.color, e && e.e);
@@ -1902,6 +1984,7 @@ const Game = (() => {
     roomPot = m.pot;
     if (m.up) {
       G.bonusStars = (G.bonusStars || 0) + 2; addCoins(10); Sound.secret();
+      setTimeout(() => giveShiny('Team Pot gift'), 1500);
       UI.toast(`<span class="t-small">🍲 Team Pot level ${m.pot.level}!</span>Everyone gets ⭐ +2 and 10 coins. The next pot is bigger.`, { big: true, life: 4.4 });
       save();
     }
@@ -2090,5 +2173,5 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; } };
+  return { levelReward: () => levelReward(noodleLevel() + 1), level: () => noodleLevel(), tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; } };
 })();
