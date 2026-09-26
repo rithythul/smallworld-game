@@ -538,8 +538,8 @@ const UI = (() => {
   function hatPreview(id, size = 96) {
     const c = document.createElement('canvas'); c.width = size * 2; c.height = size * 2;
     const x = c.getContext('2d'); x.scale(2 * size / 96, 2 * size / 96);
-    drawHead(x, 48, 60, 'happy', 0, {});
-    if (id) drawHat(x, 48, 39, id, 0, false);
+    drawHead(x, 48, 68, 'happy', 0, {});
+    if (id) drawHat(x, 48, 47, id, 0, false);
     return c;
   }
   function shop(G, api, tab = 'hats', msg = '') {

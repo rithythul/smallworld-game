@@ -845,7 +845,7 @@ function drawMapPiece(ctx, n, size) {
 
 function drawTitleHero(ctx, t) {
   ctx.clearRect(0, 0, 260, 260);
-  ctx.save(); ctx.translate(130, 150); ctx.scale(2.4, 2.4);
+  ctx.save(); ctx.translate(130, 176); ctx.scale(2.1, 2.1);
   const moods = ['happy', 'crunch', 'cool', 'wow'];
   const mood = moods[Math.floor(t / 1.6) % moods.length];
   ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(0, 36, 26, 6, 0, 0, TAU); ctx.fill();

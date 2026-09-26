@@ -1397,6 +1397,7 @@ const Game = (() => {
   }
 
   function update(dt) {
+    if (Care.tick(dt)) { keys.clear(); stick.active = false; drinkHeld = false; return; }
     if (Space.active) {
       let mx = 0, my = 0;
       if (keys.has('arrowleft') || keys.has('a')) mx -= 1;
@@ -1785,7 +1786,7 @@ const Game = (() => {
         const ghost = { hat: o.h, goldAntenna: o.ga, suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
         drawPlayer(ctx, ghost, t);
         const e = emotes.get(id);
-        drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.name, o.color, e && e.e);
+        drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.a ? o.name + ' 💤' : o.name, o.color, e ? e.e : o.a ? '🍽️' : null);
       } });
     }
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
@@ -2052,6 +2053,9 @@ const Game = (() => {
     G.flags.wearSuit = !G.flags.wearSuit; $('menuPop').hidden = true; Sound.blip();
     UI.toast(G.flags.wearSuit ? '🧑‍🚀 Space suit on!' : 'Space suit off.', { life: 2 });
   });
+  $('awayBtn').addEventListener('click', () => { $('menuPop').hidden = true; Care.goAway(); });
+  Care.onAway((on) => { Net.away(on); if (on) save(); });
+  Net.on('helped', (m) => { if (m.n > 0) { addCoins(m.n); Sound.secret(); UI.toast(`<span class="t-small">🤝 Welcome back!</span>Your friends crunched ${m.n} brick${m.n > 1 ? 's' : ''} while you were away: +${m.n} coins.`, { big: true, life: 4.4 }); } });
   $('accountBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; openAccount(); });
   $('boardBtn').addEventListener('click', () => { Sound.blip(); $('menuPop').hidden = true; postScore(); openBoard(); });
   $('mapBtn').addEventListener('click', () => { Sound.blip(); openMap(); });

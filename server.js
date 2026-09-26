@@ -242,6 +242,7 @@ wss.on('connection', (ws) => {
         room.crunched.add(id);
         broadcast(room, { t: 'crunch', b: id, by: p.id }, ws);
         if (room.roundEnd) { p.round++; broadcast(room, { t: 'scores', list: scores(room) }); }
+        if (room.mode === 'team') room.players.forEach(q => { if (q !== p && q.away) q.helped = (q.helped || 0) + 1; });
         if (room.mode === 'team') {
           room.pot.fill++;
           if (room.pot.fill >= room.pot.need) {
@@ -273,6 +274,11 @@ wss.on('connection', (ws) => {
       case 'round':
         if (room.mode === 'race') startRound(room);
         break;
+      case 'away':
+        p.away = !!m.on;
+        if (!p.away && p.helped) { send(ws, { t: 'helped', n: p.helped }); p.helped = 0; }
+        broadcast(room, { t: 'emote', id: p.id, e: p.away ? '🍽️' : '👋' });
+        break;
       case 'emote':
         broadcast(room, { t: 'emote', id: p.id, e: clean(m.e, 4) });
         break;
@@ -287,7 +293,7 @@ wss.on('connection', (ws) => {
 // Send everyone's position 10 times a second
 setInterval(() => {
   for (const room of rooms.values()) {
-    const list = [...room.players.values()].map(p => ({ id: p.id, x: Math.round(p.x), y: Math.round(p.y), ...p.s }));
+    const list = [...room.players.values()].map(p => ({ id: p.id, x: Math.round(p.x), y: Math.round(p.y), ...p.s, a: !!p.away }));
     broadcast(room, { t: 'states', list });
   }
 }, TICK_MS);

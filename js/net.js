@@ -47,7 +47,7 @@ const Net = (() => {
           if (s.id === me) return;
           const o = others.get(s.id); if (!o) return;
           if (o.x === null) { o.x = s.x; o.y = s.y; o.walk = 0; }
-          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0; o.su = s.su; o.h = s.h; o.ga = s.ga;
+          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0; o.su = s.su; o.h = s.h; o.ga = s.ga; o.a = s.a;
         });
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
@@ -79,6 +79,7 @@ const Net = (() => {
     },
     emote(e) { if (code) send({ t: 'emote', e }); },
     color(c) { if (code) send({ t: 'color', color: c }); },
+    away(on) { if (code) send({ t: 'away', on: !!on }); },
     get active() { return !!code; },
     get code() { return code; },
     get mode() { return mode; },
