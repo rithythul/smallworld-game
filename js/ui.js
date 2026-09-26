@@ -34,13 +34,18 @@ const UI = (() => {
     const el = $('goal'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
-  function toast(html, { noodle = null, big = false, life = 2.6 } = {}) {
+  function toast(html, { noodle = null, food = null, big = false, life = 2.6 } = {}) {
     const el = document.createElement('div');
     el.className = 'toast' + (big ? ' big' : '');
     el.style.setProperty('--life', life + 's');
     if (noodle) {
       const c = document.createElement('canvas'); c.width = 128; c.height = 128;
       drawNoodleIcon(c.getContext('2d'), noodle, 128);
+      el.appendChild(c);
+    }
+    if (food) {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+      drawFoodIcon(c.getContext('2d'), food, 128);
       el.appendChild(c);
     }
     const span = document.createElement('div'); span.innerHTML = html; el.appendChild(span);
@@ -142,8 +147,78 @@ const UI = (() => {
   $('sheetClose').addEventListener('click', closeSheet);
   $('sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
 
-  function dex(G) {
+  function dexTabs(body, G, tab) {
+    const tabs = document.createElement('div'); tabs.className = 'tabs';
+    [['noodles', '🍜 Noodles'], ['pantry', '🧺 Pantry'], ['recipes', '📖 Recipes']].forEach(([id, label]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tab' + (tab === id ? ' on' : ''); b.textContent = label;
+      b.addEventListener('click', () => dex(G, id));
+      tabs.appendChild(b);
+    });
+    body.appendChild(tabs);
+  }
+  function foodCard(G, id, extra = '') {
+    const n = G.pantry[id] || 0, seen = n > 0 || (G.foodSeen || {})[id];
+    const card = document.createElement('div'); card.className = 'dex-card' + (seen ? '' : ' locked');
+    const c = document.createElement('canvas'); c.width = 144; c.height = 144;
+    if (seen) drawFoodIcon(c.getContext('2d'), id, 144); else drawNoodleIcon(c.getContext('2d'), NOODLES[0], 144, true);
+    card.appendChild(c);
+    const tree = Object.keys(TREE_FOOD).find(k => TREE_FOOD[k] === id);
+    card.insertAdjacentHTML('beforeend', `<h3>${seen ? FOODS[id].name : '???'}</h3><span class="rarity r-common">× ${n}</span><p>${seen ? FOODS[id].desc : 'Shake a ' + TREE_NAMES[tree] + '.'}</p>${extra}`);
+    return card;
+  }
+  function recipeList(G, body, api) {
+    RECIPES.forEach(r => {
+      const el = document.createElement('div'); el.className = 'clue recipe';
+      const ok = Object.entries(r.needs).every(([f, n]) => (G.pantry[f] || 0) >= n);
+      el.innerHTML = `<h3>${r.name}${G.cooked[r.id] ? ` <small>· cooked ${G.cooked[r.id]}×</small>` : ' <small>· ⭐ +2 the first time</small>'}</h3><p class="sheet-sub" style="margin:2px 0 8px">${r.effect}</p>`;
+      const needs = document.createElement('div'); needs.className = 'needs';
+      Object.entries(r.needs).forEach(([f, n]) => {
+        const have = G.pantry[f] || 0;
+        const chip = document.createElement('span'); chip.className = 'need' + (have >= n ? ' ok' : '');
+        const c = document.createElement('canvas'); c.width = 56; c.height = 56; drawFoodIcon(c.getContext('2d'), f, 56);
+        chip.appendChild(c); chip.insertAdjacentHTML('beforeend', `${FOODS[f].name} ${Math.min(have, n)}/${n}`);
+        needs.appendChild(chip);
+      });
+      el.appendChild(needs);
+      if (api) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'choice'; b.textContent = ok ? 'Cook it!' : 'Need more food';
+        b.disabled = !ok; b.style.marginTop = '10px';
+        b.addEventListener('click', () => { if (api.cook(r.id)) closeSheet(); });
+        el.appendChild(b);
+      }
+      body.appendChild(el);
+    });
+  }
+  function cook(G, api) {
+    openSheet("Grandma's Kitchen", (body) => {
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">Pick a recipe. Food comes from shaking trees, and they grow back every morning.</p>');
+      recipeList(G, body, api);
+    });
+  }
+
+  function dex(G, tab = 'noodles') {
+    if (tab === 'pantry') return openSheet('Pantry', (body) => {
+      dexTabs(body, G, tab);
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">Shake trees to collect food. Eat it to refill water (+20), or ask Grandma to cook it.</p>');
+      const grid = document.createElement('div'); grid.className = 'dex-grid';
+      Object.keys(FOODS).forEach(id => {
+        const card = foodCard(G, id);
+        if ((G.pantry[id] || 0) > 0) {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'choice'; b.textContent = 'Eat';
+          b.addEventListener('click', () => { if (Game.eat(id)) dex(G, 'pantry'); });
+          card.appendChild(b);
+        }
+        grid.appendChild(card);
+      });
+      body.appendChild(grid);
+    });
+    if (tab === 'recipes') return openSheet('Recipes', (body) => {
+      dexTabs(body, G, tab);
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">Talk to Grandma Ramen at her stand and pick <b>Cook something</b>.</p>');
+      recipeList(G, body, null);
+    });
     openSheet('Noodle-dex', (body) => {
+      dexTabs(body, G, tab);
       const n = G.found.length;
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${n} of ${NOODLES.length} noodles found in this part of the universe · ${TOTAL_IN_UNIVERSE} in total, more regions coming</p><div class="progress"><div style="width:${(n / NOODLES.length) * 100}%"></div></div>`);
       const grid = document.createElement('div'); grid.className = 'dex-grid';
@@ -398,7 +473,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard,
+    players, openSheet, skills, leaderboard, cook,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

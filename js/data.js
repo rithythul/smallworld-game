@@ -74,13 +74,6 @@ const PLACES = {
   spawn: { x: 480, y: 620 },
 };
 
-// Spaghetti willow trees
-const WILLOWS = [
-  [1560, 260], [1720, 200], [1900, 300], [2080, 210], [1640, 470], [1830, 560], [2020, 480],
-  [1560, 760], [1760, 820], [1990, 760], [2200, 700], [2400, 560], [2380, 900], [1640, 1080],
-  [1880, 1060], [2120, 1000], [2300, 1180], [1560, 1330], [1790, 1340], [2040, 1300], [2260, 1450], [2440, 1300],
-  [150, 250], [120, 1200], [200, 1560], [980, 1600], [760, 150],
-];
 
 // Brick spawn points: meadow (south-west) and woods (east)
 const BRICK_SPOTS = [
@@ -252,4 +245,38 @@ const DAILY_POOL = [
   { id: 'combo', title: 'Get a x3 crunch combo', min: 1, max: 1 },
   { id: 'food', title: 'Pick {n} foods from trees', min: 3, max: 6 },
   { id: 'talk', title: 'Say good morning to Grandma Ramen', min: 1, max: 1 },
+];
+
+// ---------- Trees, food and cooking ----------
+// Every tree: [x, y, kind]. Spaghetti Willows grow in the woods; other trees drop food when you shake them.
+const TREES = [
+  [1560, 260, 'willow'], [1720, 200, 'bamboo'], [1900, 300, 'willow'], [2080, 210, 'mushroom'], [1640, 470, 'willow'],
+  [1830, 560, 'mushroom'], [2020, 480, 'bamboo'], [1560, 760, 'nori'], [1760, 820, 'willow'], [1990, 760, 'egg'],
+  [2200, 700, 'willow'], [2400, 560, 'bamboo'], [2380, 900, 'mushroom'], [1640, 1080, 'naruto'], [1880, 1060, 'willow'],
+  [2120, 1000, 'dumpling'], [2300, 1180, 'willow'], [1560, 1330, 'nori'], [1790, 1340, 'mushroom'], [2040, 1300, 'willow'],
+  [2260, 1450, 'bamboo'], [2440, 1300, 'willow'], [150, 250, 'egg'], [120, 1200, 'corn'], [200, 1560, 'chili'],
+  [980, 1600, 'corn'], [760, 150, 'scallion'], [1180, 300, 'naruto'], [290, 600, 'scallion'], [560, 1100, 'chili'],
+  [1140, 960, 'egg'], [420, 2000, 'chili'], [2250, 2250, 'corn'], [1500, 1990, 'dumpling'],
+];
+const WILLOWS = TREES.filter(t => t[2] === 'willow').map(t => [t[0], t[1]]);
+const TREE_FOOD = { egg: 'egg', chili: 'chili', mushroom: 'shiitake', bamboo: 'shoot', naruto: 'naruto', corn: 'corn', scallion: 'scallion', nori: 'nori', dumpling: 'dumpling' };
+const TREE_NAMES = { willow: 'Spaghetti Willow', egg: 'Ajitama Egg Tree', chili: 'Chili Bush', mushroom: 'Giant Shiitake', bamboo: 'Bamboo Grove', naruto: 'Fishcake Palm', corn: 'Corn Stalks', scallion: 'Scallion Patch', nori: 'Nori Kelp Tree', dumpling: 'Dumpling Bush' };
+const FOODS = {
+  egg: { name: 'Ajitama Egg', desc: 'Soft-boiled, golden in the middle.' },
+  chili: { name: 'Chili Pepper', desc: 'Hot hot hot. Handle with chopsticks.' },
+  shiitake: { name: 'Shiitake', desc: 'A mushroom as big as your head.' },
+  shoot: { name: 'Bamboo Shoot', desc: 'Crunchy! Your favorite kind of food.' },
+  naruto: { name: 'Naruto Swirl', desc: 'A fishcake slice with a pink spiral.' },
+  corn: { name: 'Sweet Corn', desc: 'Pops a little when it is happy.' },
+  scallion: { name: 'Scallion', desc: 'Tiny green rings of flavor.' },
+  nori: { name: 'Nori Sheet', desc: 'Seaweed paper. Grandma writes notes on it.' },
+  dumpling: { name: 'Dumpling', desc: 'Soft, round and very huggable.' },
+};
+const RECIPES = [
+  { id: 'classic', name: 'Classic Ramen', needs: { egg: 1, scallion: 1, naruto: 1 }, effect: 'Water fills all the way up, plus 15 coins.' },
+  { id: 'spicy', name: 'Spicy Miso Ramen', needs: { chili: 2, corn: 1 }, effect: 'Spicy speed! Walk faster for 3 hours.' },
+  { id: 'forest', name: 'Forest Soba', needs: { shiitake: 2, shoot: 1 }, effect: 'Your antenna senses secrets twice as far, all day.' },
+  { id: 'sea', name: 'Seaside Udon', needs: { nori: 2, naruto: 1 }, effect: 'Double swimming stamina and a weaker current, all day.' },
+  { id: 'dumpling', name: 'Dumpling Soup', needs: { dumpling: 3 }, effect: 'Longer crunch combos, all day.' },
+  { id: 'feast', name: "Grandma's Feast", needs: { egg: 1, chili: 1, shiitake: 1, shoot: 1, corn: 1, nori: 1 }, effect: 'Every bonus at once, all day, plus 40 coins.' },
 ];

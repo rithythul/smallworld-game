@@ -51,6 +51,7 @@ const Game = (() => {
       boulderHp: {}, gateHp: 3, mintDay: 0, mintUntil: 0, statueStep: 0, birdTalks: 0,
       buffUntil: 0, buffDay: 0, fortune: null, hints: {}, journalNew: false,
       px: DOOR.x, py: DOOR.y + 30,
+      pantry: {}, shaken: {}, cooked: {}, dishes: {},
       skills: { swim: 0, fly: 0 }, lessons: {}, challenges: {}, lesson: null, stats: { swimOpen: 0, hops: 0, maxCombo: 0 },
     };
   }
@@ -142,7 +143,12 @@ const Game = (() => {
     if (withWater && z < 12 && isWater(x, y)) return true;
     return false;
   }
-  function treeSpots() { return WILLOWS; }
+  function treeSpots() { return TREES; }
+  const FRUIT_MAX = { egg: 3, chili: 3, mushroom: 2, bamboo: 2, naruto: 3, corn: 2, scallion: 2, nori: 3, dumpling: 3 };
+  const fruitLeft = (i) => { const k = TREES[i][2]; return k === 'willow' ? 0 : Math.max(0, FRUIT_MAX[k] - ((G.shaken || {})[i] || 0)); };
+  const treeShake = new Map();
+  // Dishes from Grandma: bonuses that last a while
+  const dishOn = (id) => { const d = (G.dishes || {})[id] || (G.dishes || {}).feast; return !!d && d.day === G.day && G.time < d.until; };
 
   function bricks() {
     const list = BRICK_SPOTS.map(([x, y], i) => ({ i, x, y, kind: y > CANYON.top ? 'canyon' : x > PEAKS.left ? (y < PEAKS.snowLine ? 'snow' : 'peak') : x > 1450 ? 'woods' : 'normal' }))
@@ -209,7 +215,7 @@ const Game = (() => {
 
   /* ---------- day cycle ---------- */
   function newDay(msg, spot) {
-    G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = []; G.boulderHp = {};
+    G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = []; G.boulderHp = {}; G.shaken = {};
     G.water = Math.max(G.water, 70);
     newFortune();
     ensureDaily();
@@ -263,6 +269,7 @@ const Game = (() => {
       for (const b of bricks()) add('CRUNCH', b.x, b.y, 62, () => crunch(b), 1);
       for (const g of glassNoodles()) add('PICK', g.x, g.y, 56, () => pickGlass(g), 2, 'look');
       if (!has('vine')) for (const [wx, wy] of WILLOWS) add('PICK', wx, wy + 10, 64, pickVine, 1, 'look');
+      TREES.forEach(([tx, ty, kind], i) => { if (kind !== 'willow' && fruitLeft(i) > 0) add('SHAKE', tx, ty + 12, 66, () => shakeTree(i), 1, 'look'); });
       if (!c.length) {
         const sd = streamDist(P.x, P.y);
         if (inPond(P.x, P.y, 44)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: 0, fn: () => startDrink('mirror'), prio: 0, cls: 'water', hold: true });
@@ -313,7 +320,7 @@ const Game = (() => {
       P.stamina -= dt;
       // the stream's current pulls you downstream
       if (!inPond(P.x, P.y) && !inSpring(P.x, P.y)) {
-        const dir = streamDir(P.x, P.y), push = PHYS.current[G.skills.swim] * dt;
+        const dir = streamDir(P.x, P.y), push = PHYS.current[G.skills.swim] * (dishOn('sea') ? 0.5 : 1) * dt;
         const nx = P.x + dir[0] * push, ny = P.y + dir[1] * push;
         if (!blocked(nx, ny, 0, false)) { P.x = nx; P.y = ny; }
       }
@@ -350,7 +357,7 @@ const Game = (() => {
   function startOpenSwim() {
     if (P.area === 'open') return;
     P.swimming = true; P.area = 'open'; P.z = 0; P.vz = 0;
-    P.stamina = PHYS.swimStamina[G.skills.swim];
+    P.stamina = PHYS.swimStamina[G.skills.swim] * (dishOn('sea') ? 2 : 1);
     drinkHeld = false;
     Sound.splash();
     burst(P.x, P.y, 14, ['#8fe0ea', '#ffffff'], { speed: 180, up: 160, size: 4, type: 'drop' });
@@ -490,7 +497,7 @@ const Game = (() => {
     G.water = Math.max(0, G.water - 7);
 
     const t = now;
-    const win = buffed() ? 2.6 : 1.7;
+    const win = (buffed() ? 2.6 : 1.7) + (dishOn('dumpling') ? 1.2 : 0);
     combo.n = t - combo.last < win ? combo.n + 1 : 1;
     combo.last = t;
     UI.combo(combo.n);
@@ -686,6 +693,48 @@ const Game = (() => {
     if (!has('soba') && G.drinks >= 3) setTimeout(() => giveNoodle('soba'), 500);
   }
 
+  function shakeTree(i) {
+    const [tx, ty, kind] = TREES[i];
+    const food = TREE_FOOD[kind];
+    G.shaken[i] = (G.shaken[i] || 0) + 1;
+    treeShake.set(i, now + 0.5);
+    const first = !(G.pantry[food] > 0) && !(G.foodSeen || {})[food];
+    G.pantry[food] = (G.pantry[food] || 0) + 1;
+    G.foodSeen = G.foodSeen || {}; G.foodSeen[food] = true;
+    Sound.pop(); buzz(15);
+    burst(tx, ty - 60, 10, ['#8cbf5a', '#6fa54a', FOOD_COLORS[food]], { speed: 180, up: 120, size: 5 });
+    floatText(tx, ty - 110, '+1 ' + FOODS[food].name, '#fff8e8');
+    dailyAdd('food');
+    if (first) UI.toast(`<span class="t-small">New food · ${TREE_NAMES[kind]}</span>${FOODS[food].name}. Grandma can cook with it!`, { food, life: 3.2 });
+    save();
+  }
+  function eatFood(id) {
+    if (!(G.pantry[id] > 0)) return false;
+    G.pantry[id]--;
+    G.water = Math.min(100, G.water + 20);
+    Sound.gulp(); P.crunching = 0.5;
+    floatText(P.x, P.y - 100, 'Yum!', '#ffd23f');
+    save();
+    return true;
+  }
+  function canCook(r) { return Object.entries(r.needs).every(([f, n]) => (G.pantry[f] || 0) >= n); }
+  function cook(id) {
+    const r = RECIPES.find(x => x.id === id);
+    if (!r || !canCook(r)) return false;
+    Object.entries(r.needs).forEach(([f, n]) => { G.pantry[f] -= n; });
+    const first = !G.cooked[id];
+    G.cooked[id] = (G.cooked[id] || 0) + 1;
+    G.dishes = G.dishes || {};
+    if (id === 'classic' || id === 'feast') { G.water = 100; addCoins(id === 'feast' ? 40 : 15); }
+    if (id !== 'classic') G.dishes[id] = { day: G.day, until: id === 'spicy' ? G.time + 180 : 24 * 60 };
+    if (first) { G.bonusStars = (G.bonusStars || 0) + 2; }
+    Sound.secret(); P.wow = 1.6; P.crunching = 0.8;
+    burst(P.x, P.y - 70, 26, ['#ffd23f', '#e4572e', '#fff8e8'], { type: 'spark', speed: 240, grav: 150 });
+    UI.toast(`<span class="t-small">🍜 ${r.name}${first ? ' · ⭐ +2 new recipe' : ''}</span>${r.effect}`, { big: true, life: 4 });
+    save();
+    return true;
+  }
+
   function pickVine() {
     Sound.pop();
     burst(P.x, P.y - 70, 10, ['#f7dc7a', '#fff3d6'], { speed: 150 });
@@ -867,8 +916,13 @@ const Game = (() => {
       'Every day a Fortune Cracker appears somewhere. Pink and sparkly! Crunch it for a riddle.',
       'Too thirsty and you\'ll walk like a soggy noodle. The stream is always free.',
       'That old bowl south of here? The Noodle Oracle. It knows things... for a price.',
+      'Shake the trees! Eggs, chilis, mushrooms... bring me food and I\'ll cook you something special.',
+      'A Classic Ramen needs an egg, a scallion and a naruto swirl. Just saying.',
     ];
-    UI.say('grandma', tips[(G.day + G.coins + n) % tips.length]);
+    UI.say('grandma', tips[(G.day + G.coins + n) % tips.length], { choices: [
+      { label: '🍜 Cook something', fn: () => UI.cook(G, { canCook, cook, eat: eatFood }) },
+      { label: 'Bye, Grandma!', alt: true },
+    ] });
   }
 
   function lookPoster() {
@@ -961,6 +1015,7 @@ const Game = (() => {
     if (G.water < 25) speed *= 0.62;
     if (buffed()) speed *= 1.2;
     if (minty()) speed *= 1.2;
+    if (dishOn('spicy')) speed *= 1.25;
     if (G.water < 25) faceStep('thirsty');
     if (!busy) { lessonTick(dt); challengeTick(dt); if (P.swimming) dailyAdd('swim', dt); }
     if (P.swimming && P.area === 'lake' && !has('ice') && dist(P.x, P.y, LAKE.x + LAKE.w * 0.62 + Math.sin(now) * 40, LAKE.y + LAKE.h * 0.55) < 34) giveNoodle('ice');
@@ -1086,7 +1141,7 @@ const Game = (() => {
     glassNoodles().forEach(g => !has('glass') && secrets.push(g));
     let near = 1e9;
     secrets.forEach(s => near = Math.min(near, dist(P.x, P.y, s.x, s.y)));
-    const range = 520;
+    const range = dishOn('forest') ? 1040 : 520;
     P.antennaPulse = near < range ? 1 - near / range : 0;
     if (P.antennaPulse > 0 && !busy) {
       beepTimer -= dt;
@@ -1128,6 +1183,10 @@ const Game = (() => {
 
     UI.hud(G);
     $('starCount').textContent = starTotal();
+    const chips = [];
+    if (buffed()) chips.push('😎 Fresh Start'); if (minty()) chips.push('🌿 Minty');
+    [['spicy', '🌶️ Spicy'], ['forest', '🍄 Forest sense'], ['sea', '🌊 Sea legs'], ['dumpling', '🥟 Long combos']].forEach(([id, label]) => dishOn(id) && chips.push(label));
+    $('buff').hidden = !chips.length; $('buff').textContent = chips.join('  ·  ');
     if (isTouch) {
       const fb = $('flyBtn');
       fb.hidden = P.swimming || UI.busy;
@@ -1231,7 +1290,7 @@ const Game = (() => {
     // depth-sorted objects
     const night = isNight() || hour() >= 19;
     const draw = [];
-    WILLOWS.forEach(([x, y]) => inView(x, y) && draw.push({ y, fn: () => drawWillow(ctx, x, y, t) }));
+    TREES.forEach(([x, y, kind], i) => inView(x, y) && draw.push({ y, fn: () => drawTree(ctx, x, y, t, kind, fruitLeft(i), Math.max(0, (treeShake.get(i) || 0) - now)) }));
     const wb = PLACES.willowBack;
     if (inView(wb.x, wb.y)) draw.push({ y: wb.y, fn: () => drawWillow(ctx, wb.x, wb.y, t, true, G.pieces.includes(1) ? 1 : 0.3) });
     bricks().forEach(b => inView(b.x, b.y) && draw.push({ y: b.y, fn: () => drawBrick(ctx, b, t, current && current.label === 'CRUNCH' && dist(current.x, current.y, b.x, b.y) < 1) }));
@@ -1733,5 +1792,5 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { tryCipher, get state() { return G; }, get player() { return P; } };
+  return { tryCipher, eat: eatFood, get state() { return G; }, get player() { return P; } };
 })();

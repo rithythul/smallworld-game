@@ -1140,3 +1140,110 @@ function drawMeter(ctx, x, y, frac, color) {
   ctx.strokeStyle = 'rgba(52,35,63,0.6)'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(x, y, 12, -Math.PI / 2, Math.PI * 1.5); ctx.stroke();
   ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, frac))); ctx.stroke();
 }
+
+/* ---------------- Food trees ---------------- */
+const FOOD_COLORS = { egg: '#ffd23f', chili: '#e4572e', shiitake: '#a0673b', shoot: '#e8d9a0', naruto: '#fff3d6', corn: '#ffd23f', scallion: '#8cbf5a', nori: '#2f4a3a', dumpling: '#fff3d6' };
+// One small food item, centred on x,y
+function drawFoodBit(ctx, id, x, y, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  switch (id) {
+    case 'egg':
+      ctx.beginPath(); ctx.ellipse(0, 0, 8, 10, 0, 0, TAU); fillStroke(ctx, '#fff8e8', 2.2);
+      circle(ctx, 0, 1, 4.5); ctx.fillStyle = '#f7a21b'; ctx.fill(); break;
+    case 'chili':
+      ctx.beginPath(); ctx.moveTo(-3, -8); ctx.quadraticCurveTo(8, -6, 6, 4); ctx.quadraticCurveTo(3, 10, -4, 11); ctx.quadraticCurveTo(1, 2, -3, -8); ctx.closePath(); fillStroke(ctx, '#e4572e', 2.2);
+      ctx.strokeStyle = '#4f9a5b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-3, -8); ctx.lineTo(-6, -12); ctx.stroke(); break;
+    case 'shiitake':
+      rr(ctx, -3, -1, 6, 10, 2); fillStroke(ctx, '#fff3d6', 2);
+      ctx.beginPath(); ctx.arc(0, 0, 10, Math.PI, 0); ctx.closePath(); fillStroke(ctx, '#a0673b', 2.2);
+      ctx.fillStyle = '#e9c49a'; circle(ctx, -4, -4, 1.6); ctx.fill(); circle(ctx, 3, -6, 1.3); ctx.fill(); break;
+    case 'shoot':
+      ctx.beginPath(); ctx.moveTo(-7, 9); ctx.lineTo(0, -11); ctx.lineTo(7, 9); ctx.closePath(); fillStroke(ctx, '#e8d9a0', 2.2);
+      ctx.strokeStyle = '#8cbf5a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4, 2); ctx.lineTo(4, 2); ctx.moveTo(-2, -4); ctx.lineTo(2, -4); ctx.stroke(); break;
+    case 'naruto':
+      circle(ctx, 0, 0, 9); fillStroke(ctx, '#fff8e8', 2.2);
+      ctx.strokeStyle = '#ff6f9c'; ctx.lineWidth = 2; ctx.beginPath(); for (let a = 0; a < TAU * 1.6; a += 0.2) { const r = 1 + a * 1.3; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'corn':
+      ctx.beginPath(); ctx.ellipse(0, 0, 6, 11, 0, 0, TAU); fillStroke(ctx, '#ffd23f', 2.2);
+      ctx.fillStyle = '#e0a13a'; for (let r = -6; r <= 6; r += 4) for (let c2 = -2; c2 <= 2; c2 += 4) { circle(ctx, c2, r, 1.2); ctx.fill(); }
+      ctx.beginPath(); ctx.moveTo(-6, 6); ctx.quadraticCurveTo(-10, 0, -4, -10); ctx.strokeStyle = '#8cbf5a'; ctx.lineWidth = 3; ctx.stroke(); break;
+    case 'scallion':
+      [-4, 0, 4].forEach((dx, i) => { rr(ctx, dx - 2, -10 + i, 4, 18, 2); fillStroke(ctx, '#8cbf5a', 1.8); });
+      rr(ctx, -7, 5, 14, 5, 2); fillStroke(ctx, '#fff8e8', 1.8); break;
+    case 'nori':
+      rr(ctx, -8, -9, 16, 18, 2); fillStroke(ctx, '#2f4a3a', 2.2);
+      ctx.strokeStyle = 'rgba(159,243,255,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(-4, 6); ctx.moveTo(2, -6); ctx.lineTo(2, 6); ctx.stroke(); break;
+    case 'dumpling':
+      ctx.beginPath(); ctx.moveTo(-10, 5); ctx.quadraticCurveTo(-8, -9, 0, -9); ctx.quadraticCurveTo(8, -9, 10, 5); ctx.closePath(); fillStroke(ctx, '#fff3d6', 2.2);
+      ctx.strokeStyle = 'rgba(52,35,63,0.4)'; ctx.lineWidth = 1.5; for (let i = -4; i <= 4; i += 4) { ctx.beginPath(); ctx.moveTo(i, -8); ctx.lineTo(i * 0.6, -2); ctx.stroke(); } break;
+  }
+  ctx.restore();
+}
+function drawFoodIcon(ctx, id, size) {
+  ctx.save(); ctx.clearRect(0, 0, size, size); ctx.scale(size / 64, size / 64);
+  circle(ctx, 32, 32, 29); fillStroke(ctx, '#fff8e8', 3);
+  drawFoodBit(ctx, id, 32, 33, 2);
+  ctx.restore();
+}
+
+// Trees: each kind looks different; `fruit` = how many foods are still on it today
+function drawTree(ctx, x, y, t, kind, fruit, shake = 0) {
+  if (kind === 'willow') return drawWillow(ctx, x, y, t);
+  const sway = Math.sin(t * 1.5 + x * 0.01) * 1.5 + Math.sin(t * 40) * shake * 5;
+  const food = TREE_FOOD[kind];
+  const fruitAt = (pts) => pts.slice(0, fruit).forEach(([fx, fy]) => drawFoodBit(ctx, food, x + fx + sway, y + fy, 0.9));
+  ctx.fillStyle = 'rgba(52,35,63,0.18)'; ctx.beginPath(); ctx.ellipse(x, y + 3, 40, 11, 0, 0, TAU); ctx.fill();
+  switch (kind) {
+    case 'egg':
+      rr(ctx, x - 8, y - 60, 16, 62, 5); fillStroke(ctx, '#a0673b', 3);
+      [[-26, -80, 30], [24, -84, 30], [0, -104, 34]].forEach(([dx, dy, r]) => { circle(ctx, x + dx + sway, y + dy, r); fillStroke(ctx, '#7fbf5a', 3); });
+      fruitAt([[-22, -82], [20, -92], [2, -112]]);
+      break;
+    case 'chili':
+      [[-18, -20, 22], [16, -22, 22], [0, -38, 24]].forEach(([dx, dy, r]) => { circle(ctx, x + dx + sway * 0.5, y + dy, r); fillStroke(ctx, '#4f9a5b', 3); });
+      fruitAt([[-16, -26], [14, -28], [0, -46]]);
+      break;
+    case 'mushroom':
+      rr(ctx, x - 12, y - 50, 24, 52, 8); fillStroke(ctx, '#fff3d6', 3);
+      ctx.beginPath(); ctx.ellipse(x + sway * 0.4, y - 56, 48, 30, 0, Math.PI, 0); ctx.closePath(); fillStroke(ctx, '#a0673b', 3);
+      ctx.fillStyle = '#e9c49a'; [[-20, -66, 6], [8, -74, 5], [26, -62, 4]].forEach(([dx, dy, r]) => { circle(ctx, x + dx, y + dy, r); ctx.fill(); });
+      fruitAt([[-30, -8], [30, -6]]);
+      break;
+    case 'bamboo':
+      [-18, -4, 12].forEach((dx, i) => {
+        const h = 110 + i * 14, bx = x + dx + sway * (1 + i * 0.3);
+        rr(ctx, bx - 5, y - h, 10, h, 4); fillStroke(ctx, '#8cbf5a', 2.5);
+        ctx.strokeStyle = '#4f9a5b'; ctx.lineWidth = 2; for (let k = y - 20; k > y - h; k -= 24) { ctx.beginPath(); ctx.moveTo(bx - 5, k); ctx.lineTo(bx + 5, k); ctx.stroke(); }
+        ctx.beginPath(); ctx.ellipse(bx + 12, y - h + 10, 12, 4, -0.4, 0, TAU); fillStroke(ctx, '#8cbf5a', 2);
+      });
+      fruitAt([[-26, -6], [22, -6]]);
+      break;
+    case 'naruto':
+      ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.quadraticCurveTo(x - 2 + sway, y - 60, x + 6 + sway, y - 110); ctx.lineTo(x + 16 + sway, y - 108); ctx.quadraticCurveTo(x + 8, y - 60, x + 8, y); ctx.closePath(); fillStroke(ctx, '#c98b5a', 3);
+      for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.7; ctx.beginPath(); ctx.ellipse(x + 11 + sway + Math.cos(a) * 30, y - 112 + Math.sin(a) * 16 + 12, 30, 8, a, 0, TAU); fillStroke(ctx, '#5fa05f', 2.5); }
+      fruitAt([[-4, -104], [26, -100], [12, -92]]);
+      break;
+    case 'corn':
+      [-14, 0, 14].forEach((dx, i) => {
+        const bx = x + dx + sway * (0.8 + i * 0.2), h = 70 + i * 10;
+        ctx.strokeStyle = INK; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + dx, y); ctx.lineTo(bx, y - h); ctx.stroke();
+        ctx.strokeStyle = '#8cbf5a'; ctx.lineWidth = 4; ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(bx + 8, y - h * 0.6, 14, 4, -0.6, 0, TAU); fillStroke(ctx, '#8cbf5a', 2);
+      });
+      fruitAt([[-10, -50], [12, -58]]);
+      break;
+    case 'scallion':
+      for (let i = -3; i <= 3; i++) { const bx = x + i * 8; ctx.strokeStyle = INK; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(bx, y); ctx.lineTo(bx + sway, y - 44 - Math.abs(i) * -2); ctx.stroke(); ctx.strokeStyle = i % 2 ? '#8cbf5a' : '#a9d86e'; ctx.lineWidth = 5; ctx.stroke(); }
+      rr(ctx, x - 30, y - 10, 60, 12, 5); fillStroke(ctx, '#fff8e8', 2.5);
+      fruitAt([[-20, -28], [20, -30]]);
+      break;
+    case 'nori':
+      for (let i = -2; i <= 2; i++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(x + i * 10, y); for (let k = 0; k <= 90; k += 6) ctx.lineTo(x + i * 10 + Math.sin(k * 0.1 + t * 2 + i) * 6 + sway, y - k); }, '#2f6a4a', 7);
+      fruitAt([[-16, -60], [16, -70], [0, -86]]);
+      break;
+    case 'dumpling':
+      [[-20, -18, 22], [18, -20, 22], [0, -36, 26]].forEach(([dx, dy, r]) => { circle(ctx, x + dx + sway * 0.4, y + dy, r); fillStroke(ctx, '#6fa54a', 3); });
+      fruitAt([[-18, -24], [16, -26], [0, -46]]);
+      break;
+  }
+}
