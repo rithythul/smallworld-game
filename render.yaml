@@ -1,11 +1,20 @@
-# Render Blueprint: deploys Noodle Universe as a free static site.
+# Render Blueprint: runs Noodle Universe as a Node web service.
+# The server hosts the game AND the multiplayer rooms, leaderboard and online saves.
 services:
   - type: web
     name: noodle-universe
-    runtime: static
-    buildCommand: echo "No build step needed"
-    staticPublishPath: .
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: public, max-age=300
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+    # Saves and the leaderboard are files. On the free plan they are wiped when the
+    # server restarts or sleeps. To keep them, switch to a paid plan and uncomment:
+    # disk:
+    #   name: noodle-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # and add an env var DATA_DIR=/var/data
