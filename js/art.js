@@ -313,7 +313,7 @@ function brickSprite(kind) {
   if (brickSprites[kind]) return brickSprites[kind];
   const c = document.createElement('canvas'); c.width = 64; c.height = 56;
   const x = c.getContext('2d');
-  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8', canyon: '#e59866', boulder: '#c9784a', peak: '#a9a39a', snow: '#f4f7fb' }[kind];
+  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8', canyon: '#e59866', boulder: '#c9784a', peak: '#a9a39a', snow: '#f4f7fb', shard: '#bfe9ff' }[kind] || (kind.startsWith('land:') ? kind.slice(5) : '#f4c35a');
   x.translate(32, 30);
   x.fillStyle = 'rgba(52,35,63,0.2)'; x.beginPath(); x.ellipse(0, 18, 26, 7, 0, 0, TAU); x.fill();
   rr(x, -25, -16, 50, 32, 9); fillStroke(x, base, 3);
@@ -323,6 +323,10 @@ function brickSprite(kind) {
     x.beginPath();
     for (let i = -20; i <= 20; i += 2) x.lineTo(i, -6 + r * 8 + Math.sin(i * 0.6 + r) * 2.2);
     x.stroke();
+  }
+  if (kind === 'shard') {
+    x.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4 : 9; x.lineTo(Math.cos(a) * r, 2 + Math.sin(a) * r); }
+    x.closePath(); x.fillStyle = '#ffd23f'; x.fill(); x.strokeStyle = INK; x.lineWidth = 2; x.stroke();
   }
   if (kind === 'fortune') {
     x.fillStyle = '#fff'; x.font = '800 16px "Baloo 2", sans-serif'; x.textAlign = 'center'; x.fillText('?', 0, 6);
@@ -335,8 +339,8 @@ function drawBrick(ctx, b, t, near) {
   const wob = near ? Math.sin(t * 14) * 0.06 : 0;
   ctx.save(); ctx.translate(b.x, b.y - 14);
   ctx.rotate(wob);
-  if (b.kind === 'gold' || b.kind === 'fortune') {
-    ctx.fillStyle = b.kind === 'gold' ? 'rgba(255,210,63,0.35)' : 'rgba(255,179,200,0.4)';
+  if (b.kind === 'gold' || b.kind === 'fortune' || b.kind === 'shard') {
+    ctx.fillStyle = b.kind === 'gold' ? 'rgba(255,210,63,0.35)' : b.kind === 'shard' ? 'rgba(191,233,255,0.55)' : 'rgba(255,179,200,0.4)';
     circle(ctx, 0, 0, 34 + Math.sin(t * 3) * 4); ctx.fill();
   }
   if (b.kind === 'boulder') ctx.scale(1.55, 1.55);

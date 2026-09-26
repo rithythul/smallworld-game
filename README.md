@@ -22,6 +22,7 @@ Opening `index.html` without the server still works for solo play; multiplayer, 
 
 - **Story (3 chapters so far):** the Pillow Note, pool tiles at dawn, the Backwards Willow and a noodle cipher; Crunch Canyon with the Echo Rock, the rhythm drum, the Mirror Pond and the Udon Snail; the Soba Peaks with the Face Statue. The journal's **Story** tab always shows the next step and where to look. Tap the goal for a yellow guide arrow.
 - **World:** Ramen Village, Crunch Meadow, Spaghetti Woods, Crunch Canyon, Soba Peaks, the Morning Pool (6–8 AM), day and night, storms.
+- **The Endless Frontier (Chapter 4):** after Chapter 3 the Cloud Gate east of the Soba Peaks opens, and the map keeps growing forever. Each new land (Candy Dunes, Mushroom Marsh, Crystal Tundra, Bamboo Breeze, Lava Ladle, Cloud Meadows, Coral Coast, Autumn Orchard, then *Whispering*, *Sparkly*… versions of them) has its own Keeper, bricks, food trees and a Map Stone missing 3 star shards: one in a crystal brick, one on a tall pillar (hop to grab it), one for answering the Keeper's science question. Restore the stone and the next land opens. Every land gets its own page on the world map.
 - **Physics and skills:** gravity and hopping; deep water needs swimming lessons (Coach Kombu), flying needs flight lessons (Captain Penne). After 3 lessons each skill keeps levelling forever.
 - **Food:** 10 kinds of trees; shake them for food, eat it, or cook 6 recipes with Grandma for special powers.
 - **Endless play:** 25 noodles, 3 new daily challenges every morning, stars and an endless Noodle Level, big challenges, space daydreams with Guide Stars and a space suit.
@@ -70,5 +71,6 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 | `js/net.js` | Multiplayer connection |
 | `js/space.js` | Space daydreams |
 | `js/care.js` | Breaks, daily play time and grown-up settings |
+| `js/lands.js` | The Endless Frontier: lands made from their number, their Keepers and drawings |
 | `js/talk.js` | Room chat, quick phrases and WebRTC voice |
 | `server.js` | Node server: static files, rooms, leaderboard, online saves |

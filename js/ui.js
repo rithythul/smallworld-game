@@ -93,6 +93,7 @@ const UI = (() => {
     else if (kind === 'kombu') drawKombu(c, 60, 150, t, 1.7);
     else if (kind === 'prof') drawProfessor(c, 60, 118, t, 1.35);
     else if (kind === 'penne') drawPenne(c, 50, 150, t, 1.6);
+    else if (String(kind).startsWith('keeper:')) Lands.drawKeeper(c, Lands.get(+kind.slice(7)), t, 1.9, { x: 60, y: 112 });
     else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
     c.restore();
   }
@@ -102,7 +103,7 @@ const UI = (() => {
   function say(who, lines, { choices = null, onDone = null } = {}) {
     dlg = { who, lines: Array.isArray(lines) ? lines : [lines], i: 0, choices, onDone };
     $('dialog').hidden = false;
-    $('dialogName').textContent = names[who] || who;
+    $('dialogName').textContent = String(who).startsWith('keeper:') ? Lands.get(+who.slice(7)).biome.keeper : names[who] || who;
     drawPortrait(who, performance.now() / 1000);
     showLine();
   }
@@ -623,11 +624,17 @@ const UI = (() => {
   }
   function map(opts) {
     openSheet('World map', (body) => {
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">You explored <b>${opts.explored}%</b> of the Noodle Universe. ⭐ is your goal. Tap anywhere to drop a 📍 pin and follow the blue arrow.</p>`);
+      if (opts.prev || opts.next) {
+        body.insertAdjacentHTML('beforeend', `<div class="map-nav">${opts.prev ? `<button class="choice alt" type="button" id="mapPrev">${opts.prev.label}</button>` : '<span></span>'}<b>${opts.title}</b>${opts.next ? `<button class="choice alt" type="button" id="mapNext">${opts.next.label}</button>` : '<span></span>'}</div>`);
+        if (opts.prev) $('mapPrev').addEventListener('click', opts.prev.go);
+        if (opts.next) $('mapNext').addEventListener('click', opts.next.go);
+      }
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">You explored <b>${opts.explored}%</b> of ${opts.land ? 'this land' : 'the Noodle Universe'}. ⭐ is your goal. Tap anywhere to drop a 📍 pin and follow the blue arrow.${opts.next && !opts.land ? ' The world keeps growing: tap ▶ to see the new lands.' : ''}</p>`);
       const wrap = document.createElement('div'); wrap.className = 'map-wrap';
       const c = document.createElement('canvas'); c.className = 'map-canvas'; c.setAttribute('aria-label', 'World map');
       wrap.appendChild(c); body.appendChild(wrap);
-      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🏠 Home · 🍜 Grandma · 🎓 Professor · 🏊 Pool · 🔮 Oracle · 🚀 Rocket · 🪽 Flight school · 🪞 Mirror Pond · 🥁 Drum · 🌿 Spring · 🗿 Statue · 🧊 Lake · 🐌 Snail · 🔒 Locked</p>');
+      if (opts.land) body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🪨 Map Stone · 🙂 Keeper · 🌟 Star shard · ✨ Restored · ☁️ Cloud Gate · 🔒 Locked</p>');
+      else body.insertAdjacentHTML('beforeend', '<p class="sheet-sub map-legend">🏠 Home · 🍜 Grandma · 🎓 Professor · 🏊 Pool · 🔮 Oracle · 🚀 Rocket · 🪽 Flight school · 🪞 Mirror Pond · 🥁 Drum · 🌿 Spring · 🗿 Statue · 🧊 Lake · 🐌 Snail · ☁️ Cloud Gate · 🔒 Locked</p>');
       if (opts.pin) { body.insertAdjacentHTML('beforeend', '<button class="choice alt" type="button" id="clearPin">Remove pin</button>'); $('clearPin').addEventListener('click', () => { opts.clearPin(); closeSheet(); }); }
       const size = () => {
         const W = wrap.clientWidth, H = Math.round(W * opts.aspect), dpr = Math.min(2, window.devicePixelRatio || 1);

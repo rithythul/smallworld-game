@@ -122,10 +122,11 @@ const Game = (() => {
   // Can you stand here? z is your height above the ground: things below you don't block you.
   // withWater = false means water does not count (movement handles water itself).
   function blocked(x, y, z = 0, withWater = true) {
-    if (x < 30 || y < 40 || x > WORLD.w - 30 || y > WORLD.h - 30) return true;
+    if (x < 30 || y < 40 || x > worldRight() - 30 || y > WORLD.h - 30) return true;
     // walls, fog and cliffs block you even in the air
     if (y > CANYON.wallY - 22 && y < CANYON.wallY + 26 && !(canyonOpen() && Math.abs(x - CANYON.gate.x) < 56)) return true;
-    if (x > PEAKS.left - 40 && (!fogGone() || y > CANYON.wallY - 22)) return true;
+    if (x > PEAKS.left - 40 && x < LAND_X0 && (!fogGone() || y > CANYON.wallY - 22)) return true;
+    if (x >= LAND_X0 - 40 && landBlocked(x, y, z)) return true;
     if (x > PEAKS.left - 40 && dist(x, y, STATUE.x, STATUE.y - 20) < 62) return true;
     if (z < 90) for (const r of RECTS) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
     if (z < 45) {
@@ -162,6 +163,10 @@ const Game = (() => {
       if (hp > 0) list.push({ i: 'boulder' + k, k, x, y, kind: 'boulder', hp, max: 3 });
     });
     if (G.pieces.includes(1) && !G.pieces.includes(2)) list.push({ i: 'gold', x: GOLD_BRICK.x, y: GOLD_BRICK.y, kind: 'gold' });
+    for (const L of nearLands()) {
+      L.bricks.forEach(b => { if (!G.crunched.includes(b.id) && !roomCrunched.has(b.id)) list.push({ i: b.id, x: b.x, y: b.y, kind: 'land:' + L.biome.brick, land: L.n }); });
+      if (!landShards(L.n)[0] && !landState().done[L.n]) list.push({ i: 'shard' + L.n, x: L.shardBrick.x, y: L.shardBrick.y, kind: 'shard', land: L.n });
+    }
     if (G.fortune && !G.fortune.crunched) {
       const [fx, fy] = FORTUNE_SPAWNS[G.fortune.spawn];
       list.push({ i: 'fortune', x: fx, y: fy, kind: 'fortune' });
@@ -281,6 +286,11 @@ const Game = (() => {
       for (const g of glassNoodles()) add('PICK', g.x, g.y, 56, () => pickGlass(g), 2, 'look');
       if (!has('vine')) for (const [wx, wy] of WILLOWS) add('PICK', wx, wy + 10, 64, pickVine, 1, 'look');
       TREES.forEach(([tx, ty, kind], i) => { if (kind !== 'willow' && fruitLeft(i) > 0) add('SHAKE', tx, ty + 12, 66, () => shakeTree(i), 1, 'look'); });
+      for (const L of nearLands()) {
+        add('TALK', L.keeper.x, L.keeper.y + 20, 76, () => talkKeeper(L), 2, 'talk');
+        add(shardCount(L.n) === 3 && !landState().done[L.n] ? 'RESTORE' : 'LOOK', L.stone.x, L.stone.y + 30, 80, () => useStone(L), 2, 'look');
+        L.trees.forEach(tr => { if (landFruit(tr) > 0) add('SHAKE', tr.x, tr.y + 12, 66, () => shakeAt(tr.id, tr.x, tr.y, tr.kind), 1, 'look'); });
+      }
       if (!c.length) {
         const sd = streamDist(P.x, P.y);
         if (inPond(P.x, P.y, 44)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: 0, fn: () => startDrink('mirror'), prio: 0, cls: 'water', hold: true });
@@ -626,7 +636,7 @@ const Game = (() => {
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
     Sound.crunch(b.kind === 'gold' ? 1.4 : 1); buzz(b.kind === 'boulder' ? 35 : 18);
-    const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'], peak: ['#a9a39a', '#9a7b5b', '#fff3d6'], snow: ['#ffffff', '#dfe8f2', '#bfe9ff'] }[b.kind];
+    const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'], peak: ['#a9a39a', '#9a7b5b', '#fff3d6'], snow: ['#ffffff', '#dfe8f2', '#bfe9ff'], shard: ['#bfe9ff', '#ffd23f', '#fff8e8'] }[b.kind] || [b.kind.slice(5), '#fff3d6', '#ffd23f'];
     burst(b.x, b.y - 16, 22, cols, { speed: 280, up: 260, size: 6 });
     floatText(b.x, b.y - 50, 'CRUNCH!', '#fff8e8');
     G.water = Math.max(0, G.water - 5);
@@ -643,6 +653,7 @@ const Game = (() => {
 
     if (b.i === 'gold') return crunchGold();
     if (b.i === 'fortune') return crunchFortune();
+    if (b.kind === 'shard') return gotShard(b.land, 0, b.x, b.y);
     if (b.kind === 'boulder') {
       G.boulderHp[b.k] = b.hp - 1;
       shake = 16;
@@ -660,6 +671,7 @@ const Game = (() => {
     if (b.kind === 'woods') G.woodsCrunches++;
     if (b.kind === 'canyon') G.canyonCrunches++;
     if (b.kind === 'peak' || b.kind === 'snow') G.peakCrunches = (G.peakCrunches || 0) + 1;
+    if (b.land) G.landCrunches = (G.landCrunches || 0) + 1;
     addCoins(1 + (combo.n >= 3 ? 1 : 0) + (buffed() ? 1 : 0), b.x, b.y - 80);
     maybeShiny();
     if (!has('brick')) return giveNoodle('brick');
@@ -894,11 +906,11 @@ const Game = (() => {
     if (!has('soba') && G.drinks >= 3) setTimeout(() => giveNoodle('soba'), 500);
   }
 
-  function shakeTree(i) {
-    const [tx, ty, kind] = TREES[i];
+  function shakeTree(i) { const [tx, ty, kind] = TREES[i]; shakeAt(i, tx, ty, kind); }
+  function shakeAt(key, tx, ty, kind) {
     const food = TREE_FOOD[kind];
-    G.shaken[i] = (G.shaken[i] || 0) + 1;
-    treeShake.set(i, now + 0.5);
+    G.shaken[key] = (G.shaken[key] || 0) + 1;
+    treeShake.set(key, now + 0.5);
     const first = !(G.pantry[food] > 0) && !(G.foodSeen || {})[food];
     G.pantry[food] = (G.pantry[food] || 0) + 1;
     G.foodSeen = G.foodSeen || {}; G.foodSeen[food] = true;
@@ -1214,14 +1226,13 @@ const Game = (() => {
         { clue: 'piece5', text: 'Climb the Soba Peaks', where: 'East, past Spaghetti Woods. Follow the road out of the woods and up the zigzag.', done: c('statue') },
         { clue: 'statue', text: 'Show the statue your faces', where: 'Crunchy, thirsty, cool, sleepy, in that order. Look at what makes your face change.', done: p(6) },
       ]),
-      ch('Chapter 4 · The Glass Noodle Caves', [
-        { text: 'Coming in the next update', where: 'Map Piece 6 shows a dark cave full of glowing noodles.', done: false, soon: true },
-      ]),
+      ch(`Chapter 4 · The Endless Frontier${landsOpen() > 1 ? ` (${landsOpen() - 1} land${landsOpen() > 2 ? 's' : ''} restored)` : ''}`, frontierSteps()),
     ];
   }
   // Where the yellow arrow points: the area to explore, not the exact answer.
   function goalTarget() {
     const c = (id) => G.clues.includes(id), p = (n) => G.pieces.includes(n);
+    if (!G.lesson && Lands.at(P.x) >= 1 && landsOpen()) { const g = landGoal(); return { x: g.x, y: g.y, label: g.label }; }
     if (G.lesson) {
       const l = LESSONS.find(x => x.id === G.lesson.id);
       if (l.id.startsWith('swim') && l.id !== 'swim3') return { x: GATE.x, y: GATE.y, label: 'Pool' };
@@ -1244,12 +1255,14 @@ const Game = (() => {
     if (c('mirror') && !p(5)) return ownHas('dawn') ? { x: 800, y: 2380, label: 'Udon Snail' } : poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
     if (p(5) && !c('statue')) return { x: STATUE.x, y: STATUE.y + 80, label: 'Summit' };
     if (c('statue') && !p(6)) return G.statueStep === 2 ? { ...PEAKS.lakeEntry, label: 'Lake' } : G.statueStep === 3 ? { x: STATUE.x, y: STATUE.y + 80, label: 'Statue' } : null;
+    if (landsOpen()) { const g = landGoal(); return { x: g.x, y: g.y, label: g.label }; }
     return null;
   }
   let guideOn = false, sameGoalT = 0, lastGoalKey = '', hintStep = 0, lastSecrets = [];
   // A hint that always matches what the goal pill is asking for right now.
   function hintFor(level) {
     if (G.lesson) { const l = LESSONS.find(x => x.id === G.lesson.id); return level === 0 ? l.desc : null; }
+    if (Lands.at(P.x) >= 1 && landsOpen()) { const st = frontierSteps().find(x => !x.done); return level === 0 && st ? st.where : null; }
     if (hour() >= 21 || hour() < 5) return level === 0 ? 'Walk to your front door in Ramen Village and choose Sleep.' : null;
     for (const chap of story()) {
       const st = chap.steps.find(x => !x.done);
@@ -1264,6 +1277,7 @@ const Game = (() => {
   function goalText() {
     const lt = lessonText(); if (lt) return lt;
     const n = G.found.length;
+    if (Lands.at(P.x) >= 1 && landsOpen() && !(hour() >= 21 || hour() < 5)) return landGoal().text;
     if (hour() >= 21 || hour() < 5) return 'It\'s late. Go home and sleep (your door)';
     if (!G.flags.swam && G.day === 1 && G.time < POOL_CLOSE) return 'Swim in the Morning Pool before 8 AM';
     if (!G.flags.metGrandma) return 'Say good morning to Grandma Ramen at her noodle stand';
@@ -1280,6 +1294,7 @@ const Game = (() => {
     if (G.clues.includes('mirror') && !G.pieces.includes(5)) return ownHas('dawn') ? 'Ask the Udon Snail about its house (canyon)' : (poolOpen() ? 'Catch the Dawn Noodle in the pool (6–7 AM)' : 'Catch the Dawn Noodle: nap at home, swim at 6 AM');
     if (G.pieces.includes(5) && !G.clues.includes('statue')) return 'Climb to the top of the Soba Peaks (east)';
     if (G.clues.includes('statue') && !G.pieces.includes(6)) return `Show the statue your faces (${G.statueStep}/4)`;
+    if (landsOpen()) return landGoal().text;
     if (G.daily && G.daily.day === G.day) {
       const next = G.daily.list.find(c => !G.daily.done[c.id]);
       if (next) return `📅 Today: ${next.title} (${Math.min(next.goal, Math.floor(G.daily.prog[next.id] || 0))}/${next.goal})`;
@@ -1331,6 +1346,132 @@ const Game = (() => {
 
   const setText = (el, v) => { v = String(v); if (el._v !== v) { el._v = v; el.textContent = v; } };
 
+  /* ---------- the Endless Frontier: new lands keep opening to the east ---------- */
+  function landState() {
+    G.lands = G.lands || {};
+    ['done', 'shards', 'quiz', 'met', 'visited', 'seen'].forEach(k => { G.lands[k] = G.lands[k] || {}; });
+    return G.lands;
+  }
+  // The first land opens when Chapter 3 is done, then one more for every Map Stone you restore. Forever.
+  function landsOpen() {
+    if (!G || !G.pieces.includes(6)) return 0;
+    const S = landState(); let n = 1; while (S.done[n]) n++; return n;
+  }
+  const worldRight = () => { const n = landsOpen(); return n ? LAND_X0 + n * LAND_W : WORLD.w; };
+  const landShards = (n) => landState().shards[n] || [false, false, false];
+  const shardCount = (n) => landShards(n).filter(Boolean).length;
+  const landFruit = (tr) => Math.max(0, FRUIT_MAX[tr.kind] - ((G.shaken || {})[tr.id] || 0));
+  function nearLands() {
+    const open = landsOpen(); if (!open) return [];
+    const here = Lands.at(P.x), out = [];
+    for (let n = Math.max(1, here - 1); n <= Math.min(open, here + 1); n++) out.push(Lands.get(n));
+    return out;
+  }
+  function landBlocked(x, y, z) {
+    const L = Lands.get(Lands.at(x)); if (!L) return false;
+    if (dist(x, y, L.stone.x, L.stone.y - 10) < 44) return true;
+    if (z < 60 && dist(x, y, L.pillar.x, L.pillar.y - 6) < 30) return true;
+    if (z < 45) {
+      if (dist(x, y, L.keeper.x, L.keeper.y) < 22) return true;
+      for (const tr of L.trees) if (dist(x, y, tr.x, tr.y) < 22) return true;
+      for (const pr of L.props) if (dist(x, y, pr.x, pr.y) < 20 * pr.s) return true;
+    }
+    return false;
+  }
+  function gotShard(n, k, x, y) {
+    const S = landState(), arr = landShards(n).slice();
+    if (arr[k]) return;
+    arr[k] = true; S.shards[n] = arr;
+    Sound.discover(); buzz([20, 40, 30]); P.wow = 1.4;
+    burst(x, y - 40, 30, ['#ffd23f', '#fff8e8', '#bfe9ff'], { speed: 260, up: 240, size: 6, type: 'spark' });
+    addCoins(5, x, y - 90);
+    const c = shardCount(n);
+    UI.toast(`<span class="t-small">🌟 Star shard ${c}/3</span>${c < 3 ? 'The Map Stone needs ' + (3 - c) + ' more.' : 'All 3! Bring them to the Map Stone.'}`, { big: true, life: 3.6 });
+    save();
+  }
+  function talkKeeper(L) {
+    const S = landState(), n = L.n, who = 'keeper:' + n, q = L.biome.q;
+    if (S.done[n]) return UI.say(who, [`Thank you, ${profile.name || 'Squareface'}! The ${L.name} shines again.`, `The Cloud Gate to the east is open. The ${Lands.get(n + 1).name} is waiting!`]);
+    const answer = (k) => {
+      if (k === q.a) {
+        S.quiz[n] = true; gotShard(n, 2, L.keeper.x, L.keeper.y); learn('frontier');
+        UI.say(who, [`Yes! ${q.why}`, shardCount(n) < 3 ? 'Here is my star shard. Now find the others!' : 'That was the last one. Put all 3 shards in the Map Stone!']);
+      } else { Sound.wrong(); UI.say(who, [`Hmm, not "${q.o[k]}". Think about it and ask me again!`]); }
+    };
+    const ask = () => {
+      const order = [0, 1, 2].sort((a, b) => ((a * 7 + n * 3) % 5) - ((b * 7 + n * 3) % 5));
+      UI.say(who, `${SUBJECTS[q.s].icon} Question time! ${q.q}`, { choices: order.map(k => ({ label: q.o[k], fn: () => answer(k) })) });
+    };
+    if (!S.met[n]) {
+      S.met[n] = true; save();
+      return UI.say(who, [`${L.biome.hello} I am ${L.biome.keeper}, keeper of this land.`,
+        'Oh no, our Map Stone lost its 3 star shards! Without them, the clouds in the east will not move.',
+        'One shard is inside a sparkly crystal brick. One floats on top of a tall stone pillar: stand next to it and hop to grab it!',
+        'And I will give you the last one if you can answer my science question.'],
+      { choices: [{ label: 'Ask me now!', fn: ask }, { label: 'Later', alt: true }] });
+    }
+    if (!S.quiz[n]) return ask();
+    if (shardCount(n) < 3) return UI.say(who, [`You have ${shardCount(n)} of 3 star shards.`, !landShards(n)[0] ? 'Look for the sparkly crystal brick and crunch it.' : 'Find the tall stone pillar. Stand next to it and hop!']);
+    return UI.say(who, 'You found all 3 shards! Put them in the Map Stone, right next to me.');
+  }
+  function useStone(L) {
+    const S = landState(), n = L.n, c = shardCount(n);
+    if (S.done[n]) return UI.say('me', `The Map Stone of the ${L.name} glows. It shows a road going east... forever.`);
+    if (c < 3) return UI.say('me', `The Map Stone has 3 empty holes. I have ${c} star shard${c === 1 ? '' : 's'}.${S.met[n] ? '' : ` Maybe ${L.biome.keeper} knows more.`}`);
+    S.done[n] = true;
+    const coins = 20 + 10 * Math.min(n, 10);
+    addCoins(coins, L.stone.x, L.stone.y - 120);
+    G.bonusStars = (G.bonusStars || 0) + 2;
+    shake = 14; Sound.secret(); buzz([30, 60, 30]);
+    burst(L.stone.x, L.stone.y - 70, 60, ['#ffd23f', '#fff8e8', L.biome.color], { speed: 380, up: 320, size: 7, type: 'spark' });
+    UI.toast(`<span class="t-small">🗺️ Land ${n} restored · ⭐ +2 · +${coins} coins</span>The clouds in the east are moving… the ${Lands.get(n + 1).name} is open!`, { big: true, life: 5 });
+    save();
+  }
+  let lastLand = -1;
+  function frontierTick() {
+    const S = landState(), open = landsOpen();
+    if (open && !S.announced) {
+      S.announced = true; save();
+      setTimeout(() => UI.toast('<span class="t-small">☁️ The Cloud Gate is open!</span>Walk east across the Soba Peaks. New lands are waiting, and they never end!', { big: true, life: 5 }), 1500);
+    }
+    const n = Lands.at(P.x);
+    if (n !== lastLand) {
+      if (n >= 1 && lastLand !== -1) {
+        const L = Lands.get(n), first = !S.visited[n];
+        S.visited[n] = true;
+        if (first) { addCoins(3); Sound.secret(); }
+        UI.toast(`<span class="t-small">${first ? '🗺️ New land discovered!' : 'Land ' + n}</span>${L.name}${first && !S.done[n] ? '. Find the Keeper at the Map Stone.' : ''}`, { big: first, life: first ? 4 : 2.2 });
+        if (first) save();
+      }
+      lastLand = n;
+    }
+    // the shard on the pillar: hop next to it
+    if (n >= 1 && n <= open && !S.done[n] && !landShards(n)[1]) {
+      const L = Lands.get(n);
+      if (P.z >= 18 && dist(P.x, P.y, L.pillar.x, L.pillar.y) < 64) gotShard(n, 1, L.pillar.x, L.pillar.y - 100);
+    }
+  }
+  function landGoal() {
+    const S = landState(), n = landsOpen(), L = Lands.get(n), here = Lands.at(P.x);
+    if (here < n && !S.visited[n]) return { text: n === 1 ? '☁️ Go through the Cloud Gate, east of the Soba Peaks' : `☁️ A new land is open! Go east to the ${L.name}`, x: L.x0 + 160, y: L.stone.y, label: L.name };
+    if (!S.met[n]) return { text: `Meet ${L.biome.keeper}, keeper of the ${L.name}`, x: L.keeper.x, y: L.keeper.y, label: L.biome.keeper };
+    const sh = landShards(n);
+    if (shardCount(n) < 3) {
+      const tg = !sh[0] ? { x: L.shardBrick.x, y: L.shardBrick.y, label: 'Crystal brick' } : !sh[1] ? { x: L.pillar.x, y: L.pillar.y + 40, label: 'Tall pillar' } : { x: L.keeper.x, y: L.keeper.y, label: L.biome.keeper };
+      return { text: `Find the 3 star shards of the ${L.name} (${shardCount(n)}/3)`, ...tg };
+    }
+    return { text: 'Put the 3 star shards in the Map Stone', x: L.stone.x, y: L.stone.y + 30, label: 'Map Stone' };
+  }
+  function frontierSteps() {
+    const S = landState(), n = Math.max(1, landsOpen()), L = Lands.get(n);
+    return [
+      { text: 'Go through the Cloud Gate', where: 'Walk all the way east across the Soba Peaks. The clouds part when Chapter 3 is done.', done: !!S.visited[1] },
+      { text: `Meet ${L.biome.keeper} in the ${L.name}`, where: `Land ${n}. The Keeper stands next to the Map Stone, near the west side of the land.`, done: !!S.met[n] },
+      { text: `Find 3 star shards (${shardCount(n)}/3)`, where: 'One is in a sparkly crystal brick, one floats on a tall pillar (stand next to it and hop), and the Keeper gives one for a right answer.', done: shardCount(n) >= 3 },
+      { text: `Restore the Map Stone of the ${L.name}`, where: 'Stand at the Map Stone with all 3 shards. Then a new land opens further east. It never ends!', done: !!S.done[n] },
+    ];
+  }
+
   /* ---------- world map ---------- */
   const CELL = 200, COLS = Math.ceil(WORLD.w / CELL), ROWS = Math.ceil(WORLD.h / CELL);
   let mapImg = null, mapT = 0;
@@ -1347,7 +1488,23 @@ const Game = (() => {
     m.fillStyle = '#b8693e'; m.fillRect(0, CANYON.wallY - 20, WORLD.w, 40);
     m.restore();
   }
+  // Every land has its own little fog-of-war grid
+  const LCOLS = Math.ceil(LAND_W / CELL), LROWS = Math.ceil(LAND_H / CELL);
+  function markLandSeen(n) {
+    const S = landState(), L = Lands.get(n);
+    let seen = S.seen[n]; if (!seen || seen.length !== LCOLS * LROWS) seen = '0'.repeat(LCOLS * LROWS);
+    const cx = Math.floor((P.x - L.x0) / CELL), cy = Math.floor(P.y / CELL);
+    let arr = null;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= LCOLS || y >= LROWS || dx * dx + dy * dy > 5) continue;
+      const i = y * LCOLS + x;
+      if (seen[i] !== '1') { arr = arr || seen.split(''); arr[i] = '1'; }
+    }
+    S.seen[n] = arr ? arr.join('') : seen;
+  }
   function markSeen() {
+    if (Lands.at(P.x) >= 1) return markLandSeen(Lands.at(P.x));
     if (!G.seen || G.seen.length !== COLS * ROWS) G.seen = '0'.repeat(COLS * ROWS);
     const cx = Math.floor(P.x / CELL), cy = Math.floor(P.y / CELL);
     let arr = null;
@@ -1380,7 +1537,8 @@ const Game = (() => {
   }
   const H0 = PLACES.house;
   // Draws the map into any canvas. mini = the small corner map.
-  function drawMap(c, W, H, mini) {
+  function drawMap(c, W, H, mini, page = 0) {
+    if (page >= 1) return drawLandMap(c, W, H, mini, page);
     const k = W / WORLD.w, t = now;
     c.clearRect(0, 0, W, H);
     c.drawImage(mapImg, 0, 0, W, H);
@@ -1412,6 +1570,7 @@ const Game = (() => {
       mapLandmarks().forEach(l => { c.fillText(l.icon, l.x * k, l.y * k); });
       if (!canyonOpen() && seenAt(CANYON.gate.x, CANYON.wallY - 100)) c.fillText('🔒', CANYON.gate.x * k, CANYON.wallY * k);
       if (G.pieces.includes(5) && seenAt(snail.x, snail.y)) c.fillText('🐌', snail.x * k, snail.y * k);
+      if (fogGone() && seenAt(3500, 900)) c.fillText(landsOpen() ? '☁️▶' : '☁️🔒', (WORLD.w - 70) * k, 900 * k);
     }
     // goal and pin
     const tg = goalTarget();
@@ -1428,12 +1587,99 @@ const Game = (() => {
     circle(c, P.x * k, P.y * k, pr); fillStroke(c, profile.color || '#2fa4b5', 2.5);
     if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText('You', P.x * k, P.y * k + pr + 12); }
   }
-  function openMap() {
+  // One map page per land: its ground, landmarks, fog, friends and you.
+  function drawLandMap(c, W, H, mini, n) {
+    if (W < 4 || H < 4) return;
+    const L = Lands.get(n), open = n <= landsOpen(), t = now, S = landState();
+    const k = Math.min(W / LAND_W, H / LAND_H), ox = (W - LAND_W * k) / 2, oy = (H - LAND_H * k) / 2;
+    const X = (x) => ox + (x - L.x0) * k, Y = (y) => oy + y * k;
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = '#e9dcc0'; c.fillRect(0, 0, W, H);
+    c.fillStyle = L.biome.ground; c.fillRect(ox, oy, LAND_W * k, LAND_H * k);
+    L.patches.forEach(p => { c.fillStyle = p.dot ? L.biome.dot : L.biome.patch; c.beginPath(); c.ellipse(X(p.x), Y(p.y), p.r * k, p.r * k * 0.6, 0, 0, Math.PI * 2); c.fill(); });
+    c.fillStyle = 'rgba(52,35,63,0.35)'; L.props.forEach(p => { circle(c, X(p.x), Y(p.y), Math.max(1.5, 16 * k * p.s)); c.fill(); });
+    c.fillStyle = '#6fa54a'; L.trees.forEach(tr => { circle(c, X(tr.x), Y(tr.y), Math.max(2, 22 * k)); c.fill(); });
+    // fog
+    const seen = S.seen[n] || '';
+    const fog = document.createElement('canvas'); fog.width = Math.ceil(W); fog.height = Math.ceil(H);
+    const f = fog.getContext('2d');
+    f.fillStyle = '#e9dcc0'; f.fillRect(ox, oy, LAND_W * k, LAND_H * k);
+    f.strokeStyle = 'rgba(160,120,80,0.25)'; f.lineWidth = 1;
+    for (let i = -H; i < W; i += 10) { f.beginPath(); f.moveTo(i, 0); f.lineTo(i + H, H); f.stroke(); }
+    if (open) {
+      f.globalCompositeOperation = 'destination-out';
+      const r = CELL * k * 1.25;
+      for (let i = 0; i < seen.length; i++) {
+        if (seen[i] !== '1') continue;
+        const x = ox + ((i % LCOLS) + 0.5) * CELL * k, y = oy + (Math.floor(i / LCOLS) + 0.5) * CELL * k;
+        const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        f.fillStyle = g; f.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    }
+    c.drawImage(fog, 0, 0);
+    const seenAtL = (x, y) => seen[Math.floor(y / CELL) * LCOLS + Math.floor((x - L.x0) / CELL)] === '1';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    if (!open) {
+      c.font = `${mini ? 11 : 16}px "Baloo 2", sans-serif`; c.fillStyle = INK;
+      c.fillText('🔒 ' + (n === 1 ? 'Finish Chapter 3' : `Restore the ${Lands.get(n - 1).name}`), W / 2, H / 2);
+      return;
+    }
+    const icon = (e, x, y, size) => { c.font = `${size}px sans-serif`; c.fillText(e, X(x), Y(y)); };
+    const big = mini ? 12 : Math.max(16, W / 26);
+    if (!mini) { c.font = `${Math.max(14, W / 22)}px "Bagel Fat One", sans-serif`; c.fillStyle = 'rgba(52,35,63,0.55)'; c.fillText(L.name, W / 2, oy + 24); }
+    if (seenAtL(L.stone.x, L.stone.y)) { icon(S.done[n] ? '✨' : '🪨', L.stone.x, L.stone.y - 30, big); icon('🙂', L.keeper.x + 60, L.keeper.y, big * 0.8); }
+    if (!S.done[n]) {
+      if (!landShards(n)[0] && seenAtL(L.shardBrick.x, L.shardBrick.y)) icon('🌟', L.shardBrick.x, L.shardBrick.y, big * 0.9);
+      if (!landShards(n)[1] && seenAtL(L.pillar.x, L.pillar.y)) icon('🌟', L.pillar.x, L.pillar.y, big * 0.9);
+    }
+    icon(S.done[n] ? '☁️▶' : '☁️🔒', L.x1 - 90, L.stone.y, big * 0.9);
+    const tg = goalTarget();
+    if (tg && Lands.at(tg.x) === n) { icon('⭐', tg.x, tg.y, big); if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(tg.label, X(tg.x), Y(tg.y) + 16); } }
+    if (G.pin && Lands.at(G.pin.x) === n) icon('📍', G.pin.x, G.pin.y - 30, big);
+    for (const o of Net.others.values()) {
+      if (o.x === null || Lands.at(o.x) !== n) continue;
+      circle(c, X(o.x), Y(o.y), mini ? 3.5 : 6); fillStroke(c, o.color, 2);
+      if (!mini) { c.font = '800 11px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText(o.name, X(o.x), Y(o.y) - 12); }
+    }
+    if (Lands.at(P.x) === n) {
+      const pr = (mini ? 4 : 7) + Math.sin(t * 5) * 1.5;
+      c.fillStyle = 'rgba(255,255,255,0.6)'; circle(c, X(P.x), Y(P.y), pr + 5); c.fill();
+      circle(c, X(P.x), Y(P.y), pr); fillStroke(c, profile.color || '#2fa4b5', 2.5);
+      if (!mini) { c.font = '800 12px "Baloo 2", sans-serif'; c.fillStyle = INK; c.fillText('You', X(P.x), Y(P.y) + pr + 12); }
+    }
+  }
+  function openMap(page = Lands.at(P.x)) {
+    const maxPage = fogGone() ? landsOpen() + 1 : 0;
+    page = clamp(page, 0, maxPage);
+    const title = (n) => n === 0 ? 'Home world' : n <= landsOpen() ? Lands.get(n).name : '???';
+    if (page >= 1) {
+      learn('map'); markSeen();
+      const L = Lands.get(page), seen = landState().seen[page] || '';
+      return UI.map({
+        draw: (c, W, H) => drawLandMap(c, W, H, false, page),
+        aspect: LAND_H / LAND_W, title: `Land ${page} · ${title(page)}`,
+        prev: { label: '◀ ' + title(page - 1), go: () => openMap(page - 1) },
+        next: page < maxPage ? { label: title(page + 1) + ' ▶', go: () => openMap(page + 1) } : null,
+        explored: Math.round(100 * (seen.split('1').length - 1) / (LCOLS * LROWS)), land: true,
+        pin: !!G.pin,
+        tap: (fx, fy) => {
+          if (page > landsOpen()) return;
+          const x = L.x0 + fx * LAND_W, y = fy * LAND_H;
+          if (G.pin && dist(x, y, G.pin.x, G.pin.y) < 150) { G.pin = null; UI.toast('Pin removed.', { life: 1.8 }); }
+          else { G.pin = { x, y }; UI.toast('<span class="t-small">📍 Pin placed</span>Follow the blue arrow to get there.', { life: 2.8 }); }
+          save();
+        },
+        clearPin: () => { G.pin = null; save(); },
+      });
+    }
+    openCoreMap(maxPage ? { label: title(1) + ' ▶', go: () => openMap(1) } : null);
+  }
+  function openCoreMap(next) {
     learn('map');
     markSeen();
     UI.map({
       draw: (c, W, H) => drawMap(c, W, H, false),
-      aspect: WORLD.h / WORLD.w,
+      aspect: WORLD.h / WORLD.w, title: 'Home world', next,
       explored: Math.round(100 * ((G.seen || '').split('1').length - 1) / (COLS * ROWS)),
       pin: !!G.pin,
       tap: (fx, fy) => {
@@ -1758,7 +2004,8 @@ const Game = (() => {
 
     // camera
     const viewW = vw / zoom, viewH = vh / zoom;
-    const tx = clamp(P.x - viewW / 2, 0, Math.max(0, WORLD.w - viewW));
+    const camRight = landsOpen() ? worldRight() + 300 : WORLD.w;   // peek a little into the next, cloudy land
+    const tx = clamp(P.x - viewW / 2, 0, Math.max(0, camRight - viewW));
     const ty = clamp(P.y - 40 - viewH / 2, 0, Math.max(0, WORLD.h - viewH));
     cam.x += (tx - cam.x) * Math.min(1, dt * 6);
     cam.y += (ty - cam.y) * Math.min(1, dt * 6);
@@ -1779,13 +2026,14 @@ const Game = (() => {
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
     for (const [id, e] of says) if (e.until < now) says.delete(id);
     checkWelcome();
+    frontierTick();
     if (roundEnd && Net.active) updateRoomPill();
     boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
     mapT -= dt;
     if (mapT <= 0) {
       mapT = 0.3; markSeen();
       const mm = $('minimap');
-      if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMap(mc, mm.width, mm.height, true); }
+      if (mm && mm.offsetParent && mapImg) { const mc = mm.getContext('2d'); mc.setTransform(1, 0, 0, 1, 0, 0); drawMap(mc, mm.width, mm.height, true, Lands.at(P.x)); }
     }
     if (G.pin && dist(P.x, P.y, G.pin.x, G.pin.y) < 90) { G.pin = null; Sound.coin(); UI.toast('📍 You reached your pin!', { life: 2 }); }
     cloudT -= dt; if (cloudT <= 0) { cloudT = 60; cloudSave(true); }
@@ -1822,6 +2070,8 @@ const Game = (() => {
     const gx = clamp(Math.floor(cam.x) - 20, 0, WORLD.w), gy = clamp(Math.floor(cam.y) - 20, 0, WORLD.h);
     const gw = Math.min(WORLD.w - gx, Math.ceil(viewW) + 40), gh = Math.min(WORLD.h - gy, Math.ceil(viewH) + 40);
     if (gw > 0 && gh > 0) ctx.drawImage(ground, gx, gy, gw, gh, gx, gy, gw, gh);
+    const landA = Math.max(1, Lands.at(Math.max(LAND_X0, vx0))), landB = vx1 > LAND_X0 ? Math.min(landsOpen() + 1, Lands.at(vx1)) : 0;
+    for (let n = landA; n <= landB; n++) Lands.drawGround(ctx, Lands.get(n), vx0, vy0, vx1, vy1);
 
     // cloud shadows
     ctx.fillStyle = 'rgba(52,35,63,0.06)';
@@ -1895,6 +2145,18 @@ const Game = (() => {
       if (G.launchDay !== G.day) { ctx.font = '800 12px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#34233f'; ctx.fillText('READY', ROCKET_PAD.x, ROCKET_PAD.y + 1); }
     } });
     SIGNPOSTS.forEach(([sx, sy, signs]) => inView(sx, sy) && draw.push({ y: sy, fn: () => drawSignpost(ctx, sx, sy, signs) }));
+    for (let n = landA; n <= landB; n++) {
+      const L = Lands.get(n), done = !!landState().done[n];
+      L.props.forEach(pr => inView(pr.x, pr.y) && draw.push({ y: pr.y, fn: () => Lands.drawProp(ctx, L, pr, t) }));
+      L.trees.forEach(tr => inView(tr.x, tr.y) && draw.push({ y: tr.y, fn: () => drawTree(ctx, tr.x, tr.y, t, tr.kind, landFruit(tr), Math.max(0, (treeShake.get(tr.id) || 0) - now)) }));
+      if (inView(L.stone.x, L.stone.y)) draw.push({ y: L.stone.y, fn: () => Lands.drawStone(ctx, L, t, landShards(n), done) });
+      if (inView(L.keeper.x, L.keeper.y)) draw.push({ y: L.keeper.y, fn: () => Lands.drawKeeper(ctx, L, t) });
+      if (inView(L.pillar.x, L.pillar.y)) draw.push({ y: L.pillar.y, fn: () => Lands.drawPillar(ctx, L, t, !landShards(n)[1] && !done) });
+    }
+    // the Cloud Gate: the edge of the known world, until the next land opens
+    const edge = worldRight();
+    if (fogGone() && edge < vx1 && edge > vx0) draw.push({ y: 1e5, fn: () => Lands.drawCloudWall(ctx, edge, t, vy0, vy1,
+      landsOpen() ? '🔒 Restore this land\'s Map Stone to open' : '🔒 Finish Chapter 3 to open') });
     const H = PLACES.house, S = PLACES.shop;
     draw.push({ y: H.y + 170, fn: () => drawHouse(ctx, H, t, night) });
     draw.push({ y: S.y + 150, fn: () => drawShop(ctx, S, t, night) });

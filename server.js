@@ -272,7 +272,7 @@ wss.on('connection', (ws) => {
 
     switch (m.t) {
       case 'state':
-        p.x = num(m.x, 0, 5000); p.y = num(m.y, 0, 5000);
+        p.x = num(m.x, 0, 1e7); p.y = num(m.y, 0, 5000);  // the world keeps growing east
         p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400), su: !!m.su, h: clean(m.h, 10), ga: !!m.ga };
         break;
       case 'crunch': {

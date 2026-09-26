@@ -102,8 +102,8 @@ const Talk = (() => {
     $('chatPeople').innerHTML = people.length
       ? people.map(([id, o]) => `<button type="button" data-id="${id}" class="${hidden.has(id) ? 'off' : ''}" aria-pressed="${hidden.has(id)}" title="${hidden.has(id) ? 'Show' : 'Hide'} ${esc(o.name)}">
           <span class="dot" style="background:${esc(o.color)}"></span>${esc(o.name)} ${hidden.has(id) ? '🙈' : o.voice === 1 ? '🎙️' : o.voice === 2 ? '🔇' : ''}</button>`).join('') +
-        '<small>Tap a name to hide or show that player.</small>'
-      : '<small>No one else is here yet. Share your room name!</small>';
+        '<small>Tap a name to hide</small>'
+      : '<small>No one else here yet. Share your room name!</small>';
   }
   function add(m) {
     if (Care.chat === 'off' && !m.sys) return;
@@ -150,7 +150,7 @@ const Talk = (() => {
     myLevel = meter(stream);
     inVoice = true; muted = false;
     Net.voice(true, false);
-    note('You are in voice chat. Tap 🎙️ to mute your microphone.');
+    note('');
     $('micBtn').hidden = false; micIcon(); renderVoice(); sync();
   }
   function stopStream() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; }
@@ -177,10 +177,10 @@ const Talk = (() => {
     if (Care.voice === 'off') { box.innerHTML = ''; return; }
     const n = [...Net.others.values()].filter(o => o.voice).length;
     box.innerHTML = inVoice
-      ? `<span>🔊 In voice${n ? ` with ${n} friend${n > 1 ? 's' : ''}` : ', waiting for friends'}</span>
+      ? `<span>🔊 ${n ? `Talking with ${n}` : 'Waiting for friends'}</span>
          <button class="choice${muted ? '' : ' alt'}" type="button" data-v="mute">${muted ? '🎙️ Unmute' : '🔇 Mute'}</button>
          <button class="choice alt" type="button" data-v="leave">Leave</button>`
-      : `<span>${n ? `🔊 ${n} friend${n > 1 ? 's are' : ' is'} talking` : '🔊 Talk with your voice'}</span>
+      : `<span>🔊 ${n ? `${n} in voice` : 'Voice chat'}</span>
          <button class="choice" type="button" data-v="join">🎙️ Join voice</button>`;
   }
   // how loud a stream is right now (0..1), for the "speaking" ring on name tags
