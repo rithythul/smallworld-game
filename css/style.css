@@ -330,10 +330,17 @@ body:not(.touch) #action.pressed, body:not(.touch) #action:active { transform: t
 .room.off .room-dot { background: var(--chili); }
 .icon-star { font-size: 24px; line-height: 1; }
 #emoteBar {
-  position: absolute; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 80px);
+  position: absolute; z-index: 6; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 80px); flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px);
   display: flex; gap: 6px; background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; box-shadow: var(--pop); padding: 6px;
 }
-#emoteBar button { width: 44px; height: 44px; border: 0; background: none; font-size: 26px; border-radius: 12px; }
+#emoteBar button { width: 50px; height: 46px; border: 0; background: none; font-size: 26px; border-radius: 12px; padding: 0; display: grid; place-items: center; }
+#emoteBar canvas { width: 46px; height: 40px; }
+#emoteBar[hidden] { display: none; }
+body.touch #emoteBar { right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: calc(env(safe-area-inset-bottom, 0px) + 206px); }
+@media (max-height: 500px) { body.touch #emoteBar { bottom: calc(env(safe-area-inset-bottom, 0px) + 90px); right: calc(env(safe-area-inset-right, 0px) + 236px); } }
+#faceBtn { font-size: 22px; }
+#faceBtn.on { background: var(--broth); }
+#emoteBtn, #emoteMenuBtn { display: none !important; }
 #emoteBar button:active { background: var(--cream); }
 .big-btn.friends { background: var(--teal); font-size: 22px; padding: 9px 26px 6px; }
 .big-btn.small { font-size: 20px; padding: 8px 24px 5px; }
@@ -652,3 +659,10 @@ body.touch #chat { right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: 
 .map-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .map-nav b { text-align: center; font-size: 15px; }
 .map-nav .choice { font-size: 13px; padding: 4px 10px 2px; min-height: 36px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* quiet pass: stars live in the Skills sheet and the journal, not on the HUD */
+#starCount { display: none; }
+@media (max-width: 420px) {
+  #emoteBar { gap: 4px; padding: 5px; flex-wrap: nowrap; }
+  #emoteBar button { width: 44px; height: 42px; }
+  #emoteBar canvas { width: 42px; height: 36px; }
+}

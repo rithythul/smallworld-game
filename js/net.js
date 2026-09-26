@@ -3,7 +3,7 @@ const Net = (() => {
   let ws = null, me = null, code = null, mode = null, scores = [];
   const others = new Map();     // id -> { name, color, x, y, tx, ty, mood, sw, mv, f, z, walk }
   const handlers = {};
-  let lastState = 0, lastScore = '', replaced = false;
+  let lastState = 0, lastScore = '', replaced = false, clockOffset = 0;
 
   const emit = (evt, data) => (handlers[evt] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
@@ -57,6 +57,7 @@ const Net = (() => {
     switch (m.t) {
       case 'joined':
         me = m.you; code = m.code; mode = m.mode; others.clear();
+        if (m.now) clockOffset = m.now - Date.now();   // one shared clock for the beat and the wonders
         m.players.forEach(p => { if (p.id !== me) others.set(p.id, { ...p, x: null, y: null }); });
         emit('joined', m);
         break;
@@ -99,7 +100,9 @@ const Net = (() => {
       lastState = t;
       send({ t: 'state', x: p.x, y: p.y, mood: p.mood, sw: p.swimming, mv: p.moving, f: Math.round(p.face * 10) / 10, z: Math.round(p.z || 0), su: !!p.suit, h: p.hat || '', ga: !!p.goldAntenna });
     },
-    crunch(id) { if (code) send({ t: 'crunch', b: id }); },
+    crunch(id, n = 0, v = '') { if (code) send({ t: 'crunch', b: id, n, v }); },
+    // milliseconds on the shared clock (the server's, once you are in a room)
+    now() { return Date.now() + clockOffset; },
     found(n) { if (code) send({ t: 'found', n }); },
     score(found, coins, stars) {
       const key = found + ':' + coins + ':' + stars;

@@ -297,6 +297,7 @@ const Game = (() => {
         else if (sd < STREAM.width / 2 + 36 && !onBridge(P.x, P.y)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: sd, fn: () => startDrink('stream'), prio: 0, cls: 'water', hold: true });
       }
     }
+    if (!P.swimming) wonderAction(add);
     if (!c.length) return null;
     c.sort((a, b) => (b.prio - a.prio) || (a.d - b.d));
     return c[0];
@@ -629,13 +630,223 @@ const Game = (() => {
     ] });
   }
 
+
+  /* ---------- wonders: rare surprises that everyone sees at the same moment ---------- */
+  // The shared clock decides when a wonder happens, so every player in the world (and every friend in a room)
+  // gets the same one at the same time. They never run out.
+  const WONDER_WIN = 8 * 60 * 1000, WONDER_LEN = 45;
+  const WONDER_INFO = {
+    rain: { icon: '🍜', name: 'Noodle Rain', hello: 'Noodle rain! Catch them!' },
+    whale: { icon: '🐋', name: 'The Sky Whale', hello: 'Look up!' },
+    giggle: { icon: '🤭', name: 'The Giggle Brick', hello: 'Hee hee… something is giggling nearby!' },
+    rainbow: { icon: '🌈', name: 'Noodle Rainbow', hello: 'A rainbow! What is at the end?' },
+    stars: { icon: '🌠', name: 'Shooting Stars', hello: 'Shooting stars! Make a wish.' },
+  };
+  let W = null, forcedWonder = null;
+  function wonderNow() {
+    if (forcedWonder) { const t = now - forcedWonder.start; return t <= WONDER_LEN ? { id: 'f' + forcedWonder.start, type: forcedWonder.type, t } : (forcedWonder = null); }
+    const T = Net.now(), w = Math.floor(T / WONDER_WIN), rnd = mulberry(w * 7919 + 101);
+    if (rnd() > 0.55) return null;
+    const start = w * WONDER_WIN + Math.floor(rnd() * (WONDER_WIN - (WONDER_LEN + 5) * 1000));
+    const t = (T - start) / 1000;
+    if (t < 0 || t > WONDER_LEN) return null;
+    let type = ['rain', 'whale', 'giggle', 'rainbow', 'stars'][Math.floor(rnd() * 5)];
+    if (type === 'stars' && !isNight()) type = 'rainbow';
+    if (type === 'rainbow' && isNight()) type = 'stars';
+    return { id: w, type, t };
+  }
+  // a free spot some distance away, in a random direction
+  function spotAway(d) {
+    for (let i = 0; i < 24; i++) {
+      const a = Math.random() * Math.PI * 2, x = P.x + Math.cos(a) * d, y = P.y + Math.sin(a) * d * 0.7;
+      if (!blocked(x, y)) return { x, y };
+    }
+    return { x: P.x + 60, y: P.y };
+  }
+  function wonderTick(dt) {
+    const w = wonderNow();
+    if (!w) { W = null; return; }
+    if (!W || W.id !== w.id) {
+      W = { id: w.id, type: w.type, drops: [], caught: 0, done: false, dropT: 0, singT: 2 };
+      if (w.type === 'giggle') W.brick = spotAway(380);
+      if (w.type === 'rainbow') { W.from = { x: P.x, y: P.y }; W.end = spotAway(560); }
+      if (w.type === 'stars') W.streaks = [];
+      G.wonders = G.wonders || {};
+      const first = !G.wonders[w.type];
+      G.wonders[w.type] = (G.wonders[w.type] || 0) + 1;
+      Sound.chord(3, 'bell');
+      UI.toast(`<span class="t-small">${WONDER_INFO[w.type].icon} ${first ? 'A wonder!' : WONDER_INFO[w.type].name}</span>${WONDER_INFO[w.type].hello}`, { life: 3.4 });
+    }
+    W.t = w.t;
+    const viewW = vw / zoom, viewH = vh / zoom;
+    if (W.type === 'rain') {
+      W.dropT -= dt;
+      if (W.dropT <= 0 && W.t < WONDER_LEN - 4) {
+        W.dropT = 0.22;
+        const near = Math.random() < 0.5;   // half of them fall close to you, so small kids catch plenty
+        const x = near ? P.x + (Math.random() - 0.5) * 320 : cam.x + Math.random() * viewW;
+        const land = near ? P.y + (Math.random() - 0.5) * 240 : cam.y + 60 + Math.random() * (viewH - 120);
+        W.drops.push({ x, y: land - viewH * 0.7, vy: 260 + Math.random() * 90, land, c: ['#f7dc7a', '#9ff3ff', '#ff8fb1', '#c6d77a'][Math.floor(Math.random() * 4)], life: 5 });
+      }
+      for (const d of W.drops) {
+        if (d.y < d.land) d.y += d.vy * dt; else d.life -= dt;
+        if (!d.got && d.y >= d.land - 30 && dist(P.x, P.y, d.x, d.y) < 64 && P.z < 60) {
+          d.got = true; W.caught++;
+          Sound.note(MELODY[(W.caught - 1) % MELODY.length], 'glass', { vol: 0.7 });
+          burst(d.x, d.y - 10, 6, [d.c, '#fff8e8'], { speed: 120, up: 120, size: 4 });
+          if (W.caught <= 15) addCoins(1, d.x, d.y - 40);
+          if (W.caught === 15) floatText(P.x, P.y - 140, 'NOODLE CATCHER!', '#ffd23f');
+        }
+      }
+      W.drops = W.drops.filter(d => !d.got && d.life > 0);
+    }
+    if (W.type === 'whale') {
+      W.singT -= dt;
+      if (W.singT <= 0) { W.singT = 5; [-5, -3, -1].forEach((n, i) => setTimeout(() => Sound.note(n, 'flute', { vol: 0.9 }), i * 380)); }
+    }
+    if (W.type === 'giggle' && !W.done) {
+      const b = W.brick, d = dist(P.x, P.y, b.x, b.y);
+      if (d < 240 && d > 60) {
+        // runs away, a little slower than you, and turns when something is in the way
+        let a = Math.atan2(b.y - P.y, b.x - P.x);
+        for (let k = 0; k < 8; k++) {
+          const nx = b.x + Math.cos(a) * 150 * dt, ny = b.y + Math.sin(a) * 150 * dt;
+          if (!blocked(nx, ny)) { b.x = nx; b.y = ny; break; }
+          a += (k % 2 ? -1 : 1) * 0.6 * (k + 1);
+        }
+        b.hop = (b.hop || 0) + dt * 14;
+      }
+      if (Math.random() < dt * 0.5 && d < 700) Sound.note(12 + Math.floor(Math.random() * 3), 'glass', { vol: 0.35, pan: (b.x - P.x) / 700 });
+    }
+    if (W.type === 'rainbow' && !W.done && dist(P.x, P.y, W.end.x, W.end.y) < 70) {
+      W.done = true; addCoins(8, W.end.x, W.end.y - 60); Sound.chord(5, 'bell');
+      burst(W.end.x, W.end.y - 30, 30, ['#e4572e', '#f4b942', '#8cbf5a', '#5b7cfa', '#b98cff'], { speed: 260, up: 260, size: 6, type: 'spark' });
+      UI.toast('<span class="t-small">🌈 End of the rainbow</span>A pot of golden noodles! +8 coins', { life: 3 });
+    }
+    if (W.type === 'stars') {
+      if (Math.random() < dt * 0.9) W.streaks.push({ x: Math.random() * vw, y: Math.random() * vh * 0.4, life: 0.9 });
+      W.streaks.forEach(st => { st.life -= dt; st.x += 520 * dt; st.y += 220 * dt; });
+      W.streaks = W.streaks.filter(st => st.life > 0);
+    }
+  }
+  function wonderAction(add) {
+    if (!W || W.done) return;
+    if (W.type === 'whale') add('WAVE', P.x, P.y, 9999, () => {
+      W.done = true; sendEmote('👋'); addCoins(5); Sound.chord(-2, 'flute');
+      const wx = whaleX();
+      burst(wx, cam.y + 120, 40, ['#9ff3ff', '#fff8e8', '#5b7cfa'], { speed: 200, up: 60, size: 6, grav: 500 });
+      UI.toast('<span class="t-small">🐋 The Sky Whale</span>It waved back and sprinkled you with sparkles! +5 coins', { life: 3.2 });
+    }, 3, 'talk');
+    if (W.type === 'giggle') add('CATCH', W.brick.x, W.brick.y, 70, () => {
+      W.done = true; addCoins(10, W.brick.x, W.brick.y - 60); Sound.chord(7, 'glass'); maybeShiny(0.3);
+      burst(W.brick.x, W.brick.y - 16, 30, ['#f4c35a', '#fff8e8', '#ff8fb1'], { speed: 300, up: 260, size: 6 });
+      UI.toast('<span class="t-small">🤭 Got it!</span>You caught the Giggle Brick! +10 coins', { life: 3 });
+    }, 3);
+    if (W.type === 'stars') add('WISH', P.x, P.y, 9999, () => {
+      W.done = true; G.bonusStars = (G.bonusStars || 0) + 1; Sound.chord(9, 'bell'); P.wow = 1.5;
+      UI.toast('<span class="t-small">🌠 Your wish is on its way</span>⭐ +1', { life: 3 });
+    }, 3, 'look');
+  }
+  const whaleX = () => cam.x + 120 + (W.t / WONDER_LEN) * (vw / zoom + 200);   // on screen from the first second
+  function drawWonderGround(draw, inView, t) {
+    if (!W) return;
+    if (W.type === 'rain') W.drops.forEach(d => draw.push({ y: d.y, fn: () => {
+      noodleStroke(ctx, () => { ctx.beginPath(); for (let x = -12; x <= 12; x += 2) ctx.lineTo(d.x + x, d.y - 8 + Math.sin(x * 0.4 + t * 8) * 3); }, d.c, 4);
+    } }));
+    if (W.type === 'giggle' && !W.done && inView(W.brick.x, W.brick.y)) draw.push({ y: W.brick.y, fn: () => {
+      const b = W.brick, hop = Math.abs(Math.sin(b.hop || 0)) * 8;
+      drawBrick(ctx, { x: b.x, y: b.y - hop, kind: 'normal' }, t, true);
+      ctx.fillStyle = INK; circle(ctx, b.x - 7, b.y - hop - 18, 2.4); ctx.fill(); circle(ctx, b.x + 7, b.y - hop - 18, 2.4); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(b.x, b.y - hop - 14, 5, 0.1, Math.PI - 0.1); ctx.stroke();
+    } });
+    if (W.type === 'rainbow' && !W.done) {
+      const e = W.end;
+      if (inView(e.x, e.y)) draw.push({ y: e.y, fn: () => {
+        ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(e.x, e.y + 2, 30, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(e.x - 26, e.y - 30); ctx.quadraticCurveTo(e.x - 28, e.y + 4, e.x, e.y + 4); ctx.quadraticCurveTo(e.x + 28, e.y + 4, e.x + 26, e.y - 30); ctx.closePath(); fillStroke(ctx, '#34233f', 3);
+        ctx.fillStyle = '#ffd23f'; circle(ctx, e.x - 8, e.y - 32, 8); ctx.fill(); circle(ctx, e.x + 8, e.y - 33, 8); ctx.fill(); circle(ctx, e.x, e.y - 38, 8); ctx.fill();
+      } });
+    }
+  }
+  function drawWonderSky(t) {
+    if (!W) return;
+    const fade = Math.min(1, W.t / 3, (WONDER_LEN - W.t) / 3);
+    if (W.type === 'rainbow' && !W.done) {
+      const a = W.from, e = W.end, mx = (a.x + e.x) / 2, my = (a.y + e.y) / 2, R = dist(a.x, a.y, e.x, e.y) / 2;
+      const ang = Math.atan2(e.y - a.y, e.x - a.x);
+      ctx.save(); ctx.globalAlpha = 0.45 * fade; ctx.translate(mx, my); ctx.rotate(ang); ctx.lineWidth = 14;
+      ['#e4572e', '#f4b942', '#f7dc7a', '#8cbf5a', '#5b7cfa', '#b98cff'].forEach((c, i) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.arc(0, 0, R - i * 13, Math.PI, 0); ctx.stroke(); });
+      ctx.restore();
+    }
+    if (W.type === 'whale') {
+      const x = whaleX(), y = cam.y + 120 + Math.sin(t * 0.8) * 16;
+      ctx.save(); ctx.globalAlpha = fade; ctx.translate(x, y);
+      ctx.fillStyle = 'rgba(52,35,63,0.08)'; ctx.beginPath(); ctx.ellipse(0, 260, 160, 40, 0, 0, Math.PI * 2); ctx.fill();   // its shadow on the ground
+      ctx.beginPath(); ctx.ellipse(0, 0, 150, 62, 0, 0, Math.PI * 2); fillStroke(ctx, '#8fd3ef', 4);
+      ctx.beginPath(); ctx.ellipse(10, 22, 110, 30, 0, 0, Math.PI); ctx.fillStyle = '#e8f7ff'; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-140, 0); ctx.lineTo(-200, -40 + Math.sin(t * 2) * 10); ctx.lineTo(-190, 30 + Math.sin(t * 2) * 10); ctx.closePath(); fillStroke(ctx, '#8fd3ef', 4);
+      ctx.fillStyle = INK; circle(ctx, 100, -12, 6); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(110, 8, 12, 0.2, Math.PI - 0.6); ctx.stroke();
+      // a fountain of noodles
+      noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(60, -60); ctx.quadraticCurveTo(50, -110 - Math.sin(t * 4) * 10, 20, -90); }, '#f7dc7a', 5);
+      noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(60, -60); ctx.quadraticCurveTo(80, -115 - Math.cos(t * 4) * 10, 104, -88); }, '#f7dc7a', 5);
+      ctx.restore();
+    }
+  }
+  function drawWonderScreen() {
+    if (!W || W.type !== 'stars') return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W.streaks.forEach(st => {
+      const g = ctx.createLinearGradient(st.x - 90, st.y - 38, st.x, st.y);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, `rgba(255,246,190,${st.life})`);
+      ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(st.x - 90, st.y - 38); ctx.lineTo(st.x, st.y); ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${st.life})`; circle(ctx, st.x, st.y, 3); ctx.fill();
+    });
+  }
+
+  /* ---------- the world is an instrument ---------- */
+  const BEAT = 60 / 96;                                  // one shared beat for everyone (96 per minute)
+  const beatPhase = () => ((Net.now() / 1000) % BEAT) / BEAT;
+  const onBeat = () => { const ph = beatPhase(); return ph < 0.2 || ph > 0.84; };   // kind to small hands
+  const MELODY = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2, 1];   // a combo climbs up the scale and back down
+  const BIOME_VOICE = { dunes: 'kalimba', marsh: 'marimba', tundra: 'bell', bamboo: 'flute', lava: 'steel', clouds: 'glass', coral: 'harp', autumn: 'marimba' };
+  function voiceFor(b) {
+    if (b.land) { const L = Lands.get(b.land); if (b.kind !== 'shard') return BIOME_VOICE[L.biome.id] || 'marimba'; }
+    return { normal: 'marimba', woods: 'kalimba', canyon: 'tom', boulder: 'tom', peak: 'kalimba', snow: 'bell', gold: 'glass', fortune: 'glass', shard: 'glass' }[b.kind] || 'marimba';
+  }
+  let hitStop = 0, myLastCrunch = -1e9, lastCrunchAt = -99, groove = 0, harmonyT = 0;
+  const canvasEl = $('world');
+  function punch(amount = 0.022) {
+    canvasEl.style.transition = 'none'; canvasEl.style.transform = `scale(${1 + amount})`;
+    requestAnimationFrame(() => { canvasEl.style.transition = 'transform .14s ease-out'; canvasEl.style.transform = ''; });
+  }
+  // a friend crunched: hear it as music, and if you crunched together, it is harmony
+  function friendNote(m, pos) {
+    const o = Net.others.get(m.by); if (o) o.lastCrunch = now;
+    if (!pos) return;
+    const d = dist(P.x, P.y, pos[0], pos[1]);
+    if (d > 900) return;
+    Sound.note(m.n || 0, m.v || 'marimba', { vol: 0.25 + 0.5 * (1 - d / 900), pan: (pos[0] - P.x) / 700 });
+    if (Math.abs(Net.now() - myLastCrunch) < 400 && now - harmonyT > 1.2) {
+      harmonyT = now;
+      G.stats.harmony = (G.stats.harmony || 0) + 1;
+      floatText((P.x + pos[0]) / 2, Math.min(P.y, pos[1]) - 120, '♪ HARMONY ♪', '#ffd23f');
+      burst(pos[0], pos[1] - 40, 10, ['#ffd23f', '#fff8e8', '#b98cff'], { speed: 160, up: 200, size: 5, type: 'spark' });
+      burst(P.x, P.y - 60, 10, ['#ffd23f', '#fff8e8', '#b98cff'], { speed: 160, up: 200, size: 5, type: 'spark' });
+      if ((G.stats.harmony % 3) === 0) addCoins(1);
+      if (G.stats.harmony === 1) UI.toast('<span class="t-small">🎶 Harmony!</span>You and a friend crunched at the same time. Make music together!', { life: 3.2 });
+    }
+  }
+
   function crunch(b) {
     faceStep('crunch');
     dailyAdd('crunch');
     learn('crunch');
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
-    Sound.crunch(b.kind === 'gold' ? 1.4 : 1); buzz(b.kind === 'boulder' ? 35 : 18);
+    Sound.crunch(b.kind === 'gold' ? 1.1 : 0.7); buzz(b.kind === 'boulder' ? 35 : 18);
+    const big = b.kind === 'boulder' || b.kind === 'gold' || b.kind === 'shard';
+    hitStop = big ? 0.09 : 0.045; punch(big ? 0.04 : 0.022);
     const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'], peak: ['#a9a39a', '#9a7b5b', '#fff3d6'], snow: ['#ffffff', '#dfe8f2', '#bfe9ff'], shard: ['#bfe9ff', '#ffd23f', '#fff8e8'] }[b.kind] || [b.kind.slice(5), '#fff3d6', '#ffd23f'];
     burst(b.x, b.y - 16, 22, cols, { speed: 280, up: 260, size: 6 });
     floatText(b.x, b.y - 50, 'CRUNCH!', '#fff8e8');
@@ -648,7 +859,14 @@ const Game = (() => {
     UI.combo(combo.n);
     G.stats.maxCombo = Math.max(G.stats.maxCombo || 0, combo.n);
     if (combo.n >= 3) { dailyAdd('combo'); learn('combo'); }
-    if (combo.n >= 2) Sound.combo(combo.n);
+    // the music: every crunch is a note, a combo is a melody, on the beat adds harmony
+    const beat = onBeat(), step = MELODY[(combo.n - 1) % MELODY.length], voice = voiceFor(b);
+    b.note = step; b.voice = voice;
+    Sound.note(step, voice, { harmony: beat });
+    myLastCrunch = Net.now(); lastCrunchAt = now;
+    groove = beat ? groove + 1 : 0;
+    if (beat) floatText(b.x + 26, b.y - 60, '♪', '#fff8e8');
+    if (groove === 4) { groove = 0; addCoins(2, b.x, b.y - 110); floatText(b.x, b.y - 130, 'IN THE GROOVE!', '#ffd23f'); G.stats.grooves = (G.stats.grooves || 0) + 1; if (G.stats.grooves === 1) UI.toast('<span class="t-small">🎵 In the groove</span>Watch your antenna blink and crunch on the beat!', { life: 3.4 }); }
     if (combo.n >= 5 && !has('macaroni')) setTimeout(() => giveNoodle('macaroni'), 350);
 
     if (b.i === 'gold') return crunchGold();
@@ -660,13 +878,13 @@ const Game = (() => {
       if (G.boulderHp[b.k] > 0) { floatText(b.x, b.y - 90, `${G.boulderHp[b.k]} more!`, '#ffd23f'); return; }
       burst(b.x, b.y - 20, 40, cols, { speed: 380, up: 320, size: 8 });
       addCoins(5, b.x, b.y - 90);
-      Net.crunch('boulder' + b.k);
+      Net.crunch('boulder' + b.k, b.note, b.voice);
       if (!has('boulder')) giveNoodle('boulder');
       return;
     }
 
     G.crunched.push(b.i);
-    Net.crunch(b.i);
+    Net.crunch(b.i, b.note, b.voice);
     G.crunches++;
     if (b.kind === 'woods') G.woodsCrunches++;
     if (b.kind === 'canyon') G.canyonCrunches++;
@@ -903,6 +1121,11 @@ const Game = (() => {
       if (!has('mint')) setTimeout(() => giveNoodle('mint'), 500);
     }
     if (where === 'mirror') { mirrorTimer = 0; learn('mirror'); }
+    // ritual: a sip of water at sunset
+    if (hour() >= 17 && hour() < 20 && G.sunsetDay !== G.day) {
+      G.sunsetDay = G.day; G.bonusStars = (G.bonusStars || 0) + 1;
+      setTimeout(() => { Sound.chord(4, 'flute'); UI.toast('<span class="t-small">🌇 Sunset sip · ⭐ +1</span>The water tastes like the orange sky.', { life: 3.4 }); }, 400);
+    }
     if (!has('soba') && G.drinks >= 3) setTimeout(() => giveNoodle('soba'), 500);
   }
 
@@ -1055,6 +1278,10 @@ const Game = (() => {
 
   function enterPool() {
     const lessonTime = G.lesson && G.lesson.id.startsWith('swim');
+    if (poolOpen() && G.dawnDay !== G.day && G.flags.swam) {
+      G.dawnDay = G.day; G.bonusStars = (G.bonusStars || 0) + 1;
+      setTimeout(() => UI.toast('<span class="t-small">🌅 Morning swim · ⭐ +1</span>Fresh water, fresh day.', { life: 3 }), 600);
+    }
     if (!poolOpen() && !lessonTime) {
       Sound.wrong();
       UI.say('me', (G.time < POOL_OPEN ? 'The gate is locked. The sign says the Morning Pool opens at 6:00 AM.' : 'The Morning Pool is closed. It opens every day from 6 to 8 AM.') + ' (Coach Kombu can let you in for a swimming lesson.)');
@@ -1242,6 +1469,7 @@ const Game = (() => {
     if (hour() >= 21 || hour() < 5) return { ...DOOR, label: 'Home' };
     if (!G.flags.swam && G.day === 1 && G.time < POOL_CLOSE) return { ...GATE, label: 'Pool' };
     if (!G.flags.metGrandma) return { ...TALK, label: 'Grandma' };
+    const rit = ritual(); if (rit) return rit.at;
     if (G.found.length < 3) return { x: 760, y: 1300, label: 'Meadow' };
     if (G.flags.pillowReady && !c('pillow')) return { ...DOOR, label: 'Home' };
     if (c('pillow') && !p(1)) return poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
@@ -1274,6 +1502,14 @@ const Game = (() => {
     return null;
   }
 
+  // Rituals: little moments of the day that are worth showing up for
+  function ritual() {
+    const hr = hour();
+    if (G.flags.swam && poolOpen() && G.dawnDay !== G.day) return { text: '🌅 Morning swim: the pool is open until 8 AM', at: { ...GATE, label: 'Pool' } };
+    if (hr >= 17 && hr < 20 && G.sunsetDay !== G.day && Lands.at(P.x) === 0) return { text: '🌇 Sunset sip: drink from the stream before dark', at: { x: 1250, y: 900, label: 'Stream' } };
+    if (hr >= 20 && hr < 21) return { text: '🌙 Night is coming. Go home and dream', at: { ...DOOR, label: 'Home' } };
+    return null;
+  }
   function goalText() {
     const lt = lessonText(); if (lt) return lt;
     const n = G.found.length;
@@ -1281,6 +1517,7 @@ const Game = (() => {
     if (hour() >= 21 || hour() < 5) return 'It\'s late. Go home and sleep (your door)';
     if (!G.flags.swam && G.day === 1 && G.time < POOL_CLOSE) return 'Swim in the Morning Pool before 8 AM';
     if (!G.flags.metGrandma) return 'Say good morning to Grandma Ramen at her noodle stand';
+    const rit = ritual(); if (rit) return rit.text;
     if (n < 3) return `Collect 3 noodles (${n}/3). Crunch bricks in the meadow!`;
     if (G.flags.pillowReady && !G.clues.includes('pillow')) return 'Your antenna twitches… check your house';
     if (G.clues.includes('pillow') && !G.pieces.includes(1)) return poolOpen() ? 'Swim in the pool and follow the floor arrows' : 'The pool is closed. Nap at home to wake up at 6 AM';
@@ -1404,10 +1641,8 @@ const Game = (() => {
     };
     if (!S.met[n]) {
       S.met[n] = true; save();
-      return UI.say(who, [`${L.biome.hello} I am ${L.biome.keeper}, keeper of this land.`,
-        'Oh no, our Map Stone lost its 3 star shards! Without them, the clouds in the east will not move.',
-        'One shard is inside a sparkly crystal brick. One floats on top of a tall stone pillar: stand next to it and hop to grab it!',
-        'And I will give you the last one if you can answer my science question.'],
+      return UI.say(who, [`${L.biome.hello} Our Map Stone lost its 3 star shards!`,
+        '🌟 One is in a sparkly brick. 🌟 One is on a tall pillar: hop! 🌟 And one is mine, for a right answer.'],
       { choices: [{ label: 'Ask me now!', fn: ask }, { label: 'Later', alt: true }] });
     }
     if (!S.quiz[n]) return ask();
@@ -1992,10 +2227,14 @@ const Game = (() => {
 
     // mood
     P.crunching = Math.max(0, P.crunching - dt);
+    // the antenna blinks on the beat while you are crunching, so you can feel the rhythm
+    P.beat = now - lastCrunchAt < 4 ? Math.max(0, 1 - beatPhase() * 4) : 0;
     P.wow = Math.max(0, P.wow - dt);
     blinkT -= dt; if (blinkT < -0.14) blinkT = 2 + Math.random() * 3;
     const h = hour();
-    P.mood = P.crunching > 0 ? 'crunch'
+    if (faceShow && faceShow.until < now) faceShow = null;
+    P.mood = faceShow ? faceShow.mood
+      : P.crunching > 0 ? 'crunch'
       : P.wow > 0 ? 'wow'
       : P.swimming ? (buffed() ? 'cool' : 'swim')
       : G.water < 25 ? 'thirsty'
@@ -2073,9 +2312,20 @@ const Game = (() => {
       }
     }
     for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
+    // a friend made a face at you
+    for (const o of Net.others.values()) {
+      if (o.mood !== o.seenMood) {
+        if (['love', 'laugh', 'silly', 'sad'].includes(o.mood) && o.x !== null && dist(P.x, P.y, o.x, o.y) < 900) {
+          Sound.note(FACE_NOTES[o.mood], 'glass', { vol: 0.5, pan: (o.x - P.x) / 700 });
+          if (o.mood === 'love') burst(o.x, o.y - 110, 8, ['#ff8fb1', '#fff8e8'], { speed: 120, up: 160, size: 5, type: 'spark' });
+        }
+        o.seenMood = o.mood;
+      }
+    }
     for (const [id, e] of says) if (e.until < now) says.delete(id);
     checkWelcome();
     frontierTick();
+    wonderTick(dt);
     if (roundEnd && Net.active) updateRoomPill();
     boardT -= dt; if (boardT <= 0) { boardT = 30; postScore(); }
     mapT -= dt;
@@ -2221,14 +2471,16 @@ const Game = (() => {
     for (const [id, o] of Net.others) {
       if (o.x === null || !inView(o.x, o.y)) continue;
       draw.push({ y: o.y + (o.sw ? 1000 : 0) + ((o.z || 0) > 40 ? 3000 : 0), fn: () => {
-        const ghost = { hat: o.h, goldAntenna: o.ga, suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
+        const ghost = { beat: now - (o.lastCrunch || -99) < 4 ? P.beat || Math.max(0, 1 - beatPhase() * 4) : 0, hat: o.h, goldAntenna: o.ga, suit: o.su, x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
         drawPlayer(ctx, ghost, t);
         const e = emotes.get(id);
         const sy = Talk.isHidden(id) ? null : says.get(id);
         drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.a ? o.name + ' 💤' : o.name, o.color, e ? e.e : o.a ? '🍽️' : null, sy && sy.text, Talk.level(id));
       } });
     }
+    drawWonderGround(draw, inView, t);
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
+    drawWonderSky(t);
 
     if (hintStep >= 4) lastSecrets.forEach(sc => {
       if (!inView(sc.x, sc.y)) return;
@@ -2340,6 +2592,7 @@ const Game = (() => {
       if (stormFlash > 0) { ctx.fillStyle = `rgba(255,255,240,${stormFlash * 0.45})`; ctx.fillRect(edge, 0, canvas.width - edge, canvas.height); }
     }
 
+    drawWonderScreen();
     // swim HUD
     if (swim && !swim.done) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2355,7 +2608,7 @@ const Game = (() => {
   function frame(ts) {
     const dt = Math.min(0.05, (ts - lastFrame) / 1000 || 0);
     lastFrame = ts; now = ts / 1000;
-    if (running) { update(dt); render(); }
+    if (running) { if (hitStop > 0) hitStop -= dt; else update(dt); render(); }
     requestAnimationFrame(frame);
   }
 
@@ -2401,6 +2654,7 @@ const Game = (() => {
     if (k === 'n' && !UI.talking) { $('sheet').hidden ? UI.dex(G) : UI.closeSheet(); return; }
     if (k === 'm' && !UI.talking) { $('sheet').hidden ? openMap() : UI.closeSheet(); return; }
     if (k === 'c' && !UI.talking && Net.active) { e.preventDefault(); Talk.toggle(); return; }
+    if (/^[1-6]$/.test(k) && !UI.talking && Net.active) { sendFace(FACES[+k - 1]); return; }
     if (k === 'j' && !UI.talking) { $('sheet').hidden ? UI.journal(G) : UI.closeSheet(); return; }
     if (k.startsWith('arrow') || k === 'f') e.preventDefault();
     if ((k === 'f' || k === 'shift') && !e.repeat) jumpQueued = true;
@@ -2560,6 +2814,8 @@ const Game = (() => {
 
   function brickPos(id) {
     if (typeof id === 'number' && BRICK_SPOTS[id]) return BRICK_SPOTS[id];
+    const lb = /^L(\d+)\.(\d+)$/.exec(id);
+    if (lb) { const br = Lands.get(+lb[1]).bricks[+lb[2]]; return br ? [br.x, br.y] : null; }
     const m = /^boulder(\d)$/.exec(id); return m ? CANYON.boulders[+m[1]] : null;
   }
   Net.on('joined', (m) => {
@@ -2589,7 +2845,8 @@ const Game = (() => {
     const pos = brickPos(m.b);
     roomCrunched.add(m.b);
     { const k = /^boulder(\d)$/.exec(m.b); if (k) G.boulderHp[+k[1]] = 0; }
-    if (pos && running) { burst(pos[0], pos[1] - 16, 12, ['#f4c35a', '#fff3d6'], { speed: 200, up: 180, size: 5 }); if (dist(P.x, P.y, pos[0], pos[1]) < 500) Sound.crunch(0.4); }
+    if (pos && running) { burst(pos[0], pos[1] - 16, 12, ['#f4c35a', '#fff3d6'], { speed: 200, up: 180, size: 5 }); if (dist(P.x, P.y, pos[0], pos[1]) < 500) Sound.crunch(0.3, true); }
+    if (running) friendNote(m, pos);
   });
   Net.on('found', (m) => {
     const n = NOODLES.find(x => x.id === m.n); if (!n) return;
@@ -2704,6 +2961,32 @@ const Game = (() => {
     UI.closeSheet();
     UI.toast('You left the room. Playing solo now.', { life: 2.6 });
   }
+  // Faces: Squareface's screen is how you talk. Friends see your face change, no reading needed.
+  const FACES = ['love', 'laugh', 'wow', 'cool', 'silly', 'sad'];
+  const FACE_NOTES = { love: 7, laugh: 9, wow: 10, cool: 4, silly: 12, sad: 0 };
+  let faceShow = null;
+  function sendFace(mood) {
+    faceShow = { mood, until: now + 3.5 };
+    Sound.note(FACE_NOTES[mood] || 5, 'glass', { vol: 0.8 }); buzz(12);
+    if (mood === 'love') burst(P.x, P.y - 110, 8, ['#ff8fb1', '#fff8e8'], { speed: 120, up: 160, size: 5, type: 'spark' });
+    $('emoteBar').hidden = true; $('faceBtn') && $('faceBtn').classList.remove('on');
+    G.stats.faces = (G.stats.faces || 0) + 1;
+  }
+  function buildFaceBar() {
+    const bar = $('emoteBar'); bar.innerHTML = '';
+    FACES.forEach(mood => {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.face = mood; b.setAttribute('aria-label', 'Face: ' + mood);
+      const c = document.createElement('canvas'); c.width = 92; c.height = 80;
+      const x = c.getContext('2d');
+      rr(x, 4, 4, 84, 72, 14); fillStroke(x, '#1f1a2e', 4);
+      drawFace(x, mood, 0.4, 46, 40, 1.9);
+      b.appendChild(c); bar.appendChild(b);
+    });
+    bar.insertAdjacentHTML('beforeend', '<button type="button" data-e="👋" aria-label="Wave">👋</button>');
+    const fb = document.createElement('button'); fb.className = 'icon-btn'; fb.id = 'faceBtn'; fb.type = 'button'; fb.setAttribute('aria-label', 'Make a face'); fb.textContent = '😊';
+    $('talkBar').insertBefore(fb, $('talkBar').firstChild);
+    fb.addEventListener('click', () => { bar.hidden = !bar.hidden; fb.classList.toggle('on', !bar.hidden); Talk.close(); });
+  }
   function sendEmote(e) {
     emotes.set('me', { e, until: now + 3.5 });
     P.wow = 0.8;
@@ -2777,7 +3060,9 @@ const Game = (() => {
     });
     $('emoteBtn').addEventListener('click', () => { $('emoteBar').hidden = !$('emoteBar').hidden; });
   $('emoteMenuBtn').addEventListener('click', () => { $('menuPop').hidden = true; $('emoteBar').hidden = false; });
-    $('emoteBar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendEmote(b.dataset.e); });
+    buildFaceBar();
+    $('emoteBar').addEventListener('pointerdown', (e) => e.stopPropagation());
+    $('emoteBar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.face) sendFace(b.dataset.face); else sendEmote(b.dataset.e); });
   }
 
   function begin(state) {
@@ -2850,5 +3135,7 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { facts: () => G.facts || {}, levelReward: () => levelReward(noodleLevel() + 1), level: () => noodleLevel(), tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; } };
+  return { facts: () => G.facts || {}, levelReward: () => levelReward(noodleLevel() + 1), level: () => noodleLevel(), tryCipher, story, eat: eatFood, mastery: (sk) => ({ level: skillLevel(sk), xp: Math.floor((G.xp || {})[sk] || 0), next: masteryNeed(Math.max(3, skillLevel(sk)) + 1) }), get state() { return G; }, get player() { return P; },
+    wonders: () => Object.entries((G && G.wonders) || {}).map(([k, n]) => ({ ...WONDER_INFO[k], n })),
+    forceWonder: (type) => { forcedWonder = { type, start: now }; W = null; } };
 })();

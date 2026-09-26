@@ -279,7 +279,8 @@ const Talk = (() => {
     window.addEventListener('pagehide', () => leaveVoice(true));
   }
   function refresh() {
-    $('talkBar').hidden = !Net.active || (Care.chat === 'off' && Care.voice === 'off');
+    $('talkBar').hidden = !Net.active;   // faces always work in a room; chat and voice follow the grown-up settings
+    $('chatBtn').hidden = Care.chat === 'off' && Care.voice === 'off';
     $('chatBtn').textContent = Care.chat === 'off' ? '🔊' : '💬'; $('chatBtn').appendChild($('chatBadge') || Object.assign(document.createElement('span'), { id: 'chatBadge', className: 'badge', hidden: true }));
     renderPeople(); renderVoice(); renderLog();
   }

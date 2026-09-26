@@ -192,7 +192,7 @@ function joinRoom(ws, room, name, color, uid) {
   const p = { id: ++room.nextId, ws, name: safeName(name) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
   room.players.set(p.id, p);
   ws.room = room; ws.player = p;
-  send(ws, { t: 'joined', you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
+  send(ws, { t: 'joined', now: Date.now(), you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
   broadcast(room, { t: 'player', p: publicPlayer(p) }, ws);
   broadcast(room, { t: 'scores', list: scores(room) });
 }
@@ -292,7 +292,8 @@ wss.on('connection', (ws) => {
         const id = typeof m.b === 'number' ? m.b : clean(m.b, 12);
         if (room.crunched.has(id)) return;
         room.crunched.add(id);
-        broadcast(room, { t: 'crunch', b: id, by: p.id }, ws);
+        // n and v are the musical note and instrument, so friends hear each other's crunches as music
+        broadcast(room, { t: 'crunch', b: id, by: p.id, n: Math.round(num(m.n, 0, 40)), v: clean(m.v, 8) }, ws);
         if (room.roundEnd) { p.round++; broadcast(room, { t: 'scores', list: scores(room) }); }
         if (room.mode === 'team') room.players.forEach(q => { if (q !== p && q.away) q.helped = (q.helped || 0) + 1; });
         if (room.mode === 'team' && room.players.size >= 2) {

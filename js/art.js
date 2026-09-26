@@ -76,6 +76,27 @@ function drawFace(ctx, mood, t, cx, cy, s = 1) {
       ctx.beginPath(); ctx.moveTo(-7, 3); ctx.lineTo(7, 3); ctx.quadraticCurveTo(7, 11, 0, 11); ctx.quadraticCurveTo(-7, 11, -7, 3); ctx.fill();
       break;
     }
+    case 'love': {
+      const heart = (x, y, k) => { ctx.beginPath(); ctx.moveTo(x, y + 4 * k); ctx.bezierCurveTo(x - 7 * k, y - 1 * k, x - 4 * k, y - 7 * k, x, y - 3 * k); ctx.bezierCurveTo(x + 4 * k, y - 7 * k, x + 7 * k, y - 1 * k, x, y + 4 * k); ctx.fill(); };
+      const k = 1 + Math.sin(t * 8) * 0.12;
+      ctx.fillStyle = '#ff8fb1'; ctx.shadowColor = '#ff8fb1'; heart(-8, -3, k); heart(8, -3, k);
+      ctx.fillStyle = glow; ctx.shadowColor = glow; smile(7, 4, 3.5);
+      break;
+    }
+    case 'laugh':
+      closed(-8, -3); closed(8, -3);
+      ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(8, 3); ctx.quadraticCurveTo(8, 12 + Math.abs(Math.sin(t * 14)) * 2, 0, 12 + Math.abs(Math.sin(t * 14)) * 2); ctx.quadraticCurveTo(-8, 12, -8, 3); ctx.fill();
+      break;
+    case 'silly':
+      eye(-8, -3); ctx.beginPath(); ctx.moveTo(4, -3); ctx.lineTo(12, -3); ctx.stroke();
+      smile(7, 3, 2.5);
+      ctx.fillStyle = '#ff9fb5'; ctx.shadowColor = '#ff9fb5'; ctx.beginPath(); ctx.ellipse(3, 8 + Math.sin(t * 6), 3, 3.6, 0, 0, TAU); ctx.fill();
+      break;
+    case 'sad':
+      eye(-8, -2); eye(8, -2);
+      ctx.beginPath(); ctx.moveTo(-6, 9); ctx.quadraticCurveTo(0, 3, 6, 9); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-12, 4 + (t * 12 % 8), 1.6, 2.4, 0, 0, TAU); ctx.fill();
+      break;
     case 'swim':
       closed(-8, -3); closed(8, -3);
       ctx.beginPath(); ctx.ellipse(0, 6, 3.5, 3, 0, 0, TAU); ctx.stroke();
@@ -99,6 +120,7 @@ function drawHead(ctx, x, y, mood, t, opts = {}) {
     ctx.fillStyle = `rgba(255,210,63,${0.35 * ab})`;
     circle(ctx, ax, ay, 6 + ab * 10); ctx.fill();
   }
+  if (opts.beat > 0.05) { ctx.fillStyle = `rgba(255,248,232,${0.55 * opts.beat})`; circle(ctx, ax, ay, 6 + opts.beat * 5); ctx.fill(); }
   circle(ctx, ax, ay, 5); fillStroke(ctx, opts.golden ? '#ffd23f' : (ab > 0.5 ? '#ffd23f' : (opts.color || '#e4572e')), 2.5);
   // head shell
   rr(ctx, x - w / 2, y - h / 2, w, h, 11); fillStroke(ctx, '#f7f1e3', 3);
@@ -125,7 +147,7 @@ function drawPlayer(ctx, p, t) {
       ctx.beginPath(); ctx.ellipse(x, y, 26 + k * 22, 10 + k * 8, 0, 0, TAU); ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna });
+    drawHead(ctx, x, y - 16 + Math.sin(t * 4) * 2, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna, beat: p.beat || 0 });
     if (p.hat) drawHat(ctx, x, y - 37 + Math.sin(t * 4) * 2, p.hat, t, false);
     ctx.fillStyle = 'rgba(95,208,230,0.75)';
     ctx.beginPath(); ctx.ellipse(x, y + 2, 30, 9, 0, 0, Math.PI); ctx.fill();
@@ -162,7 +184,7 @@ function drawPlayer(ctx, p, t) {
   ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - 14, y - 26 - bob); ctx.lineTo(x - 19, y - 16 - bob + arm); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob + (air ? arm : -arm)); ctx.stroke();
-  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna });
+  drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color, golden: p.goldAntenna, beat: p.beat || 0 });
   if (p.hat) drawHat(ctx, x, y - 77 - bob, p.hat, t, p.z > 2);
   if (p.suit) {
     // space helmet: a glass bubble over the square head

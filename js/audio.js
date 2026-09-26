@@ -17,7 +17,7 @@ const Sound = (() => {
 
   const ok = () => ctx && !muted;
 
-  function tone(freq, dur, { type = 'sine', vol = 0.3, slide = 0, delay = 0 } = {}) {
+  function tone(freq, dur, { type = 'sine', vol = 0.3, slide = 0, delay = 0, attack = 0.012, out = null } = {}) {
     if (!ok()) return;
     const t = ctx.currentTime + delay;
     const o = ctx.createOscillator(), g = ctx.createGain();
@@ -25,9 +25,9 @@ const Sound = (() => {
     o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(master);
+    o.connect(g); g.connect(out || master);
     o.start(t); o.stop(t + dur + 0.05);
   }
 
@@ -43,11 +43,38 @@ const Sound = (() => {
     s.start(t, Math.random() * 0.3); s.stop(t + dur + 0.02);
   }
 
+  // The world is an instrument: every brick plays a note of a friendly scale, so any crunch pattern sounds nice.
+  const PENTA = [0, 2, 4, 7, 9];
+  const semis = (i) => PENTA[((i % 5) + 5) % 5] + 12 * Math.floor(i / 5);
+  const VOICES = {
+    marimba: (f, v, o) => { tone(f, 0.45, { vol: 0.32 * v, out: o }); tone(f * 4, 0.08, { vol: 0.08 * v, out: o }); },
+    kalimba: (f, v, o) => { tone(f, 0.6, { type: 'triangle', vol: 0.26 * v, out: o }); tone(f * 2.01, 0.2, { vol: 0.07 * v, out: o }); },
+    tom: (f, v, o) => { tone(f / 2, 0.4, { vol: 0.5 * v, slide: -f / 5, out: o }); },
+    bell: (f, v, o) => { tone(f * 2, 1.3, { vol: 0.16 * v, out: o }); tone(f * 5.52, 0.5, { vol: 0.04 * v, out: o }); tone(f * 2.76 * 2, 0.35, { vol: 0.03 * v, out: o }); },
+    glass: (f, v, o) => { tone(f * 2, 0.9, { vol: 0.16 * v, out: o }); tone(f * 6, 0.4, { vol: 0.05 * v, out: o }); },
+    flute: (f, v, o) => { tone(f * 2, 0.55, { vol: 0.14 * v, attack: 0.05, out: o }); tone(f * 4, 0.3, { vol: 0.02 * v, attack: 0.05, out: o }); },
+    harp: (f, v, o) => { tone(f, 0.7, { type: 'triangle', vol: 0.2 * v, out: o }); tone(f * 2, 0.4, { type: 'triangle', vol: 0.06 * v, out: o }); },
+    steel: (f, v, o) => { tone(f, 0.6, { vol: 0.22 * v, out: o }); tone(f * 2.4, 0.4, { vol: 0.07 * v, out: o }); tone(f * 3.9, 0.25, { vol: 0.03 * v, out: o }); },
+  };
+  function panner(pan) {
+    if (!pan || !ctx.createStereoPanner) return null;
+    const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(master); return p;
+  }
+
   return {
     init,
+    // i = step in the scale (0, 1, 2...), voice = which instrument, pan = -1 left .. 1 right
+    note(i, voice = 'marimba', { vol = 1, pan = 0, harmony = false } = {}) {
+      if (!ok()) return;
+      const out = panner(pan), f = 261.63 * Math.pow(2, semis(i) / 12);
+      (VOICES[voice] || VOICES.marimba)(f, vol, out);
+      if (harmony) (VOICES[voice] || VOICES.marimba)(261.63 * Math.pow(2, semis(i + 2) / 12), vol * 0.55, out);
+    },
+    chord(i, voice = 'bell') { [0, 2, 4].forEach((k, j) => setTimeout(() => this.note(i + k, voice, { vol: 0.8 }), j * 70)); },
     get muted() { return muted; },
     toggle() { muted = !muted; return muted; },
-    crunch(power = 1) {
+    crunch(power = 1, soft = false) {
+      if (soft) { noise(0.05, { freq: 2400, q: 0.8, vol: 0.25 * power }); noise(0.05, { freq: 1600, q: 0.8, vol: 0.2 * power, delay: 0.03 }); return; }
       const n = 3 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) {
         noise(0.05 + Math.random() * 0.05, { freq: 1400 + Math.random() * 3200, q: 0.8, vol: 0.5 * power, delay: i * (0.028 + Math.random() * 0.02) });

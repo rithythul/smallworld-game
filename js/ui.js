@@ -56,9 +56,10 @@ const UI = (() => {
       el.appendChild(c);
     }
     const span = document.createElement('div'); span.innerHTML = html; el.appendChild(span);
+    if ([...$('toasts').children].some(c => c.textContent === el.textContent)) return;   // no repeats
     $('toasts').appendChild(el);
     el.dataset.prio = prio !== null ? prio : noodle ? 3 : big ? 2 : 1;
-    const box = $('toasts'), cap = document.body.classList.contains('touch') ? 2 : 3;
+    const box = $('toasts'), cap = 2;   // quiet: never more than two at a time
     while (box.children.length > cap) {
       // drop the least important (oldest first among equals)
       let drop = box.firstChild;
@@ -307,6 +308,10 @@ const UI = (() => {
           body.appendChild(el);
           if (!done) open = false;
         });
+        const ws = Game.wonders();
+        body.insertAdjacentHTML('beforeend', `<div class="clue"><span class="where">Rare surprises</span><h3>✨ Wonders you have seen</h3>${ws.length
+          ? `<p class="sheet-sub" style="margin:4px 0 0">${ws.map(w => `${w.icon} ${w.name}${w.n > 1 ? ' ×' + w.n : ''}`).join(' · ')}</p>`
+          : '<p class="empty">Keep playing and keep your eyes open. Something amazing happens every now and then, for everyone at the same time.</p>'}</div>`);
         body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">The story keeps growing, and the world never ends: daily challenges, races and cooking are always waiting.</p>');
       }
 
