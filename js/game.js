@@ -25,7 +25,9 @@ const Game = (() => {
   let ground = null;            // pre-rendered ground
   let vw = 0, vh = 0, dpr = 1, zoom = 1;
   const cam = { x: 0, y: 0 };
-  const P = { x: 0, y: 0, moving: false, walk: 0, face: 0, mood: 'happy', crunching: 0, wow: 0, antennaPulse: 0, swimming: false };
+  const P = { x: 0, y: 0, z: 0, vz: 0, wing: 0, flapping: false, wings: false, stamina: 0, airT: 0, moving: false, walk: 0, face: 0, mood: 'happy', crunching: 0, wow: 0, antennaPulse: 0, swimming: false, area: null };
+  const lastGround = { x: 0, y: 0 };
+  let flyTouch = false, waterHintT = 0;
   const keys = new Set();
   const stick = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
   let particles = [];
@@ -49,6 +51,7 @@ const Game = (() => {
       boulderHp: {}, gateHp: 3, mintDay: 0, mintUntil: 0, statueStep: 0, birdTalks: 0,
       buffUntil: 0, buffDay: 0, fortune: null, hints: {}, journalNew: false,
       px: DOOR.x, py: DOOR.y + 30,
+      skills: { swim: 0, fly: 0 }, lessons: {}, challenges: {}, lesson: null, stats: { swimOpen: 0, hops: 0, maxCombo: 0 },
     };
   }
   function load() {
@@ -110,30 +113,36 @@ const Game = (() => {
     { x: PLACES.shop.x - 8, y: PLACES.shop.y + 40, w: PLACES.shop.w + 50, h: 112 },
     { x: POOL.x - 30, y: POOL.y - 34, w: POOL.w + 60, h: POOL.h + 56 },
   ];
-  function blocked(x, y) {
+  // Water you can swim in (the pool and the mountain lake have their own swim mode)
+  const isWater = (x, y) => (!onBridge(x, y) && streamDist(x, y) < STREAM.width / 2 + 4) || inPond(x, y, 6) || inSpring(x, y, 8);
+
+  // Can you stand here? z is your height above the ground: things below you don't block you.
+  // withWater = false means water does not count (movement handles water itself).
+  function blocked(x, y, z = 0, withWater = true) {
     if (x < 30 || y < 40 || x > WORLD.w - 30 || y > WORLD.h - 30) return true;
-    for (const r of RECTS) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
-    for (const [wx, wy] of WILLOWS) if (dist(x, y, wx, wy) < 22) return true;
-    if (dist(x, y, PLACES.willowBack.x, PLACES.willowBack.y) < 22) return true;
-    if (dist(x, y, 900, 848) < 40) return true;
-    if (!onBridge(x, y) && streamDist(x, y) < STREAM.width / 2 + 4) return true;
-    if (inPond(x, y, 6) || inSpring(x, y, 8)) return true;
-    // the boulder wall, with its gate
+    // walls, fog and cliffs block you even in the air
     if (y > CANYON.wallY - 22 && y < CANYON.wallY + 26 && !(canyonOpen() && Math.abs(x - CANYON.gate.x) < 56)) return true;
-    for (const [rx, ry] of CANYON.rocks) if (dist(x, y, rx, ry) < 36) return true;
-    if (dist(x, y, DRUM.x, DRUM.y - 8) < 50) return true;
-    // Soba Peaks
-    if (x > PEAKS.left - 40) {
-      if (!fogGone()) return true;
-      if (y > CANYON.wallY - 22) return true;
-      if (x > LAKE.x - 20 && x < LAKE.x + LAKE.w + 20 && y > LAKE.y - 16 && y < LAKE.y + LAKE.h + 14) return true;
-      if (dist(x, y, STATUE.x, STATUE.y - 20) < 62) return true;
-      if (dist(x, y, TROCK.x, TROCK.y) < 38) return true;
-      if (dist(x, y, NEST.x, NEST.y - 8) < 42) return true;
-      for (const [px, py] of PEAKS.pines) if (dist(x, y, px, py) < 22) return true;
+    if (x > PEAKS.left - 40 && (!fogGone() || y > CANYON.wallY - 22)) return true;
+    if (x > PEAKS.left - 40 && dist(x, y, STATUE.x, STATUE.y - 20) < 62) return true;
+    if (z < 90) for (const r of RECTS) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
+    if (z < 45) {
+      for (const t of treeSpots()) if (dist(x, y, t[0], t[1]) < 22) return true;
+      if (dist(x, y, PLACES.willowBack.x, PLACES.willowBack.y) < 22) return true;
+      if (dist(x, y, 900, 848) < 40) return true;
+      for (const [rx, ry] of CANYON.rocks) if (dist(x, y, rx, ry) < 36) return true;
+      if (dist(x, y, DRUM.x, DRUM.y - 8) < 50) return true;
+      for (const c of Object.values(COACHES)) if (dist(x, y, c.x, c.y) < 20) return true;
+      if (x > PEAKS.left - 40) {
+        if (dist(x, y, TROCK.x, TROCK.y) < 38) return true;
+        if (dist(x, y, NEST.x, NEST.y - 8) < 42) return true;
+        for (const [px, py] of PEAKS.pines) if (dist(x, y, px, py) < 22) return true;
+      }
     }
+    if (z < 12 && x > LAKE.x - 20 && x < LAKE.x + LAKE.w + 20 && y > LAKE.y - 16 && y < LAKE.y + LAKE.h + 14) return true;
+    if (withWater && z < 12 && isWater(x, y)) return true;
     return false;
   }
+  function treeSpots() { return WILLOWS; }
 
   function bricks() {
     const list = BRICK_SPOTS.map(([x, y], i) => ({ i, x, y, kind: y > CANYON.top ? 'canyon' : x > PEAKS.left ? (y < PEAKS.snowLine ? 'snow' : 'peak') : x > 1450 ? 'woods' : 'normal' }))
@@ -166,13 +175,15 @@ const Game = (() => {
   }
 
   /* ---------- rewards ---------- */
-  function giveNoodle(id) {
+  function giveNoodle(id, from) {
     if (has(id)) return false;
     const n = NOODLES.find(n => n.id === id);
+    if (!n) return false;
     G.found.push(id);
     P.wow = 1.6;
     Sound.discover(); buzz([20, 40, 30]);
-    UI.toast(`<span class="t-small">New noodle · ${n.rarity}</span>${n.name}`, { noodle: n, big: true, life: 3.2 });
+    if (from) UI.toast(`<span class="t-small">Team noodle · from ${from}</span>${n.name}`, { noodle: n, big: true, life: 3.2 });
+    else { UI.toast(`<span class="t-small">New noodle · ${n.rarity}</span>${n.name}`, { noodle: n, big: true, life: 3.2 }); Net.found(id); }
     burst(P.x, P.y - 60, 24, ['#ffd23f', '#fff8e8', '#e4572e', '#8fe0ea'], { type: 'spark', speed: 260, grav: 200, life: 1.1 });
     milestone();
     save();
@@ -200,7 +211,7 @@ const Game = (() => {
     G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = []; G.boulderHp = {};
     G.water = Math.max(G.water, 70);
     newFortune();
-    P.swimming = false; swim = null;
+    P.swimming = false; swim = null; P.area = null; P.z = 0; P.vz = 0; G.lesson = null;
     P.x = spot ? spot.x : DOOR.x; P.y = spot ? spot.y : DOOR.y + 30;
     cam.x = P.x - vw / zoom / 2; cam.y = P.y - vh / zoom / 2;
     thirstWarned = false; nightWarned = false;
@@ -216,15 +227,17 @@ const Game = (() => {
 
   /* ---------- interactions ---------- */
   function findInteraction() {
-    if (UI.busy) return null;
+    if (UI.busy || P.z > 6) return null;
     const c = [];
     const add = (label, x, y, r, fn, prio = 1, cls = '') => { const d = dist(P.x, P.y, x, y); if (d < r) c.push({ label, x, y, d, fn, prio, cls }); };
     if (P.swimming) {
       if (P.area === 'pool' && G.clues.includes('pillow') && !G.pieces.includes(1) && poolOpen()) add('DIVE', LAST_TILE.x, LAST_TILE.y, 34, diveTile, 3, 'swim');
-      c.push({ label: 'GET OUT', x: P.x, y: P.y, d: 999, fn: P.area === 'lake' ? exitLake : exitPool, prio: 0, cls: 'swim' });
+      if (P.area !== 'open') c.push({ label: 'GET OUT', x: P.x, y: P.y, d: 999, fn: P.area === 'lake' ? exitLake : exitPool, prio: 0, cls: 'swim' });
     } else {
       if (G.fortune && G.fortune.crunched && !G.fortune.done) { const f = FORTUNES[G.fortune.idx]; add('LOOK', f.where.x, f.where.y, 64, fortuneFound, 3, 'look'); }
       add('TALK', TALK.x, TALK.y, 80, talkGrandma, 2, 'talk');
+      add('TALK', COACHES.kombu.x, COACHES.kombu.y + 20, 70, () => talkCoach('kombu'), 2, 'talk');
+      add('TALK', COACHES.penne.x, COACHES.penne.y + 20, 70, () => talkCoach('penne'), 2, 'talk');
       add('LOOK', POSTER.x, POSTER.y, 70, lookPoster, 2, 'look');
       add('ASK', ORACLE_AT.x, ORACLE_AT.y, 80, askOracle, 2, 'look');
       add(G.flags.pillowReady && !G.clues.includes('pillow') ? 'LOOK' : 'SLEEP', DOOR.x, DOOR.y, 70, useDoor, 2, 'look');
@@ -258,6 +271,182 @@ const Game = (() => {
     return c[0];
   }
 
+  /* ---------- physics: gravity, flying and swimming ---------- */
+  const flyHeld = () => keys.has('f') || keys.has('shift') || flyTouch;
+  function physics(dt) {
+    const lvl = G.skills.fly;
+    P.wings = lvl >= 1;
+    // jump off the ground
+    if (flyHeld() && P.z === 0 && !P.swimming && !drinkHeld && !P.jumpLock) {
+      P.vz = PHYS.hop; P.jumpLock = true; P.airT = 0;
+      G.stats.hops++;
+      Sound.pop();
+      if (G.lesson && G.lesson.id === 'fly1') G.lesson.n = (G.lesson.n || 0) + 1;
+    }
+    if (!flyHeld()) P.jumpLock = false;
+    if (P.z > 0 || P.vz > 0) {
+      P.airT += dt;
+      P.flapping = false;
+      if (flyHeld() && lvl >= 1 && P.wing > 0 && P.z < PHYS.flyMaxZ[lvl] && P.airT > 0.12) {
+        P.vz = Math.min(P.vz + 2600 * dt, 240);
+        P.wing -= dt; P.flapping = true;
+        if (Math.random() < dt * 6) Sound.step();
+      }
+      P.vz -= PHYS.gravity * dt;
+      if (lvl >= 1 && !P.flapping && P.vz < -170) P.vz = -170; // wings make you glide down gently
+      P.z += P.vz * dt;
+      if (P.z >= PHYS.flyMaxZ[lvl] && lvl >= 1) { P.z = PHYS.flyMaxZ[lvl]; P.vz = Math.min(P.vz, 0); }
+      if (P.airT > (G.stats.bestAir || 0)) G.stats.bestAir = P.airT;
+      if (P.z <= 0) land();
+    } else {
+      P.wing = Math.min(PHYS.wing[lvl], P.wing + dt * 1.5);
+      if (!P.swimming && !isWater(P.x, P.y)) { lastGround.x = P.x; lastGround.y = P.y; }
+    }
+    // swimming in streams and ponds
+    if (P.area === 'open') {
+      G.stats.swimOpen += dt;
+      P.stamina -= dt;
+      // the stream's current pulls you downstream
+      if (!inPond(P.x, P.y) && !inSpring(P.x, P.y)) {
+        const dir = streamDir(P.x, P.y), push = PHYS.current[G.skills.swim] * dt;
+        const nx = P.x + dir[0] * push, ny = P.y + dir[1] * push;
+        if (!blocked(nx, ny, 0, false)) { P.x = nx; P.y = ny; }
+      }
+      if (P.stamina <= 0) {
+        stopOpenSwim();
+        P.x = lastGround.x; P.y = lastGround.y;
+        Sound.splash();
+        UI.toast('<span class="t-small">Too tired! 😮‍💨</span>You paddled back to the shore. More lessons = more stamina.', { life: 3 });
+      }
+    }
+  }
+  function land() {
+    P.z = 0; P.vz = 0; P.flapping = false;
+    if (P.airT > 0.3) burst(P.x, P.y, 8, ['#fff3d6', '#d9b877'], { speed: 120, up: 60, size: 4, life: 0.5 });
+    if (isWater(P.x, P.y)) {
+      if (G.skills.swim >= 1) { startOpenSwim(); return; }
+      Sound.splash();
+      burst(P.x, P.y, 20, ['#8fe0ea', '#ffffff'], { speed: 220, up: 200, size: 5, type: 'drop' });
+      P.x = lastGround.x; P.y = lastGround.y;
+      waterHint(true);
+      return;
+    }
+    if (blocked(P.x, P.y, 0, false)) { P.x = lastGround.x; P.y = lastGround.y; }
+  }
+  function streamDir(x, y) {
+    let best = 1e9, dir = [0, 1];
+    for (let i = 1; i < streamSamples.length; i++) {
+      const [ax, ay] = streamSamples[i - 1], [bx, by] = streamSamples[i];
+      const d = dist(x, y, (ax + bx) / 2, (ay + by) / 2);
+      if (d < best) { best = d; const l = Math.hypot(bx - ax, by - ay) || 1; dir = [(bx - ax) / l, (by - ay) / l]; }
+    }
+    return dir;
+  }
+  function startOpenSwim() {
+    if (P.area === 'open') return;
+    P.swimming = true; P.area = 'open'; P.z = 0; P.vz = 0;
+    P.stamina = PHYS.swimStamina[G.skills.swim];
+    drinkHeld = false;
+    Sound.splash();
+    burst(P.x, P.y, 14, ['#8fe0ea', '#ffffff'], { speed: 180, up: 160, size: 4, type: 'drop' });
+  }
+  function stopOpenSwim() { if (P.area === 'open') { P.swimming = false; P.area = null; } }
+  function waterHint(fell) {
+    if (now - waterHintT < 4) return;
+    waterHintT = now;
+    UI.toast(`<span class="t-small">${fell ? 'Splash! 💦' : 'Deep water 🌊'}</span>You can't swim yet. Take lessons with Coach Kombu at the pool.`, { life: 3.2 });
+  }
+
+  /* ---------- lessons, challenges and stars ---------- */
+  const lessonDone = (id) => !!G.lessons[id];
+  function starTotal() {
+    let n = 0;
+    LESSONS.forEach(l => { if (G.lessons[l.id]) n += l.stars; });
+    CHALLENGES.forEach(c => { if (G.challenges[c.id]) n += c.stars; });
+    Object.values(G.daily && G.daily.done || {}).forEach(v => { if (v) n += 1; });
+    return n + (G.bonusStars || 0);
+  }
+  function nextLesson(coach) { return LESSONS.find(l => l.coach === coach && !lessonDone(l.id)); }
+  function startLesson(l) {
+    G.lesson = { id: l.id, left: { swim1: 60, swim2: 45, swim3: 90, fly1: 60, fly2: 60, fly3: 90 }[l.id], n: 0, side: null, rings: [false, false, false], started: false };
+    Sound.blip();
+    UI.toast(`<span class="t-small">Lesson started</span>${l.title}: ${l.desc}`, { life: 4 });
+  }
+  function completeLesson(id) {
+    const l = LESSONS.find(x => x.id === id);
+    G.lessons[id] = true; G.lesson = null;
+    G.skills[l.skill] = Math.max(G.skills[l.skill], l.level);
+    if (l.skill === 'fly') P.wing = PHYS.wing[G.skills.fly];
+    if (l.skill === 'swim' && P.area === 'open') P.stamina = PHYS.swimStamina[G.skills.swim];
+    Sound.secret(); P.wow = 1.8;
+    burst(P.x, P.y - 60 - P.z, 34, ['#ffd23f', '#fff8e8', '#8fe0ea'], { type: 'spark', speed: 280, grav: 150 });
+    UI.toast(`<span class="t-small">⭐ +${l.stars} · ${l.skill === 'swim' ? 'Swimming' : 'Flying'} level ${l.level}</span>${l.unlock}`, { big: true, life: 4.4 });
+    if (id === 'fly3') setTimeout(() => giveNoodle('sky'), 800);
+    save();
+  }
+  function lessonTick(dt) {
+    const L = G.lesson; if (!L) return;
+    L.left -= dt;
+    if (L.left <= 0) { G.lesson = null; Sound.wrong(); UI.toast('<span class="t-small">Out of time</span>Talk to your coach to try the lesson again.', { life: 3 }); return; }
+    switch (L.id) {
+      case 'swim1': if (P.swimming && P.area === 'pool') { L.n += dt; if (L.n >= 5) completeLesson('swim1'); } break;
+      case 'swim2':
+        if (P.swimming && P.area === 'pool') {
+          const side = P.x < POOL.x + 50 ? 'L' : P.x > POOL.x + POOL.w - 50 ? 'R' : null;
+          if (side && side !== L.side) { L.side = side; L.n++; Sound.blip(); if (L.n >= 4) completeLesson('swim2'); }
+        }
+        break;
+      case 'swim3':
+        if (P.area === 'open' && P.y < 820) L.started = true;
+        if (L.started && P.area === 'open' && P.y > 1225) completeLesson('swim3');
+        break;
+      case 'fly1': if (L.n >= 5) completeLesson('fly1'); break;
+      case 'fly2':
+        RINGS.forEach(([rx, ry], i) => {
+          if (!L.rings[i] && dist(P.x, P.y, rx, ry) < 44 && Math.abs(P.z - RING_Z) < 32) { L.rings[i] = true; Sound.coin(); burst(rx, ry - RING_Z, 16, ['#ffd23f', '#fff8e8'], { type: 'spark', speed: 200, grav: 0 }); }
+        });
+        if (L.rings.every(Boolean)) completeLesson('fly2');
+        break;
+      case 'fly3': if (P.z >= SKY_CLOUD.z - 12 && dist(P.x, P.y, SKY_CLOUD.x, SKY_CLOUD.y) < 70) completeLesson('fly3'); break;
+    }
+  }
+  function lessonText() {
+    const L = G.lesson; if (!L) return null;
+    const l = LESSONS.find(x => x.id === L.id), s = Math.ceil(L.left) + 's';
+    const prog = { swim1: `${Math.min(5, L.n).toFixed(0)}/5s afloat`, swim2: `${L.n}/4 walls`, swim3: L.started ? 'swim down to bridge 2!' : 'jump in near bridge 1', fly1: `${L.n}/5 hops`, fly2: `${L.rings.filter(Boolean).length}/3 rings`, fly3: 'fly up to the cloud' }[L.id];
+    return `Lesson · ${l.title}: ${prog} (${s})`;
+  }
+  let chalT = 0;
+  function challengeTick(dt) {
+    chalT -= dt; if (chalT > 0) return; chalT = 0.5;
+    const met = {
+      combo5: G.stats.maxCombo >= 5, drink10: G.drinks >= 10, early: !!G.flags.early,
+      noodles10: G.found.length >= 10, air4: (G.stats.bestAir || 0) >= 4, river30: G.stats.swimOpen >= 30, noodles20: G.found.length >= 20,
+    };
+    CHALLENGES.forEach(c => {
+      if (G.challenges[c.id] || !met[c.id]) return;
+      G.challenges[c.id] = true;
+      Sound.coin();
+      UI.toast(`<span class="t-small">⭐ +${c.stars} · Challenge complete</span>${c.title}: ${c.desc}`, { life: 3.4 });
+      save();
+    });
+  }
+
+  function talkCoach(key) {
+    const c = COACHES[key], who = key;
+    const l = nextLesson(key);
+    const skillName = key === 'kombu' ? 'swimming' : 'flying';
+    if (!l) return UI.say(who, key === 'kombu' ? ['You swim better than a noodle in soup! Nothing left to teach you.', 'Go ride the rivers, champ!'] : ['Squawk! You fly like a true Soba Bird now.', 'The sky is all yours.']);
+    if (G.lesson && G.lesson.id === l.id) return UI.say(who, `Keep going! ${l.desc}`);
+    const intro = G.skills[c.skill] === 0
+      ? (key === 'kombu' ? ['Hey hey! I\'m Coach Kombu. Water is deep, and you don\'t know how to swim yet!', 'Without lessons you can\'t go in streams or ponds. Let\'s fix that.'] : ['Squawk! Captain Penne here, flight instructor.', 'Down here, gravity always pulls you back to the ground. But with practice... you can fly!'])
+      : [`Ready for more ${skillName}?`];
+    UI.say(who, [...intro, `Lesson ${l.level}: <em>${l.title}</em>. ${l.desc}`], { choices: [
+      { label: 'Start lesson', fn: () => startLesson(l) },
+      { label: 'Later', alt: true },
+    ] });
+  }
+
   function crunch(b) {
     faceStep('crunch');
     P.crunching = 0.45;
@@ -273,6 +462,7 @@ const Game = (() => {
     combo.n = t - combo.last < win ? combo.n + 1 : 1;
     combo.last = t;
     UI.combo(combo.n);
+    G.stats.maxCombo = Math.max(G.stats.maxCombo || 0, combo.n);
     if (combo.n >= 2) Sound.combo(combo.n);
     if (combo.n >= 5 && !has('macaroni')) setTimeout(() => giveNoodle('macaroni'), 350);
 
@@ -284,11 +474,13 @@ const Game = (() => {
       if (G.boulderHp[b.k] > 0) { floatText(b.x, b.y - 90, `${G.boulderHp[b.k]} more!`, '#ffd23f'); return; }
       burst(b.x, b.y - 20, 40, cols, { speed: 380, up: 320, size: 8 });
       addCoins(5, b.x, b.y - 90);
+      Net.crunch('boulder' + b.k);
       if (!has('boulder')) giveNoodle('boulder');
       return;
     }
 
     G.crunched.push(b.i);
+    Net.crunch(b.i);
     G.crunches++;
     if (b.kind === 'woods') G.woodsCrunches++;
     if (b.kind === 'canyon') G.canyonCrunches++;
@@ -561,9 +753,10 @@ const Game = (() => {
   }
 
   function enterPool() {
-    if (!poolOpen()) {
+    const lessonTime = G.lesson && G.lesson.id.startsWith('swim');
+    if (!poolOpen() && !lessonTime) {
       Sound.wrong();
-      UI.say('me', G.time < POOL_OPEN ? 'The gate is locked. The sign says the Morning Pool opens at 6:00 AM.' : 'The Morning Pool is closed. It opens every day from 6 to 8 AM. Sleep, then come back early!');
+      UI.say('me', (G.time < POOL_OPEN ? 'The gate is locked. The sign says the Morning Pool opens at 6:00 AM.' : 'The Morning Pool is closed. It opens every day from 6 to 8 AM.') + ' (Coach Kombu can let you in for a swimming lesson.)');
       return;
     }
     P.swimming = true; P.area = 'pool'; P.x = GATE.x; P.y = POOL.y + 40;
@@ -571,7 +764,8 @@ const Game = (() => {
     Sound.splash();
     burst(P.x, P.y, 30, ['#8fe0ea', '#ffffff', '#5ed0e6'], { speed: 240, up: 200, size: 5, type: 'drop' });
     G.flags.swam = true;
-    if (G.buffDay !== G.day) {
+    if (poolOpen() && G.time < 7 * 60) G.flags.early = true;
+    if (G.buffDay !== G.day && poolOpen()) {
       G.buffDay = G.day; G.buffUntil = 24 * 60;
       UI.toast('<span class="t-small">Fresh Start 😎</span>Faster steps and bigger combos all day!', { life: 3.4 });
     }
@@ -685,6 +879,7 @@ const Game = (() => {
   }
 
   function goalText() {
+    const lt = lessonText(); if (lt) return lt;
     const n = G.found.length;
     if (hour() >= 21 || hour() < 5) return 'It\'s late. Go home and sleep (your door)';
     if (!G.flags.swam && G.day === 1 && G.time < POOL_CLOSE) return 'Swim in the Morning Pool before 8 AM';
@@ -732,6 +927,7 @@ const Game = (() => {
     if (buffed()) speed *= 1.2;
     if (minty()) speed *= 1.2;
     if (G.water < 25) faceStep('thirsty');
+    if (!busy) { lessonTick(dt); challengeTick(dt); }
     if (P.swimming && P.area === 'lake' && !has('ice') && dist(P.x, P.y, LAKE.x + LAKE.w * 0.62 + Math.sin(now) * 40, LAKE.y + LAKE.h * 0.55) < 34) giveNoodle('ice');
     stormFlash = Math.max(0, stormFlash - dt * 3);
     if (stormy() && inPeaks(P.x) && !busy) {
@@ -739,16 +935,27 @@ const Game = (() => {
       if (Math.random() < dt * 0.12) { stormFlash = 1; setTimeout(() => Sound.thunder(), 300); }
     }
     if (drinkHeld) speed = 0;
+    if (P.area === 'open') speed = 120 + G.skills.swim * 20;
     P.moving = len > 0.15 && speed > 0;
+    if (!busy) physics(dt);
     if (P.moving) {
       const nx = P.x + mx * speed * dt, ny = P.y + my * speed * dt;
-      if (P.swimming) {
+      if (P.swimming && P.area !== 'open') {
         const A = P.area === 'lake' ? LAKE : POOL;
         P.x = clamp(nx, A.x + 26, A.x + A.w - 26);
         P.y = clamp(ny, A.y + 30, A.y + A.h - 12);
       } else {
-        if (!blocked(nx, P.y)) P.x = nx;
-        if (!blocked(P.x, ny)) P.y = ny;
+        const tryMove = (tx, ty) => {
+          if (blocked(tx, ty, P.z, false)) return false;
+          const wet = P.z < 12 && isWater(tx, ty);
+          if (wet && P.area !== 'open') {
+            if (G.skills.swim < 1) { waterHint(); return false; }
+            startOpenSwim();
+          } else if (!wet && P.area === 'open') stopOpenSwim();
+          return true;
+        };
+        if (tryMove(nx, P.y)) P.x = nx;
+        if (tryMove(P.x, ny)) P.y = ny;
       }
       P.walk += dt * (P.swimming ? 4 : 7);
       if (mx) P.face = clamp(P.face + Math.sign(mx) * dt * 8, -1, 1);
@@ -885,6 +1092,12 @@ const Game = (() => {
     else { $('actionLabel').textContent = '·'; btn.className = 'idle'; btn.hidden = false; }
 
     UI.hud(G);
+    $('starCount').textContent = starTotal();
+    if (isTouch) {
+      const fb = $('flyBtn');
+      fb.hidden = P.swimming || UI.busy;
+      $('flyLabel').textContent = G.skills.fly >= 1 ? 'FLY' : 'HOP';
+    }
     UI.goal(goalText());
 
     // camera
@@ -895,6 +1108,19 @@ const Game = (() => {
     cam.y += (ty - cam.y) * Math.min(1, dt * 6);
 
     saveTimer -= dt; if (saveTimer <= 0) { saveTimer = 5; save(); }
+
+    // multiplayer: send my position, smooth everyone else's
+    if (Net.active) {
+      Net.state(P);
+      Net.score(G.found.length, G.coins, starTotal());
+      for (const o of Net.others.values()) {
+        if (o.x === null || o.tx === undefined) continue;
+        const k = Math.min(1, dt * 10);
+        o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; o.z = (o.z || 0) + ((o.tz || 0) - (o.z || 0)) * k;
+        if (o.mv) o.walk = (o.walk || 0) + dt * 7;
+      }
+    }
+    for (const [id, e] of emotes) if (e.until < now) emotes.delete(id);
   }
 
   /* ---------- render ---------- */
@@ -990,12 +1216,32 @@ const Game = (() => {
       drawRidge(ctx, CANYON.wallY + 30, WORLD.h);
       if (!fogGone()) drawFog(ctx, t, 0, CANYON.wallY);
     } });
+    Object.entries(COACHES).forEach(([key, c]) => inView(c.x, c.y) && draw.push({ y: c.y, fn: () => key === 'kombu' ? drawKombu(ctx, c.x, c.y, t) : drawPenne(ctx, c.x, c.y, t) }));
     const H = PLACES.house, S = PLACES.shop;
     draw.push({ y: H.y + 170, fn: () => drawHouse(ctx, H, t, night) });
     draw.push({ y: S.y + 150, fn: () => drawShop(ctx, S, t, night) });
     draw.push({ y: 858, fn: () => drawOracle(ctx, 900, 858, t, 1, !!current && current.label === 'ASK') });
-    draw.push({ y: P.y + (P.swimming ? 1000 : 0), fn: () => drawPlayer(ctx, P, t) });
+    draw.push({ y: P.y + (P.swimming ? 1000 : 0) + (P.z > 40 ? 3000 : 0), fn: () => {
+      drawPlayer(ctx, P, t);
+      const me = emotes.get('me');
+      if (Net.active || me) drawTag(ctx, P.x, P.y - (P.swimming ? 60 : 108) - (P.z || 0), Net.active ? (profile.name || 'You') : 'You', profile.color || '#2fa4b5', me && me.e);
+    } });
+    for (const [id, o] of Net.others) {
+      if (o.x === null || !inView(o.x, o.y)) continue;
+      draw.push({ y: o.y + (o.sw ? 1000 : 0) + ((o.z || 0) > 40 ? 3000 : 0), fn: () => {
+        const ghost = { x: o.x, y: o.y, z: o.z || 0, moving: o.mv, walk: o.walk || 0, face: o.f || 0, mood: o.mood || 'happy', crunching: 0, antennaPulse: 0, swimming: o.sw, color: o.color, wings: (o.z || 0) > 2 };
+        drawPlayer(ctx, ghost, t);
+        const e = emotes.get(id);
+        drawTag(ctx, o.x, o.y - (o.sw ? 60 : 108) - (o.z || 0), o.name, o.color, e && e.e);
+      } });
+    }
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
+
+    // the sky layer: flight rings, the cloud, and stamina meters
+    if (G.lesson && G.lesson.id === 'fly2') RINGS.forEach(([rx, ry], i) => inView(rx, ry) && drawRing(ctx, rx, ry, RING_Z, t, G.lesson.rings[i]));
+    if (inView(SKY_CLOUD.x, SKY_CLOUD.y - SKY_CLOUD.z)) drawSkyCloud(ctx, { ...SKY_CLOUD, alpha: P.z > 60 ? 1 : 0.55 }, t, !has('sky'));
+    if (P.z > 2 && P.wings) drawMeter(ctx, P.x + 34, P.y - 70 - P.z, P.wing / PHYS.wing[G.skills.fly], '#f7dc7a');
+    if (P.area === 'open' && isFinite(P.stamina)) drawMeter(ctx, P.x + 34, P.y - 40, P.stamina / PHYS.swimStamina[G.skills.swim], '#8fe0ea');
 
     // particles
     particles.forEach(p => {
@@ -1146,7 +1392,7 @@ const Game = (() => {
     if (!running) return;
     if (k === 'n' && !UI.talking) { $('sheet').hidden ? UI.dex(G) : UI.closeSheet(); return; }
     if (k === 'j' && !UI.talking) { $('sheet').hidden ? UI.journal(G) : UI.closeSheet(); return; }
-    if (k.startsWith('arrow')) e.preventDefault();
+    if (k.startsWith('arrow') || k === 'f') e.preventDefault();
     keys.add(k);
   });
   window.addEventListener('keyup', (e) => {
@@ -1229,6 +1475,12 @@ const Game = (() => {
   document.addEventListener('fullscreenchange', fsSync);
   document.addEventListener('webkitfullscreenchange', fsSync);
 
+  const flyBtn = $('flyBtn');
+  flyBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { flyBtn.setPointerCapture(e.pointerId); } catch (err) {} flyTouch = true; flyBtn.classList.add('pressed'); });
+  const flyUp = () => { flyTouch = false; flyBtn.classList.remove('pressed'); };
+  flyBtn.addEventListener('pointerup', flyUp); flyBtn.addEventListener('pointercancel', flyUp); flyBtn.addEventListener('lostpointercapture', flyUp);
+  $('skillsBtn').addEventListener('click', () => { Sound.blip(); UI.skills(G, starTotal()); });
+
   $('dexBtn').addEventListener('click', () => { Sound.blip(); UI.dex(G); });
   $('journalBtn').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
   $('goal').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
@@ -1240,6 +1492,102 @@ const Game = (() => {
     if (!titleAnim) return;
     drawTitleHero($('titleHero').getContext('2d'), ts / 1000);
     requestAnimationFrame(titleLoop);
+  }
+
+  /* ---------- multiplayer ---------- */
+  const PROFILE_KEY = 'noodle-universe-profile';
+  const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
+  let profile = { name: '', color: COLORS[0] };
+  try { Object.assign(profile, JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}); } catch (e) {}
+  const saveProfile = () => { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {} };
+  const emotes = new Map(); // id (or 'me') -> { e, until }
+  let pendingStart = null;
+
+  function brickPos(id) {
+    if (typeof id === 'number' && BRICK_SPOTS[id]) return BRICK_SPOTS[id];
+    const m = /^boulder(\d)$/.exec(id); return m ? CANYON.boulders[+m[1]] : null;
+  }
+  Net.on('joined', (m) => {
+    profile.color = (m.players.find(p => p.id === m.you) || {}).color || profile.color;
+    const go = pendingStart; pendingStart = null;
+    if (go) go();
+    // bring in what the room already did
+    m.crunched.forEach(id => { if (typeof id === 'number') { if (!G.crunched.includes(id)) G.crunched.push(id); } else { const k = /^boulder(\d)$/.exec(id); if (k) G.boulderHp[+k[1]] = 0; } });
+    if (m.mode === 'team') m.teamFound.forEach(n => { if (!has(n) && NOODLES.some(x => x.id === n)) G.found.push(n); });
+    $('roomPill').hidden = false; $('roomPill').classList.remove('off'); $('emoteBtn').hidden = false;
+    updateRoomPill();
+    UI.toast(`<span class="t-small">${m.mode === 'team' ? '🤝 Team up' : '🏁 Race'} · room ${m.code}</span>Tell friends to join with code <b>${m.code}</b>`, { life: 5 });
+    save();
+  });
+  Net.on('arrived', (p) => { Sound.blip(); UI.toast(`<span class="t-small">👋 New player</span>${p.name} joined the room`, { life: 2.6 }); updateRoomPill(); });
+  Net.on('left', (m) => { UI.toast(`${m.name} left the room`, { life: 2.2 }); updateRoomPill(); });
+  Net.on('scores', () => { updateRoomPill(); if (!$('sheet').hidden && $('sheetTitle').textContent === 'Friends') UI.players(Net, leaveRoom); });
+  Net.on('crunch', (m) => {
+    const pos = brickPos(m.b);
+    if (typeof m.b === 'number') { if (!G.crunched.includes(m.b)) G.crunched.push(m.b); }
+    else { const k = /^boulder(\d)$/.exec(m.b); if (k) G.boulderHp[+k[1]] = 0; }
+    if (pos && running) { burst(pos[0], pos[1] - 16, 12, ['#f4c35a', '#fff3d6'], { speed: 200, up: 180, size: 5 }); if (dist(P.x, P.y, pos[0], pos[1]) < 500) Sound.crunch(0.4); }
+  });
+  Net.on('found', (m) => {
+    const n = NOODLES.find(x => x.id === m.n); if (!n) return;
+    if (Net.mode === 'team') { if (!giveNoodle(m.n, m.name)) UI.toast(`<span class="t-small">${m.name}</span>found ${n.name} too!`, { life: 2.4 }); }
+    else UI.toast(`<span class="t-small">🏁 ${m.name}</span>found ${n.name}${has(m.n) ? '' : '. Hurry!'}`, { noodle: n, life: 2.8 });
+  });
+  Net.on('emote', (m) => { emotes.set(m.id === Net.me ? 'me' : m.id, { e: m.e, until: now + 3.5 }); if (m.id !== Net.me) Sound.pop(); });
+  Net.on('respawn', () => { G.crunched = []; G.boulderHp = {}; UI.toast('The bricks grew back!', { life: 2.4 }); });
+  Net.on('error', (m) => { mpMessage(m.msg, true); if (running) UI.toast(m.msg, { life: 3 }); });
+  Net.on('disconnected', () => {
+    $('roomPill').classList.add('off'); $('emoteBtn').hidden = true; $('emoteBar').hidden = true;
+    if (running) UI.toast('<span class="t-small">Offline</span>Lost the connection to your room. You can keep playing solo.', { life: 4 });
+  });
+
+  function updateRoomPill() {
+    if (!Net.code) return;
+    $('roomText').textContent = `${Net.mode === 'team' ? '🤝' : '🏁'} ${Net.code} · ${Net.others.size + 1}`;
+  }
+  function leaveRoom() {
+    Net.leave();
+    $('roomPill').hidden = true; $('emoteBtn').hidden = true; $('emoteBar').hidden = true;
+    UI.closeSheet();
+    UI.toast('You left the room. Playing solo now.', { life: 2.6 });
+  }
+  function sendEmote(e) {
+    emotes.set('me', { e, until: now + 3.5 });
+    P.wow = 0.8;
+    Net.emote(e);
+    $('emoteBar').hidden = true;
+  }
+  function mpMessage(text, err) { const el = $('mpMsg'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
+
+  function setupMultiplayerUI(startFn) {
+    const nameIn = $('mpName'); nameIn.value = profile.name || '';
+    const box = $('mpColors');
+    COLORS.forEach(c => {
+      const b = document.createElement('button'); b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', 'Color ' + c);
+      if (c === profile.color) b.classList.add('on');
+      b.addEventListener('click', () => { profile.color = c; box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); saveProfile(); });
+      box.appendChild(b);
+    });
+    let mode = 'team';
+    document.querySelectorAll('.mode-card').forEach(card => card.addEventListener('click', () => {
+      mode = card.dataset.mode; document.querySelectorAll('.mode-card').forEach(c => c.classList.toggle('on', c === card));
+    }));
+    $('friendsBtn').addEventListener('click', () => { $('mpPanel').hidden = !$('mpPanel').hidden; if (!$('mpPanel').hidden) nameIn.focus(); });
+    const ready = () => { profile.name = nameIn.value.trim().slice(0, 14) || 'Squareface'; saveProfile(); Sound.init(); pendingStart = startFn; };
+    const fail = () => { pendingStart = null; mpMessage('Could not reach the game server. Multiplayer works on the online version (Render) or when you run "npm start". Solo play works everywhere.', true); };
+    $('mpCreate').addEventListener('click', () => { ready(); mpMessage('Creating a room…'); Net.create(profile.name, profile.color, mode).catch(fail); });
+    $('mpJoinForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = $('mpCode').value.trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(code)) return mpMessage('Room codes are 4 letters, like KFPR.', true);
+      ready(); mpMessage('Joining ' + code + '…'); Net.join(code, profile.name, profile.color).catch(fail);
+    });
+    // a link like .../#KFPR opens the panel with the code filled in
+    const hash = (location.hash || '').replace('#', '').toUpperCase();
+    if (/^[A-Z]{4}$/.test(hash)) { $('mpPanel').hidden = false; $('mpCode').value = hash; }
+    $('roomPill').addEventListener('click', () => { Sound.blip(); UI.players(Net, leaveRoom); });
+    $('emoteBtn').addEventListener('click', () => { $('emoteBar').hidden = !$('emoteBar').hidden; });
+    $('emoteBar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendEmote(b.dataset.e); });
   }
 
   function begin(state) {
@@ -1276,7 +1624,9 @@ const Game = (() => {
 
     const saved = (hotData && hotData.G) || load();
     if (saved) { $('startBtn').textContent = 'Continue ☀'; $('resetBtn').hidden = false; }
-    $('startBtn').addEventListener('click', () => { Sound.init(); begin(saved && !$('resetBtn').dataset.wiped ? saved : null); });
+    const startGame = () => { if (!running) begin(saved && !$('resetBtn').dataset.wiped ? saved : null); };
+    $('startBtn').addEventListener('click', () => { Sound.init(); startGame(); });
+    setupMultiplayerUI(startGame);
     $('resetBtn').addEventListener('click', () => {
       const b = $('resetBtn');
       if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to erase your save'; return; }
@@ -1290,5 +1640,5 @@ const Game = (() => {
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ G: running ? (save(), G) : null })); } catch (e) {} }
   if (hot && typeof hot.ready === 'function') hot.ready(boot); else boot(hot && hot.data);
 
-  return { tryCipher };
+  return { tryCipher, get state() { return G; }, get player() { return P; } };
 })();

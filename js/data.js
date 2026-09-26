@@ -197,3 +197,46 @@ function glyphFor(letter) {
   const i = letter.charCodeAt(0) - 65;
   return { shape: i % 4, dots: Math.floor(i / 4) % 4, bar: Math.floor(i / 16) };
 }
+
+// ---------- Skills: learn to swim and fly ----------
+NOODLES.push({ id: 'sky', name: 'Sky Spaghetti', rarity: 'rare', shape: 'sky', color: '#d9f4ff',
+  desc: 'Grows on clouds. Tastes like the wind.', hint: 'Fly up to the cloud above Crunch Meadow.' });
+
+const COACHES = {
+  kombu: { x: 752, y: 952, name: 'Coach Kombu', skill: 'swim' },   // on the pool deck
+  penne: { x: 1150, y: 1580, name: 'Captain Penne', skill: 'fly' }, // on the meadow hill
+};
+const LESSONS = [
+  { id: 'swim1', skill: 'swim', level: 1, coach: 'kombu', stars: 3, title: 'Float',
+    desc: 'Hop in the Morning Pool and float for 5 seconds.', unlock: 'You can swim in streams and ponds. Watch your stamina!' },
+  { id: 'swim2', skill: 'swim', level: 2, coach: 'kombu', stars: 3, title: 'Paddle laps',
+    desc: 'Touch the left wall, then the right wall, 4 times in 45 seconds.', unlock: 'More stamina, and the current pushes you less.' },
+  { id: 'swim3', skill: 'swim', level: 3, coach: 'kombu', stars: 4, title: 'Ride the current',
+    desc: 'Jump in the stream near the first bridge and swim down to the second bridge in 90 seconds.', unlock: 'Unlimited stamina. You swim like a noodle.' },
+  { id: 'fly1', skill: 'fly', level: 1, coach: 'penne', stars: 3, title: 'Bunny hops',
+    desc: 'Hop 5 times. Gravity always pulls you back down!', unlock: 'Noodle wings! Hold FLY in the air to flap and glide.' },
+  { id: 'fly2', skill: 'fly', level: 2, coach: 'penne', stars: 3, title: 'Ring glide',
+    desc: 'Fly through the 3 rings over Crunch Meadow in 60 seconds.', unlock: 'Fly higher and longer. Soar over streams and trees.' },
+  { id: 'fly3', skill: 'fly', level: 3, coach: 'penne', stars: 4, title: 'Touch the sky',
+    desc: 'Climb up to the cloud over the meadow and grab what grows on it.', unlock: 'Fly really high, for a long time.' },
+];
+const RINGS = [[840, 1180], [1010, 1300], [1180, 1160]];
+const RING_Z = 50;
+const SKY_CLOUD = { x: 880, y: 1420, z: 100 };
+const CHALLENGES = [
+  { id: 'combo5', title: 'Mega Cruncher', desc: 'Reach a x5 crunch combo.', stars: 2 },
+  { id: 'drink10', title: 'Hydrated', desc: 'Drink 10 times.', stars: 1 },
+  { id: 'early', title: 'Early Bird', desc: 'Jump in the Morning Pool before 7 AM.', stars: 1 },
+  { id: 'noodles10', title: 'Collector', desc: 'Find 10 noodles.', stars: 2 },
+  { id: 'air4', title: 'Sky Walker', desc: 'Stay in the air for 4 seconds in one flight.', stars: 2 },
+  { id: 'river30', title: 'River Explorer', desc: 'Swim 30 seconds in streams and ponds.', stars: 2 },
+  { id: 'noodles20', title: 'Master Collector', desc: 'Find 20 noodles.', stars: 3 },
+];
+// Physics tuning, per skill level (index = level)
+const PHYS = {
+  gravity: 1400, hop: 330,
+  flyMaxZ: [0, 60, 115, 190],     // how high you can climb
+  wing: [0, 1.4, 3, 6],           // seconds of flapping before you need to land
+  swimStamina: [0, 10, 25, Infinity],
+  current: [0, 80, 40, 25],       // how hard the stream pushes you (px/s)
+};

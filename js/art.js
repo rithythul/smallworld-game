@@ -124,24 +124,54 @@ function drawPlayer(ctx, p, t) {
     ctx.beginPath(); ctx.ellipse(x, y + 2, 30, 9, 0, 0, Math.PI); ctx.fill();
     return;
   }
-  const bob = p.moving ? Math.abs(Math.sin(p.walk * 2)) * 3 : Math.sin(t * 2) * 0.8;
-  // shadow
-  ctx.fillStyle = 'rgba(52,35,63,0.22)';
-  ctx.beginPath(); ctx.ellipse(x, y, 20, 7, 0, 0, TAU); ctx.fill();
+  const z = p.z || 0;
+  const air = z > 2;
+  const bob = air ? 0 : p.moving ? Math.abs(Math.sin(p.walk * 2)) * 3 : Math.sin(t * 2) * 0.8;
+  const hoodie = p.color || '#2fa4b5';
+  // shadow stays on the ground and shrinks as you rise
+  const sh = Math.max(0.35, 1 - z / 220);
+  ctx.fillStyle = `rgba(52,35,63,${0.22 * sh})`;
+  ctx.beginPath(); ctx.ellipse(x, y, 20 * sh, 7 * sh, 0, 0, TAU); ctx.fill();
+  ctx.save(); ctx.translate(0, -z);
+  // noodle wings while in the air
+  if (air && p.wings) {
+    const flap = Math.sin(t * (p.flapping ? 26 : 8)) * (p.flapping ? 0.7 : 0.25);
+    [-1, 1].forEach(side => {
+      ctx.save(); ctx.translate(x + side * 12, y - 30); ctx.scale(side, 1); ctx.rotate(-0.3 - flap);
+      for (let k = 0; k < 3; k++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(0, k * 4); ctx.quadraticCurveTo(18, -14 + k * 6, 34 - k * 5, -4 + k * 7); }, '#f7dc7a', 3);
+      ctx.restore();
+    });
+  }
   // legs
-  const lg = p.moving ? Math.sin(p.walk * 2) * 5 : 0;
+  const lg = p.moving && !air ? Math.sin(p.walk * 2) * 5 : 0;
   ctx.fillStyle = INK;
-  rr(ctx, x - 10, y - 12 + Math.max(0, lg), 8, 12, 3); ctx.fill();
-  rr(ctx, x + 2, y - 12 + Math.max(0, -lg), 8, 12, 3); ctx.fill();
+  rr(ctx, x - 10, y - 12 + Math.max(0, lg) - (air ? 2 : 0), 8, 12, 3); ctx.fill();
+  rr(ctx, x + 2, y - 12 + Math.max(0, -lg) - (air ? 2 : 0), 8, 12, 3); ctx.fill();
   // body (little hoodie)
-  rr(ctx, x - 15, y - 34 - bob, 30, 26, 10); fillStroke(ctx, '#2fa4b5', 3);
-  ctx.fillStyle = '#8fe0ea'; rr(ctx, x - 7, y - 26 - bob, 14, 7, 3); ctx.fill();
-  // arms
-  const arm = p.crunching > 0 ? -8 : (p.moving ? Math.sin(p.walk * 2) * 4 : 0);
+  rr(ctx, x - 15, y - 34 - bob, 30, 26, 10); fillStroke(ctx, hoodie, 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; rr(ctx, x - 7, y - 26 - bob, 14, 7, 3); ctx.fill();
+  // arms: up in the air when jumping
+  const arm = p.crunching > 0 ? -8 : air ? -12 : (p.moving ? Math.sin(p.walk * 2) * 4 : 0);
   ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - 14, y - 26 - bob); ctx.lineTo(x - 19, y - 16 - bob + arm); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob - arm); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob + (air ? arm : -arm)); ctx.stroke();
   drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face });
+  ctx.restore();
+}
+
+// Name tag and emote bubble over a player
+function drawTag(ctx, x, y, name, color, emote) {
+  ctx.font = '800 14px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(name).width + 18;
+  rr(ctx, x - w / 2, y - 11, w, 22, 11); fillStroke(ctx, '#fff8e8', 2.5);
+  ctx.fillStyle = color; circle(ctx, x - w / 2 + 9, y, 4); ctx.fill();
+  ctx.fillStyle = INK; ctx.fillText(name, x + 4, y + 1);
+  if (emote) {
+    const by = y - 40;
+    rr(ctx, x - 24, by - 20, 48, 40, 14); fillStroke(ctx, '#fff8e8', 2.5);
+    ctx.beginPath(); ctx.moveTo(x - 6, by + 19); ctx.lineTo(x, by + 28); ctx.lineTo(x + 6, by + 19); ctx.closePath(); fillStroke(ctx, '#fff8e8', 0);
+    ctx.font = '24px sans-serif'; ctx.fillText(emote, x, by + 1);
+  }
 }
 
 /* ---------------- Grandma Ramen & the Oracle ---------------- */
@@ -707,6 +737,11 @@ function drawNoodleIcon(ctx, n, size, locked = false) {
       noodleStroke(ctx, () => { ctx.beginPath(); ctx.arc(32, 32, 16, 0.2 * Math.PI, 0.8 * Math.PI); }, c, 5);
       noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(24, 22); ctx.lineTo(24, 28); ctx.moveTo(40, 22); ctx.lineTo(40, 28); }, c, 5);
       break;
+    case 'sky':
+      [[24, 26, 10], [36, 22, 12], [46, 28, 9]].forEach(([x, y, r]) => { circle(ctx, x, y, r); fillStroke(ctx, '#ffffff', 2.5); });
+      rr(ctx, 16, 26, 38, 10, 5); ctx.fillStyle = '#fff'; ctx.fill();
+      [40, 48].forEach((y, i) => noodleStroke(ctx, wave(y, 3, i), c, 3.5));
+      break;
     case 'updown':
       for (let i = 0; i < 4; i++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(20 + i * 8, 50); ctx.bezierCurveTo(16 + i * 8, 38, 26 + i * 8, 28, 20 + i * 8, 14); }, c, 4);
       ctx.fillStyle = '#e4572e'; ctx.beginPath(); ctx.moveTo(50, 22); ctx.lineTo(56, 30); ctx.lineTo(44, 30); ctx.closePath(); ctx.fill();
@@ -1043,4 +1078,59 @@ function drawRidge(ctx, y0, y1) {
     ctx.beginPath(); ctx.moveTo(x - 40, y + 30); ctx.quadraticCurveTo(x - 44, y - 30, x, y - 36); ctx.quadraticCurveTo(x + 44, y - 30, x + 40, y + 30); ctx.closePath();
     fillStroke(ctx, '#8d8579', 3);
   }
+}
+
+/* ---------------- Coaches and sky ---------------- */
+function drawKombu(ctx, x, y, t, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(0, 2, 22, 7, 0, 0, TAU); ctx.fill();
+  // body: a bundle of wavy kelp
+  for (let i = -2; i <= 2; i++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(i * 6, 0); for (let k = 0; k <= 50; k += 5) ctx.lineTo(i * 6 + Math.sin(k * 0.2 + t * 3 + i) * 3, -k); }, '#4f9a5b', 6);
+  // face blob
+  ctx.beginPath(); ctx.ellipse(0, -56, 20, 17, 0, 0, TAU); fillStroke(ctx, '#5fb56b', 3);
+  // swim cap
+  ctx.beginPath(); ctx.arc(0, -60, 20, Math.PI, 0); ctx.closePath(); fillStroke(ctx, '#e4572e', 3);
+  ctx.fillStyle = '#fff8e8'; ctx.fillRect(-16, -64, 32, 3);
+  // goggles on the forehead, eyes, whistle
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+  [-7, 7].forEach(ex => { ctx.beginPath(); ctx.ellipse(ex, -52, 4.5, 5.5, 0, 0, TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle = INK; circle(ctx, ex + 1, -51, 2.2); ctx.fill(); ctx.fillStyle = '#fff'; });
+  ctx.beginPath(); ctx.arc(0, -45, 4, 0.1, Math.PI - 0.1); ctx.stroke();
+  ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -40); ctx.quadraticCurveTo(0, -28, 8, -40); ctx.stroke();
+  rr(ctx, -4, -32, 8, 6, 2); fillStroke(ctx, '#ffd23f', 1.8);
+  ctx.restore();
+}
+function drawPenne(ctx, x, y, t, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(0, 2, 24, 7, 0, 0, TAU); ctx.fill();
+  // little pedestal made of penne tubes
+  [-12, 0, 12].forEach((px, i) => { ctx.save(); ctx.translate(px, -8); ctx.rotate(0.3 - i * 0.3); rr(ctx, -5, -10, 10, 20, 3); fillStroke(ctx, '#f4c35a', 2.2); ctx.restore(); });
+  drawSobaBird(ctx, 0, -34 + Math.sin(t * 2) * 1.5, t, 1.7, false);
+  // pilot goggles
+  ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(159,243,255,0.8)';
+  circle(ctx, 22, -48 + Math.sin(t * 2) * 1.5, 5); ctx.fill(); ctx.stroke();
+  // scarf
+  ctx.strokeStyle = '#e4572e'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(8, -36); ctx.quadraticCurveTo(-8, -30 + Math.sin(t * 5) * 3, -22, -38 + Math.sin(t * 5) * 4); ctx.stroke();
+  ctx.restore();
+}
+function drawRing(ctx, x, y, z, t, got) {
+  ctx.fillStyle = 'rgba(52,35,63,0.15)'; ctx.beginPath(); ctx.ellipse(x, y, 30, 9, 0, 0, TAU); ctx.fill();
+  ctx.save(); ctx.translate(x, y - z);
+  ctx.lineWidth = 9; ctx.strokeStyle = INK; ctx.beginPath(); ctx.ellipse(0, 0, 14, 34, 0, 0, TAU); ctx.stroke();
+  ctx.lineWidth = 5; ctx.strokeStyle = got ? '#8cbf5a' : `hsl(${45 + Math.sin(t * 4) * 8}, 95%, 60%)`; ctx.stroke();
+  ctx.restore();
+}
+function drawSkyCloud(ctx, c, t, hasNoodle) {
+  ctx.save(); ctx.globalAlpha = c.alpha || 1; ctx.translate(c.x, c.y - c.z); ctx.scale(0.7, 0.7); ctx.translate(-c.x, -(c.y - c.z));
+  const y = c.y - c.z + Math.sin(t) * 3;
+  ctx.fillStyle = 'rgba(52,35,63,0.10)'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 80, 20, 0, 0, TAU); ctx.fill();
+  [[-50, 6, 30], [-18, -8, 38], [22, -4, 34], [52, 8, 26], [0, 12, 40]].forEach(([dx, dy, r]) => { circle(ctx, c.x + dx, y + dy, r); fillStroke(ctx, '#ffffff', 3); });
+  ctx.fillStyle = '#fff'; [[-50, 6, 27], [-18, -8, 35], [22, -4, 31], [52, 8, 23], [0, 12, 37]].forEach(([dx, dy, r]) => { circle(ctx, c.x + dx, y + dy, r); ctx.fill(); });
+  if (hasNoodle) noodleStroke(ctx, () => { ctx.beginPath(); for (let k = -16; k <= 16; k += 2) ctx.lineTo(c.x + k, y - 22 + Math.sin(k * 0.35 + t * 4) * 4); }, '#9fd8f0', 4);
+  ctx.restore();
+}
+function drawMeter(ctx, x, y, frac, color) {
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(52,35,63,0.6)'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(x, y, 12, -Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, frac))); ctx.stroke();
 }

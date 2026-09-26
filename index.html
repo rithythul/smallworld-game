@@ -32,11 +32,14 @@
         </div>
         <div class="pill coins" title="Crunch Coins"><span class="coin"></span><span id="coinText">0</span></div>
       </div>
+      <button class="pill room" id="roomPill" type="button" hidden><span class="room-dot"></span><span id="roomText">ABCD</span></button>
       <button class="pill goal" id="goal" type="button"><span class="goal-label">Goal</span><span id="goalText">Swim in the Morning Pool</span></button>
     </div>
     <div class="hud-right">
       <button class="icon-btn" id="dexBtn" type="button" aria-label="Noodle-dex"><span class="icon-bowl"></span><span class="badge" id="dexCount">0/12</span></button>
+      <button class="icon-btn" id="skillsBtn" type="button" aria-label="Skills and challenges"><span class="icon-star">⭐</span><span class="badge" id="starCount">0</span></button>
       <button class="icon-btn" id="journalBtn" type="button" aria-label="Clue journal"><span class="icon-book"></span><span class="badge dot" id="journalDot" hidden></span></button>
+      <button class="icon-btn small" id="emoteBtn" type="button" aria-label="Send an emote" hidden>😊</button>
       <button class="icon-btn small" id="soundBtn" type="button" aria-label="Toggle sound"><span id="soundIcon">🔊</span></button>
       <button class="icon-btn small" id="fsBtn" type="button" aria-label="Full screen" hidden><span class="icon-fs"></span></button>
     </div>
@@ -49,6 +52,11 @@
   <!-- touch controls -->
   <div id="stick" hidden><div id="stickKnob"></div><span class="stick-label">MOVE</span></div>
   <button id="action" type="button" hidden><span id="actionLabel">CRUNCH</span></button>
+  <button id="flyBtn" type="button" hidden><span id="flyLabel">HOP</span></button>
+  <div id="emoteBar" hidden>
+    <button type="button" data-e="👋">👋</button><button type="button" data-e="😋">😋</button><button type="button" data-e="🎉">🎉</button>
+    <button type="button" data-e="❤️">❤️</button><button type="button" data-e="🍜">🍜</button><button type="button" data-e="🏁">🏁</button>
+  </div>
 
   <!-- dialogue -->
   <div id="dialog" hidden>
@@ -81,11 +89,34 @@
       <h1><span>Noodle</span><span>Universe</span></h1>
       <p class="tagline">Collect every noodle. Crack the Golden Noodle mystery.</p>
       <button class="big-btn" id="startBtn" type="button">Wake up ☀</button>
+      <button class="big-btn friends" id="friendsBtn" type="button">Play with friends 👥</button>
       <button class="link-btn" id="resetBtn" type="button" hidden>Start a new game</button>
+      <div id="mpPanel" class="mp-panel" hidden>
+        <div class="mp-row">
+          <label for="mpName">Your name</label>
+          <input id="mpName" maxlength="14" autocomplete="off" placeholder="Squareface">
+        </div>
+        <div class="mp-row">
+          <span class="mp-label">Hoodie color</span>
+          <div class="swatches" id="mpColors"></div>
+        </div>
+        <div class="mp-modes">
+          <button type="button" class="mode-card on" data-mode="team"><strong>🤝 Team up</strong><span>Share one Noodle-dex. Every noodle a friend finds is yours too.</span></button>
+          <button type="button" class="mode-card" data-mode="race"><strong>🏁 Race</strong><span>Everyone collects alone. Race for the same bricks. Most noodles wins.</span></button>
+        </div>
+        <button class="big-btn small" id="mpCreate" type="button">Create a room</button>
+        <div class="mp-or">or join a friend</div>
+        <form class="mp-join" id="mpJoinForm">
+          <input id="mpCode" maxlength="4" autocomplete="off" placeholder="CODE" aria-label="Room code">
+          <button class="choice" type="submit">Join</button>
+        </form>
+        <p class="mp-msg" id="mpMsg"></p>
+      </div>
       <p class="touch-how">Drag anywhere to walk · Tap the big button to crunch, drink and swim</p>
       <div class="how">
         <div><kbd>WASD</kbd><span>move</span></div>
         <div><kbd>Space</kbd><span>crunch · drink · swim</span></div>
+        <div><kbd>F</kbd><span>hop · fly</span></div>
         <div><kbd>N</kbd><span>Noodle-dex</span></div>
         <div><kbd>J</kbd><span>journal</span></div>
       </div>
@@ -96,6 +127,7 @@
 <script src="js/data.js"></script>
 <script src="js/art.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/net.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

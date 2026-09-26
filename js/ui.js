@@ -71,11 +71,13 @@ const UI = (() => {
       for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(-24, -24 + i * 12); c.lineTo(24 - (i === 4 ? 20 : 0), -24 + i * 12); c.stroke(); }
     } else if (kind === 'snail') drawSnail(c, 52, 96, t, 1, 1.05);
     else if (kind === 'bird') drawSobaBird(c, 56, 66, t, 2.4, false);
+    else if (kind === 'kombu') drawKombu(c, 60, 150, t, 1.7);
+    else if (kind === 'penne') drawPenne(c, 50, 150, t, 1.6);
     else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
     c.restore();
   }
 
-  const names = { bird: 'Soba Bird', snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
+  const names = { kombu: 'Coach Kombu', penne: 'Captain Penne', bird: 'Soba Bird', snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
 
   function say(who, lines, { choices = null, onDone = null } = {}) {
     dlg = { who, lines: Array.isArray(lines) ? lines : [lines], i: 0, choices, onDone };
@@ -277,7 +279,73 @@ const UI = (() => {
     });
   }
 
+  function players(Net, onLeave) {
+    openSheet('Friends', (body) => {
+      const team = Net.mode === 'team';
+      body.insertAdjacentHTML('beforeend', `
+        <div class="code-box"><span class="code">${Net.code}</span>
+          <button class="choice" type="button" id="copyCode">Copy invite link</button></div>
+        <p class="sheet-sub">${team ? '🤝 <b>Team up</b>: every noodle anyone finds goes into everyone\'s Noodle-dex. Bricks are shared too.' : '🏁 <b>Race</b>: everyone collects on their own. Bricks are shared, so grab them first! Most noodles wins, then coins.'}</p>
+        <p class="sheet-sub" id="linkLine" style="user-select:text">${location.origin + location.pathname}#${Net.code}</p>`);
+      const list = document.createElement('div'); list.className = 'players';
+      const rows = Net.scores.length ? Net.scores : [];
+      rows.forEach((p, i) => {
+        const me = p.id === Net.me;
+        list.insertAdjacentHTML('beforeend', `<div class="player-row"><span class="rank">${team ? '·' : i + 1}</span><span class="dot" style="background:${p.color}"></span>
+          <span class="who">${p.name}${me ? ' (you)' : ''}</span><span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></div>`);
+      });
+      body.appendChild(list);
+      body.insertAdjacentHTML('beforeend', '<p class="sheet-sub" style="margin-top:14px">Tap 😊 to send an emote. Everyone sees it over your head.</p><button class="choice alt" type="button" id="leaveRoom">Leave room</button>');
+      $('leaveRoom').addEventListener('click', onLeave);
+      $('copyCode').addEventListener('click', () => {
+        const link = location.origin + location.pathname + '#' + Net.code;
+        const done = () => { $('copyCode').textContent = 'Copied!'; };
+        try { navigator.clipboard.writeText(link).then(done, () => { selectText($('linkLine')); }); } catch (e) { selectText($('linkLine')); }
+      });
+    });
+  }
+  function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
+
+  function skills(G, stars) {
+    openSheet('Skills & Challenges', (body) => {
+      const level = 1 + Math.floor(Math.sqrt(stars / 2));
+      const nextAt = 2 * level * level;
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">⭐ <b>${stars} stars</b> · Noodle Level <b>${level}</b>. ${nextAt - stars} more stars to level ${level + 1}. Levels never stop.</p>
+        <div class="progress"><div style="width:${Math.min(100, (stars - 2 * (level - 1) ** 2) / (nextAt - 2 * (level - 1) ** 2) * 100)}%"></div></div>`);
+      const skillBlock = (skill, title, coach, where) => {
+        const lv = G.skills[skill];
+        const el = document.createElement('div'); el.className = 'clue';
+        el.innerHTML = `<span class="where">${coach} · ${where}</span><h3>${title}: level ${lv} of 3</h3>`;
+        LESSONS.filter(l => l.skill === skill).forEach(l => {
+          const done = !!G.lessons[l.id], active = G.lesson && G.lesson.id === l.id, next = !done && l.level === lv + 1;
+          el.insertAdjacentHTML('beforeend', `<div class="lesson ${done ? 'done' : next ? 'next' : 'locked'}"><span class="mark">${done ? '✓' : active ? '▶' : next ? '•' : '🔒'}</span>
+            <span><b>${l.title}</b> · ⭐ ${l.stars}<br><small>${done ? l.unlock : l.desc}</small></span></div>`);
+        });
+        body.appendChild(el);
+      };
+      skillBlock('swim', '🏊 Swimming', 'Coach Kombu', 'on the Morning Pool deck');
+      skillBlock('fly', '🪽 Flying', 'Captain Penne', 'on the hill in Crunch Meadow');
+      if (G.daily && G.daily.list) {
+        const d = document.createElement('div'); d.className = 'clue';
+        d.innerHTML = `<span class="where">New ones every morning, forever</span><h3>📅 Today's challenges (day ${G.day})</h3>`;
+        G.daily.list.forEach(c => {
+          const done = G.daily.done[c.id], prog = Math.min(c.goal, Math.floor(G.daily.prog[c.id] || 0));
+          d.insertAdjacentHTML('beforeend', `<div class="lesson ${done ? 'done' : 'next'}"><span class="mark">${done ? '✓' : '•'}</span><span><b>${c.title}</b> · ⭐ 1<br><small>${prog} / ${c.goal}</small></span></div>`);
+        });
+        body.appendChild(d);
+      }
+      const ch = document.createElement('div'); ch.className = 'clue';
+      ch.innerHTML = '<span class="where">Big goals</span><h3>🏆 Challenges</h3>';
+      CHALLENGES.forEach(c => {
+        const done = !!G.challenges[c.id];
+        ch.insertAdjacentHTML('beforeend', `<div class="lesson ${done ? 'done' : 'next'}"><span class="mark">${done ? '✓' : '•'}</span><span><b>${c.title}</b> · ⭐ ${c.stars}<br><small>${c.desc}</small></span></div>`);
+      });
+      body.appendChild(ch);
+    });
+  }
+
   return {
+    players, openSheet, skills,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },
