@@ -29,7 +29,8 @@ body {
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
 }
-button { font-family: inherit; color: inherit; cursor: pointer; }
+button { font-family: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+body { -webkit-touch-callout: none; }
 button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 [hidden] { display: none !important; }
 
@@ -97,6 +98,10 @@ button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 }
 .badge.dot { width: 16px; height: 16px; padding: 0; background: var(--chili); top: -6px; right: -6px; bottom: auto; left: auto; transform: none; animation: pulse 1s infinite alternate; }
 @keyframes pulse { to { transform: scale(1.25); } }
+.icon-fs { width: 22px; height: 22px; display: block; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334233f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6'/%3E%3C/svg%3E"); }
+#fsBtn.on .icon-fs { transform: scale(.7); }
+.touch-how { display: none; margin: 8px 0 0; font-weight: 800; font-size: 15px; max-width: 28ch; text-wrap: balance; }
+body.touch .touch-how { display: block; }
 .icon-bowl, .icon-book { width: 30px; height: 30px; display: block; background-size: contain; background-repeat: no-repeat; background-position: center; }
 .icon-bowl { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M9 4c0 4 3 4 3 8M16 3c0 4 3 4 3 8' fill='none' stroke='%2334233f' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M3 14h26c0 8-5 13-13 13S3 22 3 14z' fill='%23e4572e' stroke='%2334233f' stroke-width='2.6' stroke-linejoin='round'/%3E%3Cpath d='M7 18c3-2 5 2 8 0s5 2 8 0' fill='none' stroke='%23fff3d6' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
 .icon-book { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='4' width='22' height='25' rx='3' fill='%232fa4b5' stroke='%2334233f' stroke-width='2.6'/%3E%3Cpath d='M10 4v25' stroke='%2334233f' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='14' r='4.5' fill='none' stroke='%23fff3d6' stroke-width='2.4'/%3E%3Cpath d='M22 17l3 3' stroke='%23fff3d6' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"); }
@@ -144,6 +149,13 @@ body.touch .buff { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 200px
   background: rgba(255, 248, 232, .22); border: 3px solid rgba(255, 248, 232, .6);
   pointer-events: none; transform: translate(-50%, -50%);
 }
+#stick.rest { opacity: .55; transition: opacity .3s; }
+.stick-label {
+  position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+  font-weight: 800; font-size: 12px; letter-spacing: .12em; color: var(--paper);
+  text-shadow: 0 2px 0 var(--ink); white-space: nowrap;
+}
+#stick:not(.rest) .stick-label { display: none; }
 #stickKnob {
   position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
   border-radius: 50%; background: var(--paper); border: 3px solid var(--ink); box-shadow: var(--pop);
@@ -308,19 +320,69 @@ body:not(.touch) #action.pressed, body:not(.touch) #action:active { transform: t
 kbd { background: var(--paper); border: 2px solid var(--ink); border-bottom-width: 4px; border-radius: 8px; padding: 1px 7px 0; font-family: var(--body); font-weight: 800; font-size: 13px; }
 body.touch .how { display: none; }
 
-@media (max-width: 560px) {
-  .bar { width: 64px; }
-  .pill { font-size: 14px; height: 34px; padding: 2px 11px 0; }
-  .meter { height: 34px; }
-  .icon-btn { width: 46px; height: 46px; border-radius: 15px; }
-  .icon-btn.small { width: 38px; height: 38px; }
-  .goal { font-size: 13px; max-width: calc(100vw - 100px); }
+/* ---------- phones & tablets ---------- */
+/* Toasts sit near the bottom on touch screens so they never cover Squareface Guy. */
+body.touch #toasts { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); }
+body.touch .toast { font-size: 15px; }
+
+@media (max-width: 600px) {
+  #hud { padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 0; gap: 8px; }
+  .hud-left { gap: 6px; }
+  .pill { font-size: 13px; height: 32px; padding: 2px 10px 0; gap: 6px; box-shadow: 0 3px 0 var(--ink); border-width: 2.5px; }
+  .clock-icon { width: 16px; height: 16px; }
+  .meter { height: 32px; padding: 0 8px 0 4px; box-shadow: 0 3px 0 var(--ink); border-width: 2.5px; }
+  .meter-icon { width: 20px; height: 20px; }
+  .bar { width: 64px; height: 12px; }
+  .coin { width: 15px; height: 15px; }
+  .goal { font-size: 13px; padding: 5px 10px 3px 5px; max-width: calc(100vw - 24px); }
+  .goal-label { font-size: 10px; padding: 2px 6px 0; }
+  .hud-right { gap: 6px; align-items: flex-start; }
+  .icon-btn { width: 42px; height: 42px; border-radius: 13px; box-shadow: 0 3px 0 var(--ink); border-width: 2.5px; }
+  .icon-btn.small { width: 42px; height: 42px; font-size: 16px; }
+  .icon-bowl, .icon-book { width: 24px; height: 24px; }
+  .badge { font-size: 10px; bottom: -9px; }
   .dialog-text { font-size: 16px; }
-  #portrait { width: 64px; height: 64px; }
-  .combo { font-size: 34px; }
+  #portrait { width: 60px; height: 60px; }
+  .combo { font-size: 32px; }
   .sheet-head h2 { font-size: 24px; }
   .dex-grid, .pieces { grid-template-columns: repeat(2, 1fr); }
-  .hud-right { flex-direction: column; }
+  .dex-card canvas { width: 56px; height: 56px; }
+  #action { width: 96px; height: 96px; font-size: 17px; right: 16px; }
+  #titleHero { width: 150px; height: 150px; }
+}
+/* narrow phones: goal gets its own row under the stats */
+@media (max-width: 420px) {
+  .hud-right { flex-wrap: wrap; justify-content: flex-end; max-width: 96px; }
+  .icon-btn { width: 42px; height: 42px; }
+}
+/* phones in landscape: short screen, keep everything slim */
+@media (max-height: 500px) {
+  #hud { padding: calc(env(safe-area-inset-top, 0px) + 8px) calc(env(safe-area-inset-right, 0px) + 12px) 0 calc(env(safe-area-inset-left, 0px) + 12px); }
+  .hud-left { gap: 5px; }
+  .pill, .meter { height: 30px; font-size: 13px; box-shadow: 0 3px 0 var(--ink); }
+  .bar { width: 70px; }
+  .goal { font-size: 13px; max-width: 46vw; }
+  .icon-btn, .icon-btn.small { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); }
+  .icon-bowl, .icon-book { width: 22px; height: 22px; }
+  body.touch #toasts { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 58px); left: auto; right: calc(env(safe-area-inset-right, 0px) + 12px); transform: none; width: min(300px, 36vw); align-items: flex-end; }
+  .toast { font-size: 13px; padding: 6px 12px 4px 6px; }
+  .toast canvas, .toast.big canvas { width: 38px; height: 38px; }
+  #action { width: 88px; height: 88px; font-size: 16px; right: calc(env(safe-area-inset-right, 0px) + 18px); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+  .dialog-card { padding: 10px 14px 8px 10px; }
+  .dialog-text { font-size: 15px; min-height: 0; }
+  #portrait { width: 52px; height: 52px; }
+  .combo { font-size: 30px; top: 16%; }
+  #titleHero { width: 110px; height: 110px; }
+  #title h1 { font-size: 52px; flex-direction: row; gap: 14px; }
+  .tagline { font-size: 16px; margin: 0; }
+  .big-btn { font-size: 22px; padding: 8px 28px 5px; }
+  .title-inner { gap: 6px; }
+}
+/* tablets: roomier buttons, bigger action button */
+@media (min-width: 700px) and (min-height: 700px) {
+  body.touch #action { width: 124px; height: 124px; font-size: 21px; right: 32px; bottom: calc(env(safe-area-inset-bottom, 0px) + 36px); }
+  body.touch #stick { width: 140px; height: 140px; }
+  body.touch #stickKnob { width: 60px; height: 60px; margin: -30px 0 0 -30px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

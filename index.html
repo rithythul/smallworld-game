@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Noodle Universe</title>
+<meta name="theme-color" content="#f4b942">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Noodles">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Baloo+2:wght@500;600;700;800&display=swap">
@@ -30,6 +38,7 @@
       <button class="icon-btn" id="dexBtn" type="button" aria-label="Noodle-dex"><span class="icon-bowl"></span><span class="badge" id="dexCount">0/12</span></button>
       <button class="icon-btn" id="journalBtn" type="button" aria-label="Clue journal"><span class="icon-book"></span><span class="badge dot" id="journalDot" hidden></span></button>
       <button class="icon-btn small" id="soundBtn" type="button" aria-label="Toggle sound"><span id="soundIcon">🔊</span></button>
+      <button class="icon-btn small" id="fsBtn" type="button" aria-label="Full screen" hidden><span class="icon-fs"></span></button>
     </div>
   </div>
 
@@ -38,7 +47,7 @@
   <div id="toasts" aria-live="polite"></div>
 
   <!-- touch controls -->
-  <div id="stick" hidden><div id="stickKnob"></div></div>
+  <div id="stick" hidden><div id="stickKnob"></div><span class="stick-label">MOVE</span></div>
   <button id="action" type="button" hidden><span id="actionLabel">CRUNCH</span></button>
 
   <!-- dialogue -->
@@ -73,6 +82,7 @@
       <p class="tagline">Collect every noodle. Crack the Golden Noodle mystery.</p>
       <button class="big-btn" id="startBtn" type="button">Wake up ☀</button>
       <button class="link-btn" id="resetBtn" type="button" hidden>Start a new game</button>
+      <p class="touch-how">Drag anywhere to walk · Tap the big button to crunch, drink and swim</p>
       <div class="how">
         <div><kbd>WASD</kbd><span>move</span></div>
         <div><kbd>Space</kbd><span>crunch · drink · swim</span></div>

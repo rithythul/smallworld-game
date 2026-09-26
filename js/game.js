@@ -171,7 +171,7 @@ const Game = (() => {
     const n = NOODLES.find(n => n.id === id);
     G.found.push(id);
     P.wow = 1.6;
-    Sound.discover();
+    Sound.discover(); buzz([20, 40, 30]);
     UI.toast(`<span class="t-small">New noodle · ${n.rarity}</span>${n.name}`, { noodle: n, big: true, life: 3.2 });
     burst(P.x, P.y - 60, 24, ['#ffd23f', '#fff8e8', '#e4572e', '#8fe0ea'], { type: 'spark', speed: 260, grav: 200, life: 1.1 });
     milestone();
@@ -262,7 +262,7 @@ const Game = (() => {
     faceStep('crunch');
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
-    Sound.crunch(b.kind === 'gold' ? 1.4 : 1);
+    Sound.crunch(b.kind === 'gold' ? 1.4 : 1); buzz(b.kind === 'boulder' ? 35 : 18);
     const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'], peak: ['#a9a39a', '#9a7b5b', '#fff3d6'], snow: ['#ffffff', '#dfe8f2', '#bfe9ff'] }[b.kind];
     burst(b.x, b.y - 16, 22, cols, { speed: 280, up: 260, size: 6 });
     floatText(b.x, b.y - 50, 'CRUNCH!', '#fff8e8');
@@ -306,7 +306,7 @@ const Game = (() => {
   function crunchGate() {
     G.gateHp--;
     P.crunching = 0.45; shake = 20;
-    Sound.crunch(1.5);
+    Sound.crunch(1.5); buzz(45);
     const gx = CANYON.gate.x, gy = CANYON.wallY - 20;
     burst(gx, gy, 30, ['#a45a33', '#c9784a', '#e9a36b'], { speed: 340, up: 300, size: 8 });
     if (G.gateHp > 0) { floatText(gx, gy - 70, G.gateHp === 2 ? 'CRACK!' : 'ALMOST!', '#ffd23f'); save(); return; }
@@ -352,7 +352,7 @@ const Game = (() => {
 
   function hitDrum() {
     drumHit = 1;
-    Sound.drum(drumBeats.length);
+    Sound.drum(drumBeats.length); buzz(30);
     shake = 5;
     floatText(DRUM.x + (Math.random() - 0.5) * 40, DRUM.y - 130, 'BOM', '#fff8e8');
     if (G.pieces.includes(4)) return;
@@ -1111,17 +1111,28 @@ const Game = (() => {
     dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
     zoom = clamp(Math.min(vw / 900, vh / 620), 0.72, 1.5);
+    if (typeof restStick === 'function') restStick();
   }
 
   /* ---------- input ---------- */
-  const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  // Touch mode turns on for phones and tablets, and also the first time anyone touches the screen.
+  let isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  function enableTouch() {
+    if (!isTouch) isTouch = true;
+    document.body.classList.add('touch');
+    restStick();
+  }
   if (isTouch) document.body.classList.add('touch');
+
+  // small vibration on phones that support it (Android); silently ignored elsewhere
+  function buzz(ms) { try { if (isTouch && navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 
   function actionDown() {
     if (!running) return;
     if (UI.talking) { UI.advance(); return; }
     if (UI.busy) return;
     $('action').classList.add('pressed');
+    buzz(8);
     if (current) current.fn();
   }
   function actionUp() { $('action').classList.remove('pressed'); drinkHeld = false; }
@@ -1145,17 +1156,38 @@ const Game = (() => {
   });
   window.addEventListener('blur', () => { keys.clear(); actionUp(); });
 
+  // The action button keeps the finger even if it slides a little, so holding to drink works.
   const act = $('action');
-  act.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); actionDown(); });
+  act.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.pointerType === 'touch') enableTouch();
+    try { act.setPointerCapture(e.pointerId); } catch (err) {}
+    actionDown();
+  });
   act.addEventListener('pointerup', actionUp);
-  act.addEventListener('pointerleave', actionUp);
   act.addEventListener('pointercancel', actionUp);
+  act.addEventListener('lostpointercapture', actionUp);
 
-  canvas.addEventListener('pointerdown', (e) => {
-    if (!isTouch || !running || UI.busy) return;
-    stick.active = true; stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; stick.dx = stick.dy = 0;
-    const s = $('stick'); s.hidden = false; s.style.left = e.clientX + 'px'; s.style.top = e.clientY + 'px';
+  // Floating joystick: rests in the bottom-left corner, jumps to wherever you put your thumb.
+  const stickEl = $('stick');
+  function restStick() {
+    if (!isTouch || stick.active) return;
+    stickEl.hidden = !running;
+    stickEl.classList.add('rest');
+    stickEl.style.left = '86px';
+    stickEl.style.top = (vh - 118) + 'px';
     $('stickKnob').style.transform = '';
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') enableTouch();
+    if (!running) return;
+    if (UI.talking) { UI.advance(); return; }
+    if (!isTouch || UI.busy) return;
+    stick.active = true; stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; stick.dx = stick.dy = 0;
+    stickEl.hidden = false; stickEl.classList.remove('rest');
+    stickEl.style.left = e.clientX + 'px'; stickEl.style.top = e.clientY + 'px';
+    $('stickKnob').style.transform = '';
+    G.flags.movedByTouch = true;
   });
   window.addEventListener('pointermove', (e) => {
     if (!stick.active || e.pointerId !== stick.id) return;
@@ -1165,9 +1197,37 @@ const Game = (() => {
     stick.dx = dx / max; stick.dy = dy / max;
     $('stickKnob').style.transform = `translate(${dx}px, ${dy}px)`;
   });
-  const endStick = (e) => { if (e.pointerId !== stick.id) return; stick.active = false; stick.dx = stick.dy = 0; $('stick').hidden = true; };
+  const endStick = (e) => { if (e.pointerId !== stick.id) return; stick.active = false; stick.dx = stick.dy = 0; restStick(); };
   window.addEventListener('pointerup', endStick);
   window.addEventListener('pointercancel', endStick);
+
+  // Phones: no long-press menus, no pinch zoom, sound wakes up again after the app was in the background.
+  window.addEventListener('contextmenu', (e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); });
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  window.addEventListener('pointerdown', () => { if (running) Sound.init(); }, true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { save(); keys.clear(); actionUp(); } else keepAwake();
+  });
+
+  // Keep the screen from dimming while playing (if the browser allows it).
+  let wakeLock = null;
+  function keepAwake() {
+    try { if (navigator.wakeLock && !document.hidden) navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {}
+  }
+
+  // Full screen button, only where the browser supports it (Android, iPad, desktop).
+  const fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  $('fsBtn').hidden = !fsOK;
+  $('fsBtn').addEventListener('click', () => {
+    const el = document.documentElement;
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (r && r.catch) r.catch(() => {}); }
+    } catch (e) {}
+  });
+  const fsSync = () => { $('fsBtn').classList.toggle('on', !!(document.fullscreenElement || document.webkitFullscreenElement)); setTimeout(() => { resize(); restStick(); }, 120); };
+  document.addEventListener('fullscreenchange', fsSync);
+  document.addEventListener('webkitfullscreenchange', fsSync);
 
   $('dexBtn').addEventListener('click', () => { Sound.blip(); UI.dex(G); });
   $('journalBtn').addEventListener('click', () => { Sound.blip(); UI.journal(G); });
@@ -1190,8 +1250,10 @@ const Game = (() => {
     if (blocked(P.x, P.y)) { P.x = DOOR.x; P.y = DOOR.y + 30; }
     cam.x = P.x - vw / zoom / 2; cam.y = P.y - vh / zoom / 2;
     $('title').hidden = true; $('hud').hidden = false;
+    keepAwake();
     titleAnim = false;
     running = true;
+    restStick();
     if (!state) {
       setTimeout(() => UI.say('me-wow', [
         '*bzzt* ...Systems on. Screen on. Smile on.',

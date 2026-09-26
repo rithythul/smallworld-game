@@ -11,7 +11,9 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk), `N` Noodle-dex, `J` clue journal. On phones, drag anywhere to move and tap the big button.
+**Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk), `N` Noodle-dex, `J` clue journal.
+
+**Phones and tablets:** drag anywhere to walk (the joystick follows your thumb), tap the big button to act, and hold it to drink. The layout adapts to portrait, landscape and tablets. Tap the full-screen button (where the browser supports it), or use **Add to Home Screen** to play it like an app.
 
 ## What's in this version (Chapters 1 to 3)
 
