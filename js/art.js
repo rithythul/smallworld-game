@@ -162,6 +162,12 @@ function drawPlayer(ctx, p, t) {
   ctx.beginPath(); ctx.moveTo(x - 14, y - 26 - bob); ctx.lineTo(x - 19, y - 16 - bob + arm); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x + 14, y - 26 - bob); ctx.lineTo(x + 19, y - 16 - bob + (air ? arm : -arm)); ctx.stroke();
   drawHead(ctx, x, y - 56 - bob, p.mood, t, { antennaPulse: p.antennaPulse, look: p.face, color: p.color });
+  if (p.suit) {
+    // space helmet: a glass bubble over the square head
+    circle(ctx, x, y - 58 - bob, 36); ctx.fillStyle = 'rgba(191,233,255,0.22)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y - 58 - bob, 29, Math.PI * 1.1, Math.PI * 1.4); ctx.stroke();
+    rr(ctx, x - 16, y - 26 - bob, 32, 6, 3); fillStroke(ctx, '#e9eef4', 2);
+  }
   ctx.restore();
 }
 

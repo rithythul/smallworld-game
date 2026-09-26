@@ -47,7 +47,7 @@ const Net = (() => {
           if (s.id === me) return;
           const o = others.get(s.id); if (!o) return;
           if (o.x === null) { o.x = s.x; o.y = s.y; o.walk = 0; }
-          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0;
+          o.tx = s.x; o.ty = s.y; o.mood = s.mood; o.sw = s.sw; o.mv = s.mv; o.f = s.f; o.tz = s.z || 0; o.su = s.su;
         });
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
@@ -67,7 +67,7 @@ const Net = (() => {
       const t = performance.now();
       if (t - lastState < 90) return;
       lastState = t;
-      send({ t: 'state', x: p.x, y: p.y, mood: p.mood, sw: p.swimming, mv: p.moving, f: Math.round(p.face * 10) / 10, z: Math.round(p.z || 0) });
+      send({ t: 'state', x: p.x, y: p.y, mood: p.mood, sw: p.swimming, mv: p.moving, f: Math.round(p.face * 10) / 10, z: Math.round(p.z || 0), su: !!p.suit });
     },
     crunch(id) { if (code) send({ t: 'crunch', b: id }); },
     found(n) { if (code) send({ t: 'found', n }); },

@@ -221,7 +221,7 @@ wss.on('connection', (ws) => {
     switch (m.t) {
       case 'state':
         p.x = num(m.x, 0, 5000); p.y = num(m.y, 0, 5000);
-        p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400) };
+        p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400), su: !!m.su };
         break;
       case 'crunch': {
         const id = typeof m.b === 'number' ? m.b : clean(m.b, 12);

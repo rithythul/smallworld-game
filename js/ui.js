@@ -12,7 +12,8 @@ const UI = (() => {
   }
 
   function hud(G) {
-    $('clockText').textContent = `Day ${G.day} · ${fmtTime(G.time)}`;
+    const ct = `<span class="clock-day">Day ${G.day} · </span>${fmtTime(G.time)}`;
+    if ($('clockText').innerHTML !== ct) $('clockText').innerHTML = ct;
     const hr = G.time / 60;
     $('clockIcon').classList.toggle('moon', hr >= 19 || hr < 5.5);
     const w = Math.max(0, Math.min(100, G.water));
@@ -50,7 +51,7 @@ const UI = (() => {
     }
     const span = document.createElement('div'); span.innerHTML = html; el.appendChild(span);
     $('toasts').appendChild(el);
-    while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
+    while ($('toasts').children.length > (document.body.classList.contains('touch') ? 2 : 3)) $('toasts').firstChild.remove();
     setTimeout(() => el.remove(), (life + 0.5) * 1000);
   }
 
@@ -142,6 +143,7 @@ const UI = (() => {
     const body = $('sheetBody'); body.innerHTML = ''; body.scrollTop = 0;
     render(body);
     $('sheet').hidden = false;
+    body.scrollTop = 0;
   }
   function closeSheet() { $('sheet').hidden = true; }
   $('sheetClose').addEventListener('click', closeSheet);
@@ -392,7 +394,7 @@ const UI = (() => {
       rows.forEach((p, i) => {
         const me = p.id === Net.me;
         list.insertAdjacentHTML('beforeend', `<div class="player-row"><span class="rank">${team ? '·' : i + 1}</span><span class="dot" style="background:${p.color}"></span>
-          <span class="who">${p.name}${me ? ' (you)' : ''}</span>${p.trophies ? `<span class="stat">🏆 ${p.trophies}</span>` : ''}${p.round ? `<span class="stat">🧱 ${p.round}</span>` : ''}<span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></div>`);
+          <span class="who">${p.name}${me ? ' (you)' : ''}</span><span class="stats">${p.trophies ? `<span class="stat">🏆 ${p.trophies}</span>` : ''}${p.round ? `<span class="stat">🧱 ${p.round}</span>` : ''}<span class="stat">🍜 ${p.found}</span><span class="stat">⭐ ${p.stars || 0}</span><span class="stat">🪙 ${p.coins}</span></span></div>`);
       });
       body.appendChild(list);
       if (team && extra.pot) {
@@ -499,12 +501,14 @@ const UI = (() => {
       const skillBlock = (skill, title, coach, where) => {
         const lv = G.skills[skill];
         const el = document.createElement('div'); el.className = 'clue';
-        el.innerHTML = `<span class="where">${coach} · ${where}</span><h3>${title}: level ${lv} of 3</h3>`;
+        const m = Game.mastery(skill);
+        el.innerHTML = `<span class="where">${coach} · ${where}</span><h3>${title}: level ${m.level}</h3>`;
         LESSONS.filter(l => l.skill === skill).forEach(l => {
           const done = !!G.lessons[l.id], active = G.lesson && G.lesson.id === l.id, next = !done && l.level === lv + 1;
           el.insertAdjacentHTML('beforeend', `<div class="lesson ${done ? 'done' : next ? 'next' : 'locked'}"><span class="mark">${done ? '✓' : active ? '▶' : next ? '•' : '🔒'}</span>
             <span><b>${l.title}</b> · ⭐ ${l.stars}<br><small>${done ? l.unlock : l.desc}</small></span></div>`);
         });
+        if (lv >= 3) el.insertAdjacentHTML('beforeend', `<div class="lesson next"><span class="mark">∞</span><span><b>Mastery level ${m.level + 1}</b><br><small>Keep ${skill === 'swim' ? 'swimming' : 'flying'}: ${Math.max(0, m.next - m.xp)} more seconds. Levels never stop.</small></span></div>`);
         body.appendChild(el);
       };
       skillBlock('swim', '🏊 Swimming', 'Coach Kombu', 'on the Morning Pool deck');
