@@ -20,7 +20,9 @@ const UI = (() => {
     $('waterBar').classList.toggle('low', w < 25);
     $('coinText').textContent = G.coins;
     $('dexCount').textContent = `${G.found.length}/${NOODLES.length}`;
-    $('buff').hidden = !(G.buffUntil > G.time && G.buffDay === G.day);
+    const fresh = G.buffUntil > G.time && G.buffDay === G.day, mint = G.mintUntil > G.time && G.mintDay === G.day;
+    $('buff').hidden = !(fresh || mint);
+    $('buff').textContent = [fresh && '😎 Fresh Start', mint && '🌿 Minty'].filter(Boolean).join('  ·  ');
     $('journalDot').hidden = !G.journalNew;
   }
 
@@ -67,11 +69,12 @@ const UI = (() => {
       rr(c, -34, -40, 68, 80, 6); fillStroke(c, '#fff8e8', 3);
       c.strokeStyle = '#c7b48a'; c.lineWidth = 3;
       for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(-24, -24 + i * 12); c.lineTo(24 - (i === 4 ? 20 : 0), -24 + i * 12); c.stroke(); }
-    } else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
+    } else if (kind === 'snail') drawSnail(c, 52, 96, t, 1, 1.05);
+    else drawHead(c, 60, 70, kind === 'me-wow' ? 'wow' : 'happy', t, {});
     c.restore();
   }
 
-  const names = { grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
+  const names = { snail: 'The Udon Snail', grandma: 'Grandma Ramen', oracle: 'The Noodle Oracle', note: 'A note', me: 'Squareface Guy', 'me-wow': 'Squareface Guy' };
 
   function say(who, lines, { choices = null, onDone = null } = {}) {
     dlg = { who, lines: Array.isArray(lines) ? lines : [lines], i: 0, choices, onDone };
@@ -213,6 +216,16 @@ const UI = (() => {
                 });
               });
             }
+          } else if (id === 'mirror') {
+            const cv = document.createElement('canvas'); cv.width = 560; cv.height = 150; cv.className = 'reflection';
+            const x = cv.getContext('2d');
+            const g = x.createLinearGradient(0, 0, 0, 150); g.addColorStop(0, '#e2dbff'); g.addColorStop(1, '#b7a6ff');
+            x.fillStyle = g; x.fillRect(0, 0, 560, 150);
+            x.translate(280, 0); x.scale(-1, 1);
+            x.fillStyle = '#34233f'; x.font = '44px "Bagel Fat One", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+            x.fillText('UNDER THE', 0, 50); x.fillText("SNAIL'S HOUSE", 0, 102);
+            el.appendChild(cv);
+            el.insertAdjacentHTML('beforeend', `<p class="empty">You sketched what the water showed you.</p>${solved ? '<span class="solved-tag">✓ Solved</span>' : ''}`);
           } else {
             el.insertAdjacentHTML('beforeend', `<blockquote>${c.text.replace(/\n/g, '<br>')}</blockquote>${solved ? '<span class="solved-tag">✓ Solved</span>' : ''}`);
           }

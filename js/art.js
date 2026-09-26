@@ -249,7 +249,7 @@ function brickSprite(kind) {
   if (brickSprites[kind]) return brickSprites[kind];
   const c = document.createElement('canvas'); c.width = 64; c.height = 56;
   const x = c.getContext('2d');
-  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8' }[kind];
+  const base = { normal: '#f4c35a', woods: '#c6d77a', gold: '#ffd23f', fortune: '#ffb3c8', canyon: '#e59866', boulder: '#c9784a' }[kind];
   x.translate(32, 30);
   x.fillStyle = 'rgba(52,35,63,0.2)'; x.beginPath(); x.ellipse(0, 18, 26, 7, 0, 0, TAU); x.fill();
   rr(x, -25, -16, 50, 32, 9); fillStroke(x, base, 3);
@@ -275,7 +275,13 @@ function drawBrick(ctx, b, t, near) {
     ctx.fillStyle = b.kind === 'gold' ? 'rgba(255,210,63,0.35)' : 'rgba(255,179,200,0.4)';
     circle(ctx, 0, 0, 34 + Math.sin(t * 3) * 4); ctx.fill();
   }
+  if (b.kind === 'boulder') ctx.scale(1.55, 1.55);
   ctx.drawImage(img, -32, -30);
+  if (b.hp && b.max && b.hp < b.max) {
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-4, -14); ctx.lineTo(2, -4); ctx.lineTo(-3, 4); ctx.lineTo(4, 12); ctx.stroke();
+    if (b.hp < b.max - 1) { ctx.beginPath(); ctx.moveTo(14, -12); ctx.lineTo(8, -2); ctx.lineTo(16, 6); ctx.moveTo(-18, -6); ctx.lineTo(-10, 2); ctx.stroke(); }
+  }
   ctx.restore();
 }
 
@@ -432,6 +438,20 @@ function drawStream(ctx, t, dawn) {
   ctx.save(); ctx.translate(14, 0); streamPath(ctx); ctx.stroke(); ctx.restore();
   ctx.save(); ctx.translate(-16, 0); streamPath(ctx); ctx.stroke(); ctx.restore();
   ctx.setLineDash([]);
+  // the Mirror Pond
+  const M = STREAM.mirror;
+  ctx.beginPath(); ctx.ellipse(M.x, M.y, M.rx + 14, M.ry + 12, 0, 0, TAU); ctx.fillStyle = '#6fa54a'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(M.x, M.y, M.rx + 3, M.ry + 3, 0, 0, TAU); ctx.fillStyle = INK; ctx.fill();
+  const pg = ctx.createRadialGradient(M.x - 30, M.y - 20, 10, M.x, M.y, M.rx);
+  pg.addColorStop(0, '#e2dbff'); pg.addColorStop(0.5, '#b7a6ff'); pg.addColorStop(1, '#6fc6d8');
+  ctx.beginPath(); ctx.ellipse(M.x, M.y, M.rx, M.ry, 0, 0, TAU); ctx.fillStyle = pg; ctx.fill();
+  for (let i = 0; i < 7; i++) {
+    const a = t * 0.5 + i * 0.9, r = 0.3 + ((i * 37) % 60) / 100;
+    const px = M.x + Math.cos(a) * M.rx * r, py = M.y + Math.sin(a * 1.3) * M.ry * r;
+    const tw = (Math.sin(t * 4 + i * 2) + 1) / 2;
+    ctx.fillStyle = `rgba(255,255,255,${0.4 + tw * 0.6})`;
+    ctx.beginPath(); ctx.moveTo(px, py - 5 * tw - 2); ctx.lineTo(px + 1.5, py - 1.5); ctx.lineTo(px + 5 * tw + 2, py); ctx.lineTo(px + 1.5, py + 1.5); ctx.lineTo(px, py + 5 * tw + 2); ctx.lineTo(px - 1.5, py + 1.5); ctx.lineTo(px - 5 * tw - 2, py); ctx.lineTo(px - 1.5, py - 1.5); ctx.closePath(); ctx.fill();
+  }
   // bridges
   STREAM.bridges.forEach(b => {
     ctx.fillStyle = 'rgba(52,35,63,0.25)'; rr(ctx, b.x + 4, b.y + 8, b.w, b.h, 8); ctx.fill();
@@ -498,11 +518,31 @@ function buildGround() {
   }
   // the smallest flower (fortune riddle spot)
   g.fillStyle = '#b98cff'; for (let k = 0; k < 5; k++) { circle(g, 760 + Math.cos(k * 1.26) * 2, 1330 + Math.sin(k * 1.26) * 2, 1.6); g.fill(); }
+  // Crunch Canyon: warm sandstone with noodle-wave strata
+  g.fillStyle = '#e9b27a';
+  g.beginPath(); g.moveTo(0, CANYON.top - 30);
+  for (let x = 0; x <= WORLD.w; x += 40) g.lineTo(x, CANYON.top - 30 + Math.sin(x * 0.02) * 10);
+  g.lineTo(WORLD.w, WORLD.h); g.lineTo(0, WORLD.h); g.closePath(); g.fill();
+  for (let i = 0; i < 120; i++) {
+    const x = rnd() * WORLD.w, y = CANYON.top + rnd() * (WORLD.h - CANYON.top), r = 30 + rnd() * 90;
+    g.fillStyle = rnd() > 0.5 ? 'rgba(255,230,190,0.18)' : 'rgba(180,100,60,0.10)'; circle(g, x, y, r); g.fill();
+  }
+  g.lineWidth = 3; g.strokeStyle = 'rgba(170,95,55,0.22)';
+  for (let y = CANYON.top + 40; y < WORLD.h; y += 46) {
+    g.beginPath(); for (let x = 0; x <= WORLD.w; x += 8) g.lineTo(x, y + Math.sin(x * 0.03 + y) * 6); g.stroke();
+  }
+  for (let i = 0; i < 500; i++) {
+    const x = rnd() * WORLD.w, y = CANYON.top + rnd() * (WORLD.h - CANYON.top);
+    g.fillStyle = rnd() > 0.5 ? 'rgba(120,70,40,0.35)' : 'rgba(255,240,210,0.5)'; circle(g, x, y, 1.5 + rnd() * 2.5); g.fill();
+  }
+  path([[760, 1790], [760, 1960], [700, 2150], [900, 2250], [1210, 2245], [1450, 2245], [1700, 2300], [1900, 2300]], 36);
+  path([[700, 2150], [480, 2200], [360, 2380]], 30);
   // region lettering painted on the ground
   g.font = '44px "Bagel Fat One", sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(52,35,63,0.14)';
   g.fillText('Ramen Village', 700, 270);
   g.fillText('Spaghetti Woods', 1960, 120);
   g.fillText('Crunch Meadow', 780, 1700);
+  g.fillStyle = 'rgba(110,55,30,0.16)'; g.fillText('Crunch Canyon', 1900, 1990);
   // world edge: hedges of noodles
   g.strokeStyle = '#6fa54a'; g.lineWidth = 40;
   g.strokeRect(0, 0, WORLD.w, WORLD.h);
@@ -570,6 +610,38 @@ function drawNoodleIcon(ctx, n, size, locked = false) {
       [8, 14].forEach(r => { ctx.beginPath(); ctx.arc(20, 32, r, -0.9, 0.9); ctx.stroke(); ctx.beginPath(); ctx.arc(44, 32, r, Math.PI - 0.9, Math.PI + 0.9); ctx.stroke(); });
       noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(32, 14); for (let y = 14; y <= 50; y += 2) ctx.lineTo(32 + Math.sin(y * 0.4) * 4, y); }, c, 5);
       break;
+    case 'crackle':
+      rr(ctx, 14, 20, 36, 24, 6); fillStroke(ctx, c, 3);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(24, 20); ctx.lineTo(28, 30); ctx.lineTo(24, 36); ctx.lineTo(30, 44); ctx.moveTo(40, 20); ctx.lineTo(36, 30); ctx.lineTo(42, 38); ctx.stroke();
+      break;
+    case 'mint':
+      [24, 34, 44].forEach((y, i) => noodleStroke(ctx, wave(y, 3, i), c, 4));
+      ctx.beginPath(); ctx.ellipse(44, 18, 9, 5, -0.6, 0, TAU); fillStroke(ctx, '#6fbf73', 2.5);
+      break;
+    case 'boulder':
+      ctx.beginPath(); ctx.moveTo(12, 44); ctx.lineTo(16, 24); ctx.lineTo(30, 14); ctx.lineTo(46, 18); ctx.lineTo(52, 36); ctx.lineTo(44, 48); ctx.lineTo(20, 50); ctx.closePath(); fillStroke(ctx, c, 3);
+      ctx.strokeStyle = 'rgba(52,35,63,0.5)'; ctx.lineWidth = 2;
+      for (let r = 0; r < 3; r++) { ctx.beginPath(); for (let x = 18; x <= 46; x += 2) ctx.lineTo(x, 26 + r * 8 + Math.sin(x * 0.6 + r) * 2); ctx.stroke(); }
+      break;
+    case 'rigatoni':
+      [[20, 22], [34, 36], [44, 20]].forEach(([x, y], i) => {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(i * 0.7 - 0.5);
+        rr(ctx, -6, -11, 12, 22, 4); fillStroke(ctx, c, 2.5);
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5;
+        for (let k = -3; k <= 3; k += 3) { ctx.beginPath(); ctx.moveTo(k, -9); ctx.lineTo(k, 9); ctx.stroke(); }
+        ctx.restore();
+      });
+      break;
+    case 'mirror':
+      noodleStroke(ctx, wave(24, 4, 0), c, 4.5);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(12, 32); ctx.lineTo(52, 32); ctx.stroke(); ctx.setLineDash([]);
+      ctx.globalAlpha = 0.55; noodleStroke(ctx, wave(40, -4, 0), c, 4.5); ctx.globalAlpha = 1;
+      break;
+    case 'slow':
+      noodleStroke(ctx, () => { ctx.beginPath(); for (let a = 0; a < TAU * 2; a += 0.15) { const r = 2 + a * 2.2; ctx.lineTo(34 + Math.cos(a) * r, 30 + Math.sin(a) * r); } }, c, 7);
+      ctx.fillStyle = INK; circle(ctx, 18, 46, 2.5); ctx.fill(); circle(ctx, 24, 46, 2.5); ctx.fill();
+      break;
     case 'updown':
       for (let i = 0; i < 4; i++) noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(20 + i * 8, 50); ctx.bezierCurveTo(16 + i * 8, 38, 26 + i * 8, 28, 20 + i * 8, 14); }, c, 4);
       ctx.fillStyle = '#e4572e'; ctx.beginPath(); ctx.moveTo(50, 22); ctx.lineTo(56, 30); ctx.lineTo(44, 30); ctx.closePath(); ctx.fill();
@@ -625,6 +697,26 @@ function drawMapPiece(ctx, n, size) {
     ctx.beginPath(); ctx.moveTo(20, 140); ctx.lineTo(40, 60); ctx.lineTo(70, 90); ctx.lineTo(90, 40); ctx.lineTo(120, 80); ctx.lineTo(140, 140); ctx.stroke();
     [10, 18, 26].forEach(r => { ctx.beginPath(); ctx.arc(80, 120, r, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke(); });
     ctx.font = '800 14px "Baloo 2", sans-serif'; ctx.fillText('crunch crunch', 38, 30);
+  } else if (n === 3) {
+    // a drum and a rhythm
+    ctx.beginPath(); ctx.ellipse(80, 64, 36, 12, 0, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(44, 64); ctx.lineTo(48, 118); ctx.moveTo(116, 64); ctx.lineTo(112, 118); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(80, 118, 32, 10, 0, 0, Math.PI); ctx.stroke();
+    ctx.fillStyle = '#e4572e';
+    [[40, 30, 5], [58, 30, 5], [104, 30, 9]].forEach(([x, y, r]) => { circle(ctx, x, y, r); ctx.fill(); });
+    ctx.fillStyle = INK; ctx.font = '800 13px "Baloo 2", sans-serif'; ctx.fillText('· · · ·', 66, 34);
+  } else if (n === 4) {
+    // the mirror pond with backwards letters
+    ctx.fillStyle = '#b7a6ff'; ctx.beginPath(); ctx.ellipse(80, 90, 56, 30, 0, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.save(); ctx.translate(80, 95); ctx.scale(-1, 1); ctx.fillStyle = INK; ctx.font = '800 16px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.fillText('? ? ?', 0, 0); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(30, 40); ctx.quadraticCurveTo(60, 20, 80, 40); ctx.quadraticCurveTo(100, 60, 130, 36); ctx.stroke();
+  } else if (n === 5) {
+    // mountains and a square statue: next chapter
+    ctx.beginPath(); ctx.moveTo(16, 130); ctx.lineTo(56, 50); ctx.lineTo(80, 90); ctx.lineTo(110, 30); ctx.lineTo(146, 130); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(100, 50); ctx.lineTo(110, 30); ctx.lineTo(120, 50); ctx.stroke();
+    rr(ctx, 100, 10, 20, 18, 4); ctx.stroke();
+    ctx.fillStyle = INK; circle(ctx, 106, 18, 1.8); ctx.fill(); circle(ctx, 114, 18, 1.8); ctx.fill();
+    ctx.font = '800 13px "Baloo 2", sans-serif'; ctx.fillText('Soba Peaks', 30, 150);
   }
   ctx.restore();
 }
@@ -639,5 +731,134 @@ function drawTitleHero(ctx, t) {
   rr(ctx, -15, 4 - bob, 30, 26, 10); fillStroke(ctx, '#2fa4b5', 3);
   ctx.fillStyle = INK; rr(ctx, -10, 28, 8, 8, 3); ctx.fill(); rr(ctx, 2, 28, 8, 8, 3); ctx.fill();
   drawHead(ctx, 0, -20 - bob, mood, t, { antennaPulse: (Math.sin(t * 4) + 1) / 2 });
+  ctx.restore();
+}
+
+/* ---------------- Crunch Canyon ---------------- */
+function drawEchoRock(ctx, x, y, t, shimmer = 0) {
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 44, 12, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - 38, y); ctx.lineTo(x - 30, y - 96); ctx.quadraticCurveTo(x, y - 112, x + 30, y - 96); ctx.lineTo(x + 38, y); ctx.quadraticCurveTo(x, y + 8, x - 38, y); ctx.closePath();
+  fillStroke(ctx, '#c9784a', 3);
+  ctx.beginPath(); ctx.ellipse(x, y - 98, 29, 9, 0, 0, TAU); fillStroke(ctx, '#e9a36b', 2.5);
+  ctx.strokeStyle = 'rgba(255,230,190,0.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let r = 0; r < 4; r++) { ctx.beginPath(); for (let k = -30; k <= 30; k += 3) ctx.lineTo(x + k, y - 20 - r * 20 + Math.sin(k * 0.3 + r) * 3); ctx.stroke(); }
+  if (shimmer > 0) {
+    ctx.strokeStyle = `rgba(255,255,255,${shimmer})`; ctx.lineWidth = 3;
+    [1, 2].forEach(i => { ctx.beginPath(); ctx.arc(x, y - 60, 40 + i * 16 + (1 - shimmer) * 20, -0.6, 0.6); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y - 60, 40 + i * 16 + (1 - shimmer) * 20, Math.PI - 0.6, Math.PI + 0.6); ctx.stroke(); });
+  }
+}
+
+function drawDrum(ctx, x, y, t, hit = 0, open = false) {
+  ctx.fillStyle = 'rgba(52,35,63,0.22)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 62, 16, 0, 0, TAU); ctx.fill();
+  const s = 1 + hit * 0.06;
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, 1 / s);
+  // legs
+  ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-40, -6); ctx.lineTo(-50, 2); ctx.moveTo(40, -6); ctx.lineTo(50, 2); ctx.stroke();
+  // body
+  ctx.beginPath(); ctx.moveTo(-54, -80); ctx.lineTo(-46, -10); ctx.quadraticCurveTo(0, 6, 46, -10); ctx.lineTo(54, -80); ctx.closePath();
+  fillStroke(ctx, '#e4572e', 3);
+  // noodle ropes
+  ctx.lineWidth = 3;
+  noodleStroke(ctx, () => { ctx.beginPath(); ctx.moveTo(-50, -70); for (let i = 0; i < 8; i++) ctx.lineTo(-44 + i * 12.5, i % 2 ? -70 : -20); }, '#f7dc7a', 3);
+  // head
+  if (open) {
+    ctx.save(); ctx.translate(40, -96); ctx.rotate(0.5);
+    ctx.beginPath(); ctx.ellipse(0, 0, 54, 15, 0, 0, TAU); fillStroke(ctx, '#fff3d6', 3); ctx.restore();
+    ctx.beginPath(); ctx.ellipse(0, -80, 54, 15, 0, 0, TAU); fillStroke(ctx, '#34233f', 3);
+  } else {
+    ctx.beginPath(); ctx.ellipse(0, -80, 54, 15, 0, 0, TAU); fillStroke(ctx, '#fff3d6', 3);
+    ctx.strokeStyle = 'rgba(52,35,63,0.3)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -80, 30, 8, 0, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+  if (hit > 0) {
+    ctx.strokeStyle = `rgba(255,255,255,${hit})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(x, y - 80, 60 + (1 - hit) * 40, 18 + (1 - hit) * 12, 0, 0, TAU); ctx.stroke();
+  }
+}
+
+function drawSnail(ctx, x, y, t, dir = 1, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(dir * s, s);
+  ctx.fillStyle = 'rgba(52,35,63,0.2)'; ctx.beginPath(); ctx.ellipse(0, 2, 50, 10, 0, 0, TAU); ctx.fill();
+  const stretch = Math.sin(t * 1.2) * 3;
+  // body
+  ctx.beginPath(); ctx.moveTo(-44 - stretch, 0); ctx.quadraticCurveTo(-40, -16, 0, -14); ctx.lineTo(30, -20); ctx.quadraticCurveTo(46 + stretch, -26, 50 + stretch, -8); ctx.quadraticCurveTo(48, 2, 30, 2); ctx.closePath();
+  fillStroke(ctx, '#d8e38a', 3);
+  // eye stalks
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  const wig = Math.sin(t * 2) * 3;
+  ctx.beginPath(); ctx.moveTo(40, -20); ctx.lineTo(38 + wig, -42); ctx.moveTo(47, -18); ctx.lineTo(52 + wig, -40); ctx.stroke();
+  circle(ctx, 38 + wig, -44, 5); fillStroke(ctx, '#fff', 2.5); circle(ctx, 52 + wig, -42, 5); fillStroke(ctx, '#fff', 2.5);
+  ctx.fillStyle = INK; circle(ctx, 39 + wig, -44, 2.2); ctx.fill(); circle(ctx, 53 + wig, -42, 2.2); ctx.fill();
+  ctx.beginPath(); ctx.arc(44, -10, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+  // udon shell
+  circle(ctx, -8, -34, 30); fillStroke(ctx, '#fff3d6', 3);
+  noodleStroke(ctx, () => { ctx.beginPath(); for (let a = 0; a < TAU * 2.2; a += 0.15) { const r = 3 + a * 3.2; ctx.lineTo(-8 + Math.cos(a) * r, -34 + Math.sin(a) * r); } }, '#fff8e8', 6);
+  ctx.restore();
+}
+
+function drawSpring(ctx, sp, t) {
+  const { x, y, rx, ry } = sp;
+  ctx.beginPath(); ctx.ellipse(x, y, rx + 14, ry + 12, 0, 0, TAU); fillStroke(ctx, '#b98a5c', 3);
+  const g = ctx.createRadialGradient(x - 20, y - 12, 6, x, y, rx);
+  g.addColorStop(0, '#e6fff4'); g.addColorStop(0.6, '#9ff0c8'); g.addColorStop(1, '#4fc3a1');
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+  for (let i = 0; i < 5; i++) {
+    const a = t * 0.3 + i * 1.3;
+    const lx = x + Math.cos(a) * rx * 0.55, ly = y + Math.sin(a) * ry * 0.5;
+    ctx.save(); ctx.translate(lx, ly); ctx.rotate(a);
+    ctx.beginPath(); ctx.ellipse(0, 0, 8, 4, 0, 0, TAU); fillStroke(ctx, '#6fbf73', 2); ctx.restore();
+  }
+  for (let i = 0; i < 2; i++) {
+    const k = (t * 0.6 + i / 2) % 1;
+    ctx.strokeStyle = `rgba(255,255,255,${1 - k})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(x, y, rx * 0.2 + k * rx * 0.6, ry * 0.2 + k * ry * 0.6, 0, 0, TAU); ctx.stroke();
+  }
+}
+
+function drawCanyonWall(ctx, t, gateHp, cracked) {
+  const y = CANYON.wallY;
+  const rock = (x, r, col) => {
+    ctx.beginPath(); ctx.moveTo(x - r, y + 14); ctx.quadraticCurveTo(x - r - 4, y - r * 0.9, x - r * 0.2, y - r * 1.1); ctx.quadraticCurveTo(x + r * 0.9, y - r * 1.2, x + r, y + 14); ctx.closePath();
+    fillStroke(ctx, col, 3);
+    ctx.strokeStyle = 'rgba(255,230,190,0.5)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); for (let k = -r * 0.6; k <= r * 0.6; k += 3) ctx.lineTo(x + k, y - r * 0.4 + Math.sin(k * 0.3) * 3); ctx.stroke();
+  };
+  for (let x = 40; x < WORLD.w; x += 64) {
+    if (Math.abs(x - 1290) < 70) continue;
+    if (Math.abs(x - CANYON.gate.x) < 70) continue;
+    rock(x, 36 + ((x * 7) % 11), '#b8693e');
+  }
+  if (gateHp > 0) {
+    const gx = CANYON.gate.x;
+    const wob = cracked ? Math.sin(t * 20) * (gateHp < 3 ? 1.5 : 0.4) : 0;
+    ctx.save(); ctx.translate(wob, 0); rock(gx, 58, '#a45a33'); ctx.restore();
+    if (cracked) {
+      ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(gx - 6, y - 58); ctx.lineTo(gx + 4, y - 36); ctx.lineTo(gx - 8, y - 16); ctx.lineTo(gx + 2, y + 6); ctx.stroke();
+      if (gateHp < 3) { ctx.beginPath(); ctx.moveTo(gx + 26, y - 40); ctx.lineTo(gx + 14, y - 24); ctx.lineTo(gx + 28, y - 6); ctx.stroke(); }
+      if (gateHp < 2) { ctx.beginPath(); ctx.moveTo(gx - 34, y - 30); ctx.lineTo(gx - 20, y - 18); ctx.lineTo(gx - 36, y); ctx.stroke(); }
+    }
+  }
+}
+
+function drawReflection(ctx, t, alpha, words) {
+  const M = STREAM.mirror;
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(M.x, M.y, M.rx - 4, M.ry - 4, 0, 0, TAU); ctx.clip();
+  ctx.globalAlpha = alpha;
+  ctx.translate(M.x, M.y);
+  ctx.scale(-1, 1);
+  ctx.font = '26px "Bagel Fat One", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const wob = (i) => Math.sin(t * 3 + i) * 2;
+  if (words) {
+    ctx.fillStyle = '#34233f';
+    ctx.fillText('UNDER THE', wob(0), -14);
+    ctx.fillText("SNAIL'S HOUSE", wob(1), 18);
+  } else {
+    ctx.fillStyle = 'rgba(52,35,63,0.5)';
+    ctx.scale(1, -1);
+    drawHead(ctx, 0, 0, 'happy', t, {});
+  }
   ctx.restore();
 }

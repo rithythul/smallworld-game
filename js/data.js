@@ -25,18 +25,31 @@ const NOODLES = [
     desc: 'Say its name and it says it back. Twice.', hint: 'Decode the noodle letters.' },
   { id: 'updown', name: 'Upside-Down Spaghetti', rarity: 'secret', shape: 'updown', color: '#ffe07a',
     desc: 'Falls up. Grandma planted it on purpose.', hint: 'Somewhere the rules are backwards.' },
+  // Chapter 2: Crunch Canyon
+  { id: 'crackle', name: 'Canyon Crackle', rarity: 'common', shape: 'crackle', color: '#e59866',
+    desc: 'Baked in the canyon sun for a thousand years. Still fresh.', hint: 'Crunch the red bricks in Crunch Canyon.' },
+  { id: 'mint', name: 'Mint Soba', rarity: 'common', shape: 'mint', color: '#9ff0c8',
+    desc: 'Cool as a breeze. Makes your screen feel minty.', hint: 'Drink from the Minty Spring.' },
+  { id: 'boulder', name: 'Boulder Ramen', rarity: 'rare', shape: 'boulder', color: '#c9784a',
+    desc: 'Takes three crunches. Worth every one.', hint: 'Break a giant boulder brick.' },
+  { id: 'rigatoni', name: 'Rhythm Rigatoni', rarity: 'rare', shape: 'rigatoni', color: '#e4572e',
+    desc: 'Tube-shaped, so it plays a little tune when you blow in it.', hint: 'Make the canyon drum happy.' },
+  { id: 'vermicelli', name: 'Mirror Vermicelli', rarity: 'legendary', shape: 'mirror', color: '#b7a6ff',
+    desc: 'Its reflection is a different noodle. Nobody knows which one is real.', hint: 'Drink where the water lies.' },
+  { id: 'slowudon', name: 'Slow Udon', rarity: 'rare', shape: 'slow', color: '#fff3d6',
+    desc: 'The Udon Snail\'s favorite. Takes a week to slurp.', hint: 'Make friends with the Udon Snail.' },
 ];
 const TOTAL_IN_UNIVERSE = 48;
 
 // World size in pixels
-const WORLD = { w: 2600, h: 1800 };
+const WORLD = { w: 2600, h: 2600 };
 
 // Stream: centreline polyline, flows north to south
 const STREAM = {
   width: 76,
-  pts: [[1300, -40], [1270, 160], [1340, 340], [1300, 520], [1230, 700], [1290, 880], [1380, 1060], [1330, 1260], [1260, 1440], [1320, 1620], [1300, 1860]],
-  bridges: [ { x: 1170, y: 668, w: 220, h: 64 }, { x: 1250, y: 1235, w: 190, h: 60 } ],
-  mirror: { x: 1360, y: 1050, r: 80 }, // Mirror Stream bend (for later chapters)
+  pts: [[1300, -40], [1270, 160], [1340, 340], [1300, 520], [1230, 700], [1290, 880], [1380, 1060], [1330, 1260], [1260, 1440], [1320, 1620], [1300, 1840], [1250, 2040], [1340, 2250], [1290, 2450], [1310, 2660]],
+  bridges: [ { x: 1170, y: 668, w: 220, h: 64 }, { x: 1250, y: 1235, w: 190, h: 60 }, { x: 1200, y: 2215, w: 250, h: 60 } ],
+  mirror: { x: 1370, y: 1060, rx: 120, ry: 64 }, // the Mirror Stream pond
 };
 
 const PLACES = {
@@ -61,7 +74,23 @@ const BRICK_SPOTS = [
   [620, 1200], [760, 1260], [900, 1180], [560, 1360], [700, 1420], [860, 1380], [1020, 1300], [640, 1540],
   [820, 1560], [1000, 1480], [1080, 1120], [420, 1260], [960, 700], [1100, 480], [260, 700],
   [1700, 380], [1980, 620], [1700, 980], [2180, 880], [1940, 1180], [2380, 1060], [1690, 1500], [2150, 1560], [2460, 760],
+  // Crunch Canyon (index 24+)
+  [700, 2080], [760, 2200], [1080, 2020], [1120, 2480], [560, 2500], [1600, 2020], [1760, 2140],
+  [2200, 2080], [2420, 2300], [1700, 2450], [2250, 2480], [2020, 2010],
 ];
+
+// Crunch Canyon, south of the boulder wall
+const CANYON = {
+  top: 1880,
+  wallY: 1860,
+  gate: { x: 760, y: 1872 },
+  rocks: [[260, 2060], [560, 2010], [880, 2130], [420, 2290], [1000, 2340], [1640, 2280], [2380, 2150]],
+  trueRock: 3,
+  drum: { x: 1980, y: 2300 },
+  snail: { x: 780, y: 2440 },
+  spring: { x: 300, y: 2440, rx: 90, ry: 48 },
+  boulders: [[1520, 2360], [2330, 1990]],
+};
 
 // Glowing night noodle spots in the woods
 const GLASS_SPOTS = [[1780, 700], [2100, 1120], [1650, 1210], [2330, 400]];
@@ -95,6 +124,29 @@ const CLUES = {
     hints: ['Grandma collects old signs. Maybe one of them is an alphabet.', 'Look at the poster on the side of Grandma\'s noodle stand.', 'Each shape is one letter. The first word is ECHO.'],
   },
 };
+
+Object.assign(CLUES, {
+  canyon: {
+    title: 'The Decoded Note', where: 'Your journal',
+    text: 'ECHO CRUNCHES TWICE.\nSomewhere south, the rocks are listening.',
+    hints: ['Crunch Canyon is south of the meadow. The boulder wall cracked when you decoded the note.', 'Crunch the tall rocks in the canyon. Most echo once. One echoes twice.', 'It is the tall rock just above the Minty Spring, in the west of the canyon.'],
+  },
+  piece3: {
+    title: 'The Echo Rock', where: 'Behind the Echo Rock',
+    text: 'The rock echoed: crunch · crunch · · · · CRUNCH.\nSomething in this canyon wants to hear that rhythm again.',
+    hints: ['Look for something big you can hit that makes a sound.', 'A giant drum sits on the east side of the canyon, across the bridge.', 'At the drum: press twice quickly, wait about one second, then press once more.'],
+  },
+  piece4: {
+    title: 'The Drum Note', where: 'Inside the Noodle Drum',
+    text: 'Drink where the water lies.',
+    hints: ['Water that lies does not tell the truth... like a mirror.', 'The stream widens into a shiny purple pond, south of the first bridge.', 'Drink from the purple Mirror Pond and look at the reflection.'],
+  },
+  mirror: {
+    title: 'The Reflection', where: 'The Mirror Pond',
+    text: 'UNDER THE SNAIL\'S HOUSE',
+    hints: ['The words are backwards, like in a mirror. Read them from right to left.', 'It says: UNDER THE SNAIL\'S HOUSE. A snail\'s house is its shell.', 'The Udon Snail lives in the canyon. It only moves for someone who found the Dawn Noodle (pool, around 6 AM).'],
+  },
+});
 
 // Noodle cipher: each letter A-Z is a noodle glyph (shape x dots x bar)
 function glyphFor(letter) {

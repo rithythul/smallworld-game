@@ -251,6 +251,7 @@ body:not(.touch) #action.pressed, body:not(.touch) #action:active { transform: t
 .clue blockquote { margin: 8px 0 0; font-size: 18px; line-height: 1.4; font-weight: 600; font-style: italic; color: var(--ink); max-width: 60ch; }
 .clue.solved { background: #f2fbe8; }
 .clue .solved-tag { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 800; color: #3e7d22; }
+.reflection { display: block; width: 100%; max-width: 420px; height: auto; border: 3px solid var(--ink); border-radius: 14px; margin: 10px 0 4px; }
 .cipher { display: flex; flex-wrap: wrap; gap: 4px 2px; margin: 10px 0; }
 .cipher canvas { width: 30px; height: 36px; }
 .cipher .gap { width: 16px; }

@@ -13,13 +13,14 @@ python3 -m http.server 8000
 
 **Controls:** WASD / arrows to move, Space to act (crunch, drink, swim, talk), `N` Noodle-dex, `J` clue journal. On phones, drag anywhere to move and tap the big button.
 
-## What's in this version (Chapter 1)
+## What's in this version (Chapters 1 and 2)
 
 - Ramen Village, Crunch Meadow, the stream and Spaghetti Woods
 - Crunching with combos, a hydration meter, and drinking from the stream
 - A day/night clock, with the Morning Pool open only from 6 to 8 AM (bubble mini-game + Fresh Start buff)
-- 12 noodles to collect in the Noodle-dex
+- 18 noodles to collect in the Noodle-dex
 - The first part of the Golden Noodle hunt: the Pillow Note, pool tile arrows, the Backwards Willow, and a noodle-letter cipher
+- **Chapter 2, Crunch Canyon:** a boulder wall to crunch open, the Echo Rock, the rhythm drum, the Mirror Pond with backwards writing, the Udon Snail, the Minty Spring and 3-hit boulder bricks
 - Daily Fortune Cracker riddles and the Noodle Oracle hint shop
 - Auto-save in the browser
 

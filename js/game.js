@@ -13,6 +13,11 @@ const Game = (() => {
   const POOL = PLACES.pool;
   const LAST_TILE = { x: POOL.x + 11 * 30 + 15, y: POOL.y + 3 * 30 + 15 };
   const GOLD_BRICK = { x: PLACES.willowBack.x, y: PLACES.willowBack.y + 58 };
+  const MIRROR = STREAM.mirror;
+  const SPRING = CANYON.spring;
+  const DRUM = CANYON.drum;
+  const snail = { x: CANYON.snail.x, y: CANYON.snail.y, dir: 1, moved: 0 };
+  let rockShimmer = [], drumHit = 0, drumBeats = [], mirrorTimer = 0, drinkWhere = null;
 
   let G = null;                 // saved state
   let ground = null;            // pre-rendered ground
@@ -38,7 +43,8 @@ const Game = (() => {
     return {
       v: 1, day: 1, time: START_TIME, water: 80, coins: 0,
       found: [], clues: [], solved: [], pieces: [],
-      flags: {}, crunched: [], glassTaken: [], drinks: 0, crunches: 0, woodsCrunches: 0,
+      flags: {}, crunched: [], glassTaken: [], drinks: 0, crunches: 0, woodsCrunches: 0, canyonCrunches: 0,
+      boulderHp: {}, gateHp: 3, mintDay: 0, mintUntil: 0,
       buffUntil: 0, buffDay: 0, fortune: null, hints: {}, journalNew: false,
       px: DOOR.x, py: DOOR.y + 30,
     };
@@ -59,6 +65,10 @@ const Game = (() => {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const has = (id) => G.found.includes(id);
   const buffed = () => G.buffDay === G.day && G.buffUntil > G.time;
+  const minty = () => G.mintDay === G.day && G.mintUntil > G.time;
+  const inPond = (x, y, pad = 0) => ((x - MIRROR.x) / (MIRROR.rx + pad)) ** 2 + ((y - MIRROR.y) / (MIRROR.ry + pad)) ** 2 < 1;
+  const inSpring = (x, y, pad = 0) => ((x - SPRING.x) / (SPRING.rx + pad)) ** 2 + ((y - SPRING.y) / (SPRING.ry + pad)) ** 2 < 1;
+  const canyonOpen = () => !!G.flags.gateOpen;
   const poolOpen = () => G.time >= POOL_OPEN && G.time < POOL_CLOSE;
   const isNight = () => hour() >= 20 || hour() < 5;
 
@@ -101,12 +111,21 @@ const Game = (() => {
     if (dist(x, y, PLACES.willowBack.x, PLACES.willowBack.y) < 22) return true;
     if (dist(x, y, 900, 848) < 40) return true;
     if (!onBridge(x, y) && streamDist(x, y) < STREAM.width / 2 + 4) return true;
+    if (inPond(x, y, 6) || inSpring(x, y, 8)) return true;
+    // the boulder wall, with its gate
+    if (y > CANYON.wallY - 22 && y < CANYON.wallY + 26 && !(canyonOpen() && Math.abs(x - CANYON.gate.x) < 56)) return true;
+    for (const [rx, ry] of CANYON.rocks) if (dist(x, y, rx, ry) < 36) return true;
+    if (dist(x, y, DRUM.x, DRUM.y - 8) < 50) return true;
     return false;
   }
 
   function bricks() {
-    const list = BRICK_SPOTS.map(([x, y], i) => ({ i, x, y, kind: x > 1450 ? 'woods' : 'normal' }))
+    const list = BRICK_SPOTS.map(([x, y], i) => ({ i, x, y, kind: y > CANYON.top ? 'canyon' : x > 1450 ? 'woods' : 'normal' }))
       .filter(b => !G.crunched.includes(b.i));
+    CANYON.boulders.forEach(([x, y], k) => {
+      const hp = G.boulderHp[k] === undefined ? 3 : G.boulderHp[k];
+      if (hp > 0) list.push({ i: 'boulder' + k, k, x, y, kind: 'boulder', hp, max: 3 });
+    });
     if (G.pieces.includes(1) && !G.pieces.includes(2)) list.push({ i: 'gold', x: GOLD_BRICK.x, y: GOLD_BRICK.y, kind: 'gold' });
     if (G.fortune && !G.fortune.crunched) {
       const [fx, fy] = FORTUNE_SPAWNS[G.fortune.spawn];
@@ -162,7 +181,7 @@ const Game = (() => {
 
   /* ---------- day cycle ---------- */
   function newDay(msg) {
-    G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = [];
+    G.day++; G.time = START_TIME; G.crunched = []; G.glassTaken = []; G.boulderHp = {};
     G.water = Math.max(G.water, 70);
     newFortune();
     P.swimming = false; swim = null;
@@ -193,12 +212,22 @@ const Game = (() => {
       add('ASK', ORACLE_AT.x, ORACLE_AT.y, 80, askOracle, 2, 'look');
       add(G.flags.pillowReady && !G.clues.includes('pillow') ? 'LOOK' : 'SLEEP', DOOR.x, DOOR.y, 70, useDoor, 2, 'look');
       add(poolOpen() ? 'SWIM' : 'CLOSED', GATE.x, GATE.y, 70, enterPool, 2, 'swim');
+      if (!canyonOpen()) {
+        const gy = CANYON.wallY - 30;
+        if (G.solved.includes('cipher')) add('CRUNCH', CANYON.gate.x, gy, 80, crunchGate, 2);
+        else add('LOOK', CANYON.gate.x, gy, 80, () => UI.say('me', 'A giant wall of ancient crunch-rock. You tap it. Too hard to crunch... for now.'), 2, 'look');
+      }
+      CANYON.rocks.forEach(([rx, ry], i) => add('CRUNCH', rx, ry + 34, 66, () => crunchRock(i), 1));
+      add('DRUM', DRUM.x, DRUM.y + 40, 80, hitDrum, 2, 'talk');
+      add('TALK', snail.x, snail.y + 10, 80, talkSnail, 2, 'talk');
+      if (inSpring(P.x, P.y, 44)) c.push({ label: 'DRINK', x: SPRING.x, y: SPRING.y, d: 60, fn: () => startDrink('spring'), prio: 1, cls: 'water', hold: true });
       for (const b of bricks()) add('CRUNCH', b.x, b.y, 62, () => crunch(b), 1);
       for (const g of glassNoodles()) add('PICK', g.x, g.y, 56, () => pickGlass(g), 2, 'look');
       if (!has('vine')) for (const [wx, wy] of WILLOWS) add('PICK', wx, wy + 10, 64, pickVine, 1, 'look');
       if (!c.length) {
         const sd = streamDist(P.x, P.y);
-        if (sd < STREAM.width / 2 + 36 && !onBridge(P.x, P.y)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: sd, fn: startDrink, prio: 0, cls: 'water', hold: true });
+        if (inPond(P.x, P.y, 44)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: 0, fn: () => startDrink('mirror'), prio: 0, cls: 'water', hold: true });
+        else if (sd < STREAM.width / 2 + 36 && !onBridge(P.x, P.y)) c.push({ label: 'DRINK', x: P.x, y: P.y, d: sd, fn: () => startDrink('stream'), prio: 0, cls: 'water', hold: true });
       }
     }
     if (!c.length) return null;
@@ -210,7 +239,7 @@ const Game = (() => {
     P.crunching = 0.45;
     shake = Math.min(14, 6 + combo.n * 1.5);
     Sound.crunch(b.kind === 'gold' ? 1.4 : 1);
-    const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'] }[b.kind];
+    const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'] }[b.kind];
     burst(b.x, b.y - 16, 22, cols, { speed: 280, up: 260, size: 6 });
     floatText(b.x, b.y - 50, 'CRUNCH!', '#fff8e8');
     G.water = Math.max(0, G.water - 7);
@@ -225,14 +254,137 @@ const Game = (() => {
 
     if (b.i === 'gold') return crunchGold();
     if (b.i === 'fortune') return crunchFortune();
+    if (b.kind === 'boulder') {
+      G.boulderHp[b.k] = b.hp - 1;
+      shake = 16;
+      if (G.boulderHp[b.k] > 0) { floatText(b.x, b.y - 90, `${G.boulderHp[b.k]} more!`, '#ffd23f'); return; }
+      burst(b.x, b.y - 20, 40, cols, { speed: 380, up: 320, size: 8 });
+      addCoins(5, b.x, b.y - 90);
+      if (!has('boulder')) giveNoodle('boulder');
+      return;
+    }
 
     G.crunched.push(b.i);
     G.crunches++;
     if (b.kind === 'woods') G.woodsCrunches++;
+    if (b.kind === 'canyon') G.canyonCrunches++;
     addCoins(1 + (combo.n >= 3 ? 1 : 0) + (buffed() ? 1 : 0), b.x, b.y - 80);
     if (!has('brick')) return giveNoodle('brick');
     if (b.kind === 'woods' && !has('matcha') && (Math.random() < 0.35 || G.woodsCrunches >= 3)) return giveNoodle('matcha');
+    if (b.kind === 'canyon' && !has('crackle') && (Math.random() < 0.35 || G.canyonCrunches >= 3)) return giveNoodle('crackle');
     if (!has('crinkle') && (Math.random() < 0.2 || G.crunches >= 5)) return giveNoodle('crinkle');
+  }
+
+  /* ---------- Chapter 2: Crunch Canyon ---------- */
+  function crunchGate() {
+    G.gateHp--;
+    P.crunching = 0.45; shake = 20;
+    Sound.crunch(1.5);
+    const gx = CANYON.gate.x, gy = CANYON.wallY - 20;
+    burst(gx, gy, 30, ['#a45a33', '#c9784a', '#e9a36b'], { speed: 340, up: 300, size: 8 });
+    if (G.gateHp > 0) { floatText(gx, gy - 70, G.gateHp === 2 ? 'CRACK!' : 'ALMOST!', '#ffd23f'); save(); return; }
+    G.flags.gateOpen = true;
+    burst(gx, gy, 60, ['#a45a33', '#e9a36b', '#fff3d6', '#ffd23f'], { speed: 460, up: 380, size: 10 });
+    Sound.secret(); P.wow = 1.6;
+    UI.toast('<span class="t-small">The wall crumbles</span>Crunch Canyon is open!', { life: 3.6 });
+    save();
+  }
+
+  function crunchRock(i) {
+    const [rx, ry] = CANYON.rocks[i];
+    P.crunching = 0.45; shake = 8;
+    Sound.crunch(0.9);
+    burst(rx, ry - 50, 12, ['#c9784a', '#e9a36b'], { speed: 200, up: 200, size: 5 });
+    const isTrue = i === CANYON.trueRock;
+    // every rock echoes once; the true one echoes twice, then booms
+    if (isTrue) {
+      Sound.echo(0.25, 0.5); Sound.echo(0.5, 0.35); Sound.echo(1.4, 1.1);
+      rockShimmer[i] = 2.2;
+      setTimeout(() => floatText(rx, ry - 130, 'crunch', '#fff8e8'), 250);
+      setTimeout(() => floatText(rx, ry - 130, 'crunch', '#fff8e8'), 500);
+      setTimeout(() => floatText(rx, ry - 140, 'CRUNCH!!', '#ffd23f'), 1400);
+      if (G.clues.includes('canyon') && !G.pieces.includes(3)) {
+        setTimeout(() => {
+          G.pieces.push(3); solve('canyon');
+          Sound.secret(); P.wow = 1.6;
+          burst(rx, ry - 40, 36, ['#ffd23f', '#fff8e8', '#e9a36b'], { type: 'spark', speed: 280, grav: 150 });
+          UI.say('me-wow', [
+            'That echo! crunch... crunch... and then a big CRUNCH!',
+            'A piece of paper flutters down from behind the rock. <em>Map Piece 3</em>!',
+            'It shows a drum. And three dots: two small, a gap, then one big.',
+          ], { onDone: () => { addClue('piece3'); save(); } });
+        }, 2000);
+      }
+    } else {
+      Sound.echo(0.55, 0.3);
+      rockShimmer[i] = 1;
+      setTimeout(() => floatText(rx, ry - 130, 'crunch…', '#fff8e8'), 550);
+    }
+  }
+
+  function hitDrum() {
+    drumHit = 1;
+    Sound.drum(drumBeats.length);
+    shake = 5;
+    floatText(DRUM.x + (Math.random() - 0.5) * 40, DRUM.y - 130, 'BOM', '#fff8e8');
+    if (G.pieces.includes(4)) return;
+    const t = now;
+    if (drumBeats.length && t - drumBeats[drumBeats.length - 1] > 2.4) drumBeats = [];
+    drumBeats.push(t);
+    if (drumBeats.length < 3) return;
+    const [a, b, c] = drumBeats.slice(-3);
+    drumBeats = [];
+    const g1 = b - a, g2 = c - b;
+    const right = g1 < 0.55 && g2 > 0.6 && g2 < 2.4 && g2 > g1 * 1.7;
+    if (!G.pieces.includes(3)) { setTimeout(() => UI.toast('The drum hums. It seems to be waiting for a special rhythm.', { life: 2.6 }), 300); return; }
+    if (!right) { setTimeout(() => { Sound.wrong(); UI.toast('The drum grumbles. That was not the rhythm.', { life: 2.2 }); }, 250); return; }
+    G.pieces.push(4); solve('piece3');
+    setTimeout(() => {
+      Sound.secret(); P.wow = 1.6; shake = 14;
+      burst(DRUM.x, DRUM.y - 100, 44, ['#ffd23f', '#e4572e', '#fff8e8'], { type: 'spark', speed: 320, grav: 150 });
+      giveNoodle('rigatoni');
+      UI.say('note', [
+        'BOM BOM ... BOOOM! The drum head pops open like a lid!',
+        'Inside: <em>Map Piece 4</em>, and a note in Grandma\'s curly writing:',
+        '<em>"Drink where the water lies."</em>',
+      ], { onDone: () => { addClue('piece4'); save(); } });
+    }, 400);
+  }
+
+  function talkSnail() {
+    if (G.pieces.includes(5)) return UI.say('snail', ['Hellooo again, speedy. I\'m still thinking about that Dawn Noodle.', 'I heard the mountains are next. Mountains are very tall. I\'ll meet you there in about... a year.']);
+    if (G.clues.includes('mirror')) {
+      if (has('dawn')) {
+        return UI.say('snail', [
+          'Under my house? Mmm... My shell IS my house, you know.',
+          'Oh! You have seen the <em>Dawn Noodle</em>? The one that only lives at sunrise? How lovely.',
+          'For a friend of the morning... fine, fine. I\'ll scooch. Veeeery slowly.',
+        ], { onDone: finishSnail });
+      }
+      return UI.say('snail', [
+        'Under my house? Mmm, maybe there is something. Maybe not.',
+        'I only scooch for someone who has seen the <em>Dawn Noodle</em>. It floats in the Morning Pool, right after it opens.',
+      ]);
+    }
+    const lines = [
+      ['Hellooo... I\'m the Udon Snail. I\'m in no hurry. Are you?', 'Take your time. Noodles taste better slow.'],
+      ['The rocks here are very chatty. Crunch one and it talks back.', 'Some of them talk back more than once. Hee.'],
+      ['Have you tried the Minty Spring? It makes your feet feel fresh.'],
+    ];
+    UI.say('snail', lines[(G.day + G.coins) % lines.length]);
+  }
+  function finishSnail() {
+    snail.moved = 1;
+    setTimeout(() => {
+      G.pieces.push(5); solve('mirror');
+      Sound.secret(); P.wow = 1.8;
+      burst(CANYON.snail.x, CANYON.snail.y - 10, 50, ['#ffd23f', '#fff8e8', '#d8e38a'], { type: 'spark', speed: 300, grav: 150 });
+      giveNoodle('slowudon');
+      UI.say('me-wow', [
+        'Where the snail was sitting: <em>Map Piece 5</em>!',
+        'It shows tall mountains... and on top, a little statue with a square head. It looks just like you.',
+      ], { onDone: () => { UI.toast('<span class="t-small">Chapter 2 complete</span>The Soba Peaks are calling. Coming in the next update…', { life: 4.8 }); save(); } });
+    }, 1400);
   }
 
   function crunchGold() {
@@ -267,10 +419,16 @@ const Game = (() => {
     save();
   }
 
-  function startDrink() {
-    drinkHeld = true;
+  function startDrink(where = 'stream') {
+    drinkHeld = true; drinkWhere = where;
     G.drinks++;
     Sound.gulp();
+    if (where === 'spring') {
+      if (!minty()) UI.toast('<span class="t-small">Minty 🌿</span>So fresh! You walk faster for a while.', { life: 2.8 });
+      G.mintDay = G.day; G.mintUntil = G.time + 120;
+      if (!has('mint')) setTimeout(() => giveNoodle('mint'), 500);
+    }
+    if (where === 'mirror') mirrorTimer = 0;
     if (!has('soba') && G.drinks >= 3) setTimeout(() => giveNoodle('soba'), 500);
   }
 
@@ -380,7 +538,7 @@ const Game = (() => {
 
   const HINT_COST = [3, 6, 10];
   function askOracle() {
-    const open = ['pillow', 'piece1', 'cipher'].find(id => G.clues.includes(id) && !G.solved.includes(id));
+    const open = ['pillow', 'piece1', 'cipher', 'canyon', 'piece3', 'piece4', 'mirror'].find(id => G.clues.includes(id) && !G.solved.includes(id));
     if (!open) return UI.say('oracle', ['Bloop. I am the Noodle Oracle.', 'Nothing troubles you yet, little screen. Come back when you find something strange.']);
     const lvl = G.hints[open] || 0;
     const clue = CLUES[open];
@@ -403,7 +561,8 @@ const Game = (() => {
     solve('cipher'); addCoins(25);
     setTimeout(() => {
       giveNoodle('echo');
-      UI.toast('<span class="t-small">Chapter 1 complete</span>Crunch Canyon echoes in the next update…', { life: 4.5 });
+      UI.toast('<span class="t-small">Chapter 1 complete</span>A deep rumble comes from the south…', { life: 4.5 });
+      addClue('canyon');
     }, 500);
     save();
     return true;
@@ -420,7 +579,12 @@ const Game = (() => {
     if (G.pieces.includes(1) && !G.pieces.includes(2)) return 'Find the place drawn on Map Piece 1';
     if (G.clues.includes('cipher') && !G.flags.decoder) return 'Find a way to read the noodle letters';
     if (G.flags.decoder && !G.solved.includes('cipher')) return 'Decode the noodle letters in your journal';
-    return `Chapter 1 done! Fill the Noodle-dex (${n}/${NOODLES.length})`;
+    if (G.solved.includes('cipher') && !canyonOpen()) return 'Something rumbled in the south. Check the boulder wall';
+    if (canyonOpen() && !G.pieces.includes(3)) return 'Find the echo that crunches twice';
+    if (G.pieces.includes(3) && !G.pieces.includes(4)) return 'Where could that rhythm be played?';
+    if (G.pieces.includes(4) && !G.clues.includes('mirror')) return 'Drink where the water lies';
+    if (G.clues.includes('mirror') && !G.pieces.includes(5)) return 'Read the reflection (journal)';
+    return `Chapter 2 done! Fill the Noodle-dex (${n}/${NOODLES.length})`;
   }
 
   /* ---------- update ---------- */
@@ -448,6 +612,7 @@ const Game = (() => {
     let speed = P.swimming ? 170 : 210;
     if (G.water < 25) speed *= 0.62;
     if (buffed()) speed *= 1.2;
+    if (minty()) speed *= 1.2;
     if (drinkHeld) speed = 0;
     P.moving = len > 0.15 && speed > 0;
     if (P.moving) {
@@ -471,7 +636,7 @@ const Game = (() => {
         G.water += dt * 45;
         drinkSound -= dt;
         if (drinkSound <= 0) { Sound.gulp(); drinkSound = 0.42; burst(P.x + (P.face >= 0 ? 30 : -30), P.y - 6, 4, ['#8fe0ea', '#ffffff'], { speed: 80, up: 120, size: 4, type: 'drop', life: 0.5 }); }
-        if (G.water >= 100) { drinkHeld = false; floatText(P.x, P.y - 90, 'Ahh!', '#8fe0ea'); }
+        if (G.water >= 100 && drinkWhere !== 'mirror') { drinkHeld = false; floatText(P.x, P.y - 90, 'Ahh!', '#8fe0ea'); }
       }
       G.water = clamp(G.water, 0, 100);
       if (G.water < 25 && !thirstWarned) { thirstWarned = true; UI.toast('<span class="t-small">Thirsty 🥵</span>Drink from the stream to walk at full speed.', { life: 3 }); }
@@ -509,7 +674,30 @@ const Game = (() => {
     }
 
     // stop drinking if walked away
-    if (drinkHeld && (P.swimming || streamDist(P.x, P.y) > STREAM.width / 2 + 40)) drinkHeld = false;
+    if (drinkHeld) {
+      const still = drinkWhere === 'spring' ? inSpring(P.x, P.y, 50) : drinkWhere === 'mirror' ? inPond(P.x, P.y, 50) : streamDist(P.x, P.y) < STREAM.width / 2 + 40;
+      if (P.swimming || !still) drinkHeld = false;
+    }
+    if (drinkHeld && drinkWhere === 'mirror' && !busy) {
+      mirrorTimer += dt;
+      if (mirrorTimer > 1.4 && G.pieces.includes(4) && !G.clues.includes('mirror')) {
+        drinkHeld = false;
+        solve('piece4');
+        Sound.secret(); P.wow = 1.6;
+        giveNoodle('vermicelli');
+        UI.say('me-wow', [
+          'You lean over the water to drink... and the reflection shows <em>words</em>!',
+          'There are no words anywhere around you. Only in the water. And they look... backwards?',
+        ], { onDone: () => { addClue('mirror'); save(); } });
+      }
+    } else if (!drinkHeld) mirrorTimer = Math.max(0, mirrorTimer - dt * 2);
+    drumHit = Math.max(0, drumHit - dt * 4);
+    rockShimmer = rockShimmer.map(v => Math.max(0, (v || 0) - dt));
+    if (snail.moved > 0 && snail.moved < 90) snail.moved += dt * 30;
+    const sOff = G.pieces.includes(5) ? 90 : snail.moved;
+    const nx = CANYON.snail.x + sOff + Math.sin(now * 0.12) * 50;
+    snail.dir = nx > snail.x ? 1 : nx < snail.x ? -1 : snail.dir;
+    snail.x = nx;
 
     // antenna: sense secrets
     const secrets = [];
@@ -517,6 +705,11 @@ const Game = (() => {
     if (G.clues.includes('pillow') && !G.pieces.includes(1) && poolOpen()) secrets.push(LAST_TILE);
     if (G.pieces.includes(1) && !G.pieces.includes(2)) secrets.push(GOLD_BRICK);
     if (G.clues.includes('cipher') && !G.flags.decoder) secrets.push(POSTER);
+    if (G.solved.includes('cipher') && !canyonOpen()) secrets.push({ x: CANYON.gate.x, y: CANYON.wallY });
+    if (canyonOpen() && G.clues.includes('canyon') && !G.pieces.includes(3)) { const [rx, ry] = CANYON.rocks[CANYON.trueRock]; secrets.push({ x: rx, y: ry }); }
+    if (G.pieces.includes(3) && !G.pieces.includes(4)) secrets.push(DRUM);
+    if (G.pieces.includes(4) && !G.clues.includes('mirror')) secrets.push(MIRROR);
+    if (G.clues.includes('mirror') && !G.pieces.includes(5)) secrets.push(snail);
     if (G.fortune && G.fortune.crunched && !G.fortune.done) secrets.push(FORTUNES[G.fortune.idx].where);
     glassNoodles().forEach(g => !has('glass') && secrets.push(g));
     let near = 1e9;
@@ -615,6 +808,8 @@ const Game = (() => {
 
     const dawn = G.time >= POOL_OPEN && G.time < POOL_CLOSE;
     drawStream(ctx, t, dawn);
+    if (inView(SPRING.x, SPRING.y)) drawSpring(ctx, SPRING, t);
+    if (drinkHeld && drinkWhere === 'mirror') drawReflection(ctx, t, Math.min(1, mirrorTimer / 1.2), G.pieces.includes(4));
     drawPool(ctx, POOL, t, { open: poolOpen(), dawn, showArrows: dawn, lastTile: G.clues.includes('pillow') && !G.pieces.includes(1) });
 
     // pool bubbles and dawn noodle
@@ -645,6 +840,10 @@ const Game = (() => {
       noodleStroke(ctx, () => { ctx.beginPath(); for (let x = -14; x <= 14; x += 2) ctx.lineTo(g.x + x, g.y - 10 + Math.sin(x * 0.4 + t * 3) * 4); }, '#c9f3ff', 4);
       ctx.globalAlpha = 1;
     } }));
+    CANYON.rocks.forEach(([rx, ry], i) => inView(rx, ry) && draw.push({ y: ry, fn: () => drawEchoRock(ctx, rx, ry, t, Math.min(1, rockShimmer[i] || 0)) }));
+    if (inView(DRUM.x, DRUM.y)) draw.push({ y: DRUM.y, fn: () => drawDrum(ctx, DRUM.x, DRUM.y, t, drumHit, G.pieces.includes(4)) });
+    if (inView(snail.x, snail.y)) draw.push({ y: snail.y, fn: () => drawSnail(ctx, snail.x, snail.y, t, snail.dir) });
+    if (inView(CANYON.gate.x, CANYON.wallY) || inView(P.x, CANYON.wallY)) draw.push({ y: CANYON.wallY + 14, fn: () => drawCanyonWall(ctx, t, canyonOpen() ? 0 : G.gateHp, G.solved.includes('cipher')) });
     const H = PLACES.house, S = PLACES.shop;
     draw.push({ y: H.y + 170, fn: () => drawHouse(ctx, H, t, night) });
     draw.push({ y: S.y + 150, fn: () => drawShop(ctx, S, t, night) });

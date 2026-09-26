@@ -66,6 +66,11 @@ const Sound = (() => {
     wrong() { tone(220, 0.18, { type: 'square', vol: 0.08, slide: -80 }); },
     coin() { tone(988, 0.07, { type: 'square', vol: 0.06 }); tone(1319, 0.14, { type: 'square', vol: 0.06, delay: 0.07 }); },
     combo(n) { tone(440 * Math.pow(1.12, Math.min(n, 12)), 0.15, { type: 'triangle', vol: 0.18 }); },
+    echo(delay, vol = 0.5) {
+      for (let i = 0; i < 4; i++) noise(0.05 + Math.random() * 0.04, { freq: 900 + Math.random() * 1400, q: 1.2, vol: 0.4 * vol, delay: delay + i * 0.035 });
+      tone(110, 0.2, { type: 'triangle', vol: 0.2 * vol, slide: -40, delay });
+    },
+    drum(n = 0) { tone(90 + n * 8, 0.35, { type: 'sine', vol: 0.5, slide: -40 }); noise(0.08, { freq: 300, q: 0.7, vol: 0.3, type: 'lowpass' }); },
     rooster() { [660, 880, 990, 880].forEach((f, i) => tone(f, 0.18, { type: 'sawtooth', vol: 0.05, delay: i * 0.14 })); },
   };
 })();
