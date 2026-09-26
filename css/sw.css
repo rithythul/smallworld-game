@@ -27,14 +27,6 @@ body.sw #minimap[hidden] { display: none !important; }
 body.sw.touch #minimap { width: 118px; height: 116px; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); left: calc(env(safe-area-inset-left, 0px) + 12px); right: auto; }
 @media (max-height: 520px) { body.sw #minimap { width: 110px; height: 108px; } }
 
-/* the watermark */
-#watermark { position: absolute; left: 204px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); pointer-events: none; opacity: .5; display: flex; align-items: center; gap: 6px; }
-#watermark img { height: 28px; width: auto; }
-#watermark img ~ span { display: none; }
-#watermark span { font-family: var(--display); font-size: 18px; color: var(--paper); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; letter-spacing: .02em; }
-body.touch #watermark { left: calc(env(safe-area-inset-left, 0px) + 140px); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); opacity: .35; }
-@media (max-height: 520px) { #watermark { left: 140px; } }
-body.touch #watermark span { font-size: 14px; }
 
 /* the big "do it" button */
 body.sw #action { display: flex; align-items: center; gap: 8px; width: auto; height: auto; min-height: 64px; max-width: min(64vw, 360px);
@@ -109,8 +101,7 @@ body.sw #title { background: radial-gradient(circle at 50% 30%, rgba(255, 243, 1
 body.sw #title h1 { color: #8cbf5a; }
 .title-form { width: min(420px, 92vw); text-align: left; }
 #ages .tab { font-size: 14px; }
-#titleHero { width: 150px; height: 150px; }
-@media (max-height: 700px) { #titleHero { display: none; } body.sw .tagline { font-size: 16px; } }
+#titleHero { width: 128px; height: 128px; }
 
 @media (max-width: 600px) {
   body.sw .goal { max-width: 64vw; }
@@ -122,7 +113,54 @@ body.sw #title h1 { color: #8cbf5a; }
   .sheet-head h2 { font-size: 24px; }
 }
 @media (max-width: 380px) { .sw-grid { grid-template-columns: 1fr; } }
+/* title screen: everything fits on one screen, from a small phone to a laptop */
 #nameIn { text-transform: none; letter-spacing: normal; text-align: left; }
-body.sw #title h1 { font-size: clamp(46px, 10vw, 78px); }
-body.sw .title-inner { gap: 8px; }
-body.sw .big-btn { font-size: 24px; }
+body.sw #title h1 { font-size: clamp(44px, 9vw, 72px); line-height: .92; gap: 2px; }
+body.sw .title-inner { gap: 10px; width: 100%; max-width: 480px; }
+body.sw .tagline { margin: 0 0 4px; font-size: 17px; max-width: 34ch; }
+body.sw .big-btn { font-size: 22px; padding: 10px 26px 7px; }
+.title-form { gap: 10px; padding: 14px 16px; }
+.title-form .mp-msg:empty { display: none; }
+.title-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 6px; }
+.title-actions .big-btn.friends { font-size: 22px; }
+body.sw #title .how { margin-top: 4px; }
+body.sw #title .swatches { gap: 6px; flex-wrap: nowrap; }
+body.sw #title .swatches button { width: 32px; height: 32px; flex: none; }
+body.sw.touch #title .swatches button { width: 34px; height: 34px; }
+@media (max-width: 380px) { body.sw #title .swatches button, body.sw.touch #title .swatches button { width: 29px; height: 29px; } }
+@media (max-height: 760px) { #titleHero { width: 96px; height: 96px; } body.sw #title h1 { font-size: clamp(40px, 8vw, 58px); } body.sw .tagline { font-size: 15px; } }
+@media (max-height: 620px) { #titleHero { display: none; } }
+@media (max-width: 480px) { .title-actions .big-btn { width: 100%; } }
+
+/* polish */
+body.sw #menuPop { min-width: 250px; }
+body.sw #menuPop button, body.sw #menuPop .menu-link { white-space: nowrap; }
+.dreams .mode-card .dream-icon { font-size: 34px; line-height: 1.1; color: inherit; }
+.dreams .mode-card small { font-size: 13.5px; }
+.job-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.job-head .wage { flex: none; font-size: 15px; background: #fff1a8; border: 2px solid var(--ink); border-radius: 999px; padding: 1px 8px 0; }
+.clue > :last-child { margin-bottom: 0; }
+.clue .sw-row { margin-top: 10px; }
+body.sw .pill.clock { gap: 6px; }
+@media (max-width: 600px) {
+  #clockDay { display: none; }
+  .sw-grid { grid-template-columns: 1fr; }
+  .sw-grid.dreams { grid-template-columns: 1fr 1fr; }
+  .dreams .mode-card .dream-icon { font-size: 28px; }
+}
+body.sw #title h1 { column-gap: .28em; }
+/* landscape phones: title and form side by side, so nothing hides below the fold */
+@media (max-height: 520px) and (orientation: landscape) {
+  body.sw .title-inner { display: grid; grid-template-columns: 1fr minmax(300px, 1fr); column-gap: 28px; row-gap: 8px; align-items: center; max-width: 860px; }
+  body.sw #title h1 { grid-column: 1; grid-row: 1; flex-direction: column; font-size: 54px; }
+  body.sw .tagline { grid-column: 1; grid-row: 2; align-self: start; }
+  body.sw .title-form { grid-column: 2; grid-row: 1 / span 2; width: 100%; }
+  body.sw .title-actions { grid-column: 2; grid-row: 3; }
+  body.sw #newBtn { grid-column: 2; }
+  body.sw .title-actions .big-btn { font-size: 18px; padding: 8px 18px 5px; }
+}
+/* toasts: never clipped; on touch screens they sit under the top-right buttons */
+body.sw #toasts { max-height: none; overflow: visible; }
+body.sw.touch #toasts { top: calc(env(safe-area-inset-top, 0px) + 74px); bottom: auto; left: auto; right: calc(env(safe-area-inset-right, 0px) + 12px); transform: none; width: min(92vw, 380px); align-items: stretch; }
+@media (orientation: portrait) { body.sw.touch #toasts { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 146px); left: 50%; right: auto; transform: translateX(-50%); } }
+@media (max-height: 520px) { body.sw.touch #toasts { width: min(46vw, 380px); top: calc(env(safe-area-inset-top, 0px) + 66px); } body.sw .toast { font-size: 14px; padding: 6px 12px 4px; } }

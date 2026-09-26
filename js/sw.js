@@ -153,7 +153,7 @@
     const t = now(), h = Life.hourOf(t);
     const icon = h < 7 ? '🌅' : h < 18 ? '☀️' : h < 20 ? '🌇' : '🌙';
     const day = Life.dayOf(t) - (life.firstDay || Life.dayOf(t)) + 1;
-    set('clockText', `${icon} Day ${day} · ${Life.clock(t)}`);
+    set('clockIcon', icon); set('clockDay', `Day ${day} · `); set('clockText', Life.clock(t));
     set('coinText', String(life.coins));
     set('bagText', String(Life.bagCount(life)));
     const g = Life.dreamGoal(life), d = Life.DREAMS[life.dream];
@@ -409,7 +409,7 @@
       const grid = document.createElement('div'); grid.className = 'sw-grid';
       Object.entries(Life.JOBS).forEach(([id, j]) => {
         const can = Life.canTake(life, id), n = life.stats.shifts[id] || 0;
-        const c = card(`<span class="where">${n ? `${n} shifts worked` : 'New job'}</span><h3>${j.icon} ${j.name} · ${coin(Life.wageOf(life, id))}</h3><p class="small">${j.how}</p>${can.ok ? '' : `<p class="small lock">🔒 ${esc(can.why)}</p>`}`, can.ok ? '' : 'locked-card');
+        const c = card(`<span class="where">${n ? `${n} shift${n === 1 ? '' : 's'} worked` : 'New job'}</span><h3 class="job-head"><span>${j.icon} ${j.name}</span><span class="wage">${coin(Life.wageOf(life, id))}</span></h3><p class="small">${j.how}</p>${can.ok ? '' : `<p class="small lock">🔒 ${esc(can.why)}</p>`}`, can.ok ? '' : 'locked-card');
         c.append(button(life.shift && life.shift.job === id ? 'Working…' : 'Start a shift', () => startShift(id), 'choice', !can.ok || !!life.shift));
         grid.append(c);
       });
@@ -753,15 +753,20 @@
       x.fillStyle = mine ? '#ffd23f' : st && st.owner ? (p.kind === 'farm' ? '#8f5d36' : '#d8cdb4') : (p.kind === 'farm' ? '#c7a57a' : '#cfe3a8');
       x.fillRect(X(p.x), Y(p.y), p.w * k, p.h * k);
       x.strokeStyle = '#34233f'; x.lineWidth = mine ? 2 : 1; x.strokeRect(X(p.x), Y(p.y), p.w * k, p.h * k);
-      if (big) { x.fillStyle = '#34233f'; x.font = `800 ${Math.max(9, 34 * k)}px Baloo 2, sans-serif`; x.textAlign = 'center'; x.fillText(p.id, X(p.x + p.w / 2), Y(p.y + p.h / 2) + 4); }
+      if (big) { x.fillStyle = '#34233f'; x.font = `800 ${Math.max(9, 38 * k)}px "Baloo 2", system-ui, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(p.id, X(p.x + p.w / 2), Y(p.y + p.h / 2)); x.textBaseline = 'alphabetic'; }
     });
     if (town) Town.FOREST.forEach(tr => { const st = Town.treeState(town, tr.id, t); x.fillStyle = st === 'tree' ? '#5f9e57' : st === 'stump' ? '#9a6a44' : '#9dd46e'; x.beginPath(); x.arc(X(tr.x), Y(tr.y), Math.max(1.5, (st === 'tree' ? 30 : 16) * k), 0, 7); x.fill(); });
     Town.BUILDINGS.forEach(b => {
       x.fillStyle = '#fff3d6'; x.strokeStyle = '#34233f'; x.lineWidth = 1.5;
       x.fillRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k); x.strokeRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k);
-      x.font = `${Math.max(10, 70 * k)}px sans-serif`; x.textAlign = 'center'; x.fillText(b.icon, X(b.x), Y(b.y - 90) + 4);
-      if (big) { x.fillStyle = '#34233f'; x.font = `800 ${Math.max(10, 36 * k)}px Baloo 2, sans-serif`; x.fillText(b.name, X(b.x), Y(b.y - 20) + 6); }
+      x.font = `${Math.max(10, 70 * k)}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(b.icon, X(b.x), Y(b.y - 110));
     });
+    if (big) Town.BUILDINGS.forEach(b => {
+      x.font = `800 ${Math.max(11, 40 * k)}px "Baloo 2", system-ui, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'top'; x.lineJoin = 'round';
+      const name = b.id === 'jobs' ? 'Jobs' : b.name;
+      x.lineWidth = 4; x.strokeStyle = '#fff8e8'; x.strokeText(name, X(b.x), Y(b.y - 40)); x.fillStyle = '#34233f'; x.fillText(name, X(b.x), Y(b.y - 40));
+    });
+    x.textBaseline = 'alphabetic';
     mapMarks.forEach(m => { x.fillStyle = '#ffd23f'; x.strokeStyle = '#34233f'; x.lineWidth = 1.5; x.beginPath(); const px = X(m.x), py = Y(m.y), r = Math.max(4, 40 * k); x.moveTo(px, py - r); x.lineTo(px + r * 0.7, py); x.lineTo(px, py + r); x.lineTo(px - r * 0.7, py); x.closePath(); x.fill(); x.stroke(); });
     Net.others.forEach(o => { if (o.x == null) return; x.fillStyle = o.color; x.strokeStyle = '#fff8e8'; x.lineWidth = 2; x.beginPath(); x.arc(X(o.x), Y(o.y), Math.max(3.5, 40 * k), 0, 7); x.fill(); x.stroke(); });
     const p = World.pos(); x.fillStyle = me.color; x.strokeStyle = '#34233f'; x.lineWidth = 2.5; x.beginPath(); x.arc(X(p.x), Y(p.y), Math.max(4.5, 50 * k), 0, 7); x.fill(); x.stroke();
@@ -913,7 +918,7 @@
     const sw = $('colors');
     COLORS.forEach(c => {
       const b = document.createElement('button'); b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', 'Hoodie color'); if (c === me.color) b.classList.add('on');
-      b.addEventListener('click', () => { me.color = c; sw.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); drawHero(); });
+      b.addEventListener('click', () => { me.color = c; sw.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
       sw.appendChild(b);
     });
     const ages = $('ages');
@@ -957,13 +962,17 @@
     nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(false); });
     drawHero();
   }
+  // The hero on the title screen. The drawing spans y -66.5 (antenna ball) to +31.5 (hoodie) around the head,
+  // so it is scaled and centred from those bounds with a margin: nothing is ever cut off. It bobs and blinks.
   function drawHero() {
-    const c = $('titleHero'), x = c.getContext('2d');
+    const c = $('titleHero'), x = c.getContext('2d'), t = performance.now() / 1000;
+    const top = -66.5, bottom = 31.5, pad = 14, k = (c.height - pad * 2) / (bottom - top), bob = Math.sin(t * 2) * 2;
     x.clearRect(0, 0, c.width, c.height);
-    x.save(); x.translate(c.width / 2, c.height / 2 + 30); x.scale(2.2, 2.2);
+    x.save(); x.translate(c.width / 2, pad - top * k + bob - 2); x.scale(k, k);
     rr(x, -15, 4, 30, 26, 10); fillStroke(x, me.color, 3);
-    drawHead(x, 0, -20, 'happy', performance.now() / 1000, {});
+    drawHead(x, 0, -20, t % 3.2 < 0.14 ? 'blink' : 'happy', t, { color: me.color === '#e4572e' ? '#f4b942' : '#e4572e' });
     x.restore();
+    if (!$('title').hidden) requestAnimationFrame(drawHero);
   }
   function welcome() {
     sheet('Welcome to Small Town! 🏡', (body) => {

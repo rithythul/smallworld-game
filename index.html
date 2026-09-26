@@ -30,7 +30,7 @@
     <div class="hud-left">
       <div class="hud-row">
         <div class="pill coins" title="Coins in your pocket"><span class="coin"></span><span id="coinText">0</span></div>
-        <div class="pill clock"><span id="clockText">☀️ Day 1 · 6:00 AM</span></div>
+        <div class="pill clock"><span id="clockIcon">☀️</span><span><span id="clockDay">Day 1 · </span><span id="clockText">6:00 AM</span></span></div>
       </div>
       <button class="pill goal" id="goal" type="button"><span class="goal-label">Dream</span><span id="goalText">Pick a dream</span></button>
       <button class="pill shift" id="shiftPill" type="button" hidden><span id="shiftText"></span></button>
@@ -53,7 +53,6 @@
   </div>
 
   <canvas id="minimap" width="180" height="178" aria-label="Town map, click to open" hidden></canvas>
-  <div id="watermark" aria-hidden="true"><img src="icons/smallworld-logo.png" alt="" onerror="this.remove()"><span>small world</span></div>
   <div id="toasts" aria-live="polite"></div>
 
   <!-- touch controls -->
@@ -75,7 +74,7 @@
   <!-- title screen -->
   <div id="title">
     <div class="title-inner">
-      <canvas id="titleHero" width="220" height="220"></canvas>
+      <canvas id="titleHero" width="256" height="256"></canvas>
       <h1><span>Small</span><span>World</span></h1>
       <p class="tagline">A little town that works like the real world. Work, learn, save, build, vote, and become anything you dream of.</p>
       <div class="mp-panel title-form">
@@ -87,8 +86,10 @@
         <div class="mp-row"><span class="mp-label">My age</span><div class="tabs" id="ages"></div></div>
         <p class="mp-msg err" id="titleMsg"></p>
       </div>
-      <button class="big-btn" id="startBtn" type="button">Start my life ☀</button>
-      <button class="big-btn friends" id="friendsBtn" type="button">Play with friends 👥</button>
+      <div class="title-actions">
+        <button class="big-btn" id="startBtn" type="button">Start my life ☀</button>
+        <button class="big-btn friends" id="friendsBtn" type="button">Play with friends 👥</button>
+      </div>
       <button class="link-btn" id="newBtn" type="button" hidden>Start a brand new life</button>
       <div class="how">
         <div><kbd>WASD</kbd><span>walk</span></div>

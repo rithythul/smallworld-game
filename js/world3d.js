@@ -320,6 +320,7 @@ function freeSpot(gx, gy, pad) {
   const F = T.TOWN_FARM; if (gx > F.x - pad && gx < F.x + F.w + pad && gy > F.y - pad && gy < F.y + F.h + pad) return false;
   if (Math.hypot(gx - T.PLAZA.x, gy - T.PLAZA.y) < T.PLAZA.r + 20 + pad) return false;
   if (gx > 3660 - pad && gx < 4580 + pad && gy > 120 - pad && gy < 840 + pad) return false;   // the forest has its own trees
+  if (Math.abs(gx - LOGO.x) < LOGO.w / 2 + 70 + pad * 1.5 && Math.abs(gy - LOGO.y) < LOGO.h / 2 + 40 + pad * 1.5) return false;   // the logo lawn
   const PS = T.PROJECT_SPOTS; if (Math.hypot(gx - PS.park.x, gy - PS.park.y) < 170 + pad) return false;
   for (const k of ['library', 'clinic']) if (Math.abs(gx - PS[k].x) < 110 + pad && gy > PS[k].y - 130 - pad && gy < PS[k].y + 60 + pad) return false;
   if (Math.hypot(gx - 3740, gy - 1760) < 150 + pad) return false;   // bus stop + welcome sign
@@ -744,6 +745,18 @@ function buildForestStatic() {
   // a log pile by the forest (the sawmill yard)
   const lx = wx(4318), lz = wz(806);
   for (let i = 0; i < 3; i++) W.add(GEO.cyl(0.5, 0.5, 3.6, 8), M(lx + i * 1.0, 0.5, lz + (i % 2) * 0.2, 0.2, 0, Math.PI / 2), '#b07a4a', { ol: 0.06 });
+}
+
+/* ------------------------------------------------------------------ the Small World mark */
+// The logo, recoloured in the town's greens, mown into the lawn beside the plaza: easy to spot, never in the way.
+const LOGO = { x: 4546, y: 1330, w: 180, h: 180 * 228 / 640 };
+function buildLogoMark() {
+  const tex = new THREE.TextureLoader().load('icons/smallworld-mark.png');
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const mat = new THREE.MeshToonMaterial({ map: tex, gradientMap: ramp, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const mark = new THREE.Mesh(new THREE.PlaneGeometry(LOGO.w * S, LOGO.h * S).rotateX(-Math.PI / 2), mat);
+  mark.position.set(wx(LOGO.x), 0.05, wz(LOGO.y)); mark.receiveShadow = true; mark.renderOrder = -1;
+  scene.add(mark);
 }
 
 /* ------------------------------------------------------------------ town projects */
@@ -1226,6 +1239,7 @@ function buildAll() {
   buildDecor();
   W.meshes().forEach(m => { m.matrixAutoUpdate = false; m.children.forEach(c => { c.matrixAutoUpdate = false; }); scene.add(m); });
   buildTrees();
+  buildLogoMark();
   scene.add(TEXT.mesh());
   TEXT.repaintWhenFontArrives();
 

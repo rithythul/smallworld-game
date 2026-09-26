@@ -30,7 +30,7 @@ npm start
 - **Day and night:** a Small Town day is 6 minutes. Everyone in a room shares the same clock, so the whole room has the same day and night.
 - **Friends:** type a room name (3 to 8 letters or numbers) to share one town: the same land, market prices, votes and mayor. Towns are saved on the server. You can chat (bad words, links and phone numbers are hidden), make faces, and use WebRTC voice (a grown-up says OK first).
 - **Healthy play:** breaks, a daily play limit, and grown-up settings behind a math question (⋯ menu → 🔒).
-- **Logo watermark:** put the Small World logo at `icons/smallworld-logo.png` and it replaces the text watermark.
+- **The Small World mark:** the logo, recoloured in the town's greens, is mown into the lawn beside the plaza (`icons/smallworld-mark.png`; the original is `icons/smallworld-logo.png`).
 
 The 3D is made with [three.js](https://threejs.org) (MIT, bundled in `js/vendor/`). All models are built in code: no model files to download.
 
