@@ -27,6 +27,12 @@ const UI = (() => {
     $('journalDot').hidden = !G.journalNew;
   }
 
+  function goalHint(text) {
+    let el = $('goalHintText');
+    if (!el) { el = document.createElement('small'); el.id = 'goalHintText'; el.className = 'goal-hint'; $('goalText').after(el); }
+    el.textContent = text ? '💡 ' + text : '';
+    el.hidden = !text;
+  }
   let lastGoal = '';
   function goal(text) {
     if (text === lastGoal) return;
@@ -304,22 +310,54 @@ const UI = (() => {
           const el = document.createElement('div'); el.className = 'clue' + (solved ? ' solved' : '');
           el.innerHTML = `<span class="where">${c.where}</span><h3>${c.title}</h3>`;
           if (id === 'cipher') {
-            el.appendChild(glyphRow(c.answer));
-            if (solved) el.insertAdjacentHTML('beforeend', `<blockquote>"${c.answer}"</blockquote><span class="solved-tag">✓ Decoded. Crunch Canyon is next…</span>`);
-            else {
-              el.insertAdjacentHTML('beforeend', `<p class="empty">${G.flags.decoder ? 'Use the Noodle alphabet tab to decode it, then type your answer.' : 'You can\'t read noodle letters yet. Maybe someone in the village can.'}</p>
-                <form class="answer-row" id="cipherForm"><input id="cipherInput" autocomplete="off" placeholder="Type the message" aria-label="Your decoded message"><button class="choice" type="submit">Check</button></form>
-                <div class="answer-msg" id="cipherMsg"></div>`);
-              setTimeout(() => {
-                const f = $('cipherForm');
-                f && f.addEventListener('submit', (e) => {
-                  e.preventDefault();
-                  const ok = Game.tryCipher($('cipherInput').value);
-                  $('cipherMsg').textContent = ok ? 'Yes! The letters glow.' : 'Not quite. Check each shape: count the dots and look for a bar.';
-                  $('cipherMsg').style.color = ok ? '#3e7d22' : '#e4572e';
-                  if (ok) setTimeout(() => journal(G, 'clues'), 900);
+            if (solved) {
+              el.appendChild(glyphRow(c.answer));
+              el.insertAdjacentHTML('beforeend', `<blockquote>"${c.answer}"</blockquote><span class="solved-tag">✓ Decoded. Crunch Canyon is next…</span>`);
+            } else {
+              // Decode by picking a letter under each noodle shape. The same shape is always the same letter.
+              const G2 = G, answer = c.answer, hintLvl = (G2.hints || {}).cipher || 0;
+              G2.cipherGuess = G2.cipherGuess || {};
+              if (hintLvl >= 2) 'ECHO'.split('').forEach(L => { G2.cipherGuess[L] = L; });
+              if (hintLvl >= 3) answer.replace(/ /g, '').split('').forEach(L => { G2.cipherGuess[L] = L; });
+              el.insertAdjacentHTML('beforeend', `<p class="empty">${G.flags.decoder ? 'Pick a letter under each shape. Check the Noodle alphabet tab: the shape, the dots on top and the bar all matter. Right letters turn green.' : 'You can\'t read noodle letters yet. Maybe someone in the village has an alphabet… (you can still guess!)'}</p>`);
+              const grid = document.createElement('div'); grid.className = 'decoder';
+              const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+              const words = answer.split(' ');
+              words.forEach(word => {
+                const w = document.createElement('div'); w.className = 'dword';
+                word.split('').forEach(L => {
+                  const cell = document.createElement('label'); cell.className = 'dcell';
+                  const cv = document.createElement('canvas'); cv.width = 60; cv.height = 72;
+                  const x = cv.getContext('2d'); x.scale(2, 2); drawGlyph(x, L);
+                  const sel = document.createElement('select'); sel.dataset.g = L; sel.setAttribute('aria-label', 'Letter for this noodle shape');
+                  sel.innerHTML = '<option value="">?</option>' + letters.map(l => `<option>${l}</option>`).join('');
+                  sel.value = G2.cipherGuess[L] || '';
+                  cell.appendChild(cv); cell.appendChild(sel); w.appendChild(cell);
                 });
+                grid.appendChild(w);
               });
+              el.appendChild(grid);
+              el.insertAdjacentHTML('beforeend', '<div class="answer-msg" id="cipherMsg"></div>');
+              const paint = () => {
+                grid.querySelectorAll('select').forEach(sl => {
+                  sl.classList.toggle('ok', sl.value === sl.dataset.g);
+                  sl.classList.toggle('bad', !!sl.value && sl.value !== sl.dataset.g);
+                });
+                const guess = words.map(wd => wd.split('').map(L => G2.cipherGuess[L] || '?').join('')).join(' ');
+                if (!guess.includes('?')) {
+                  const ok = Game.tryCipher(guess);
+                  $('cipherMsg').textContent = ok ? 'Yes! The letters glow: "' + answer + '"' : 'Every shape has a letter now, but some are wrong (red).';
+                  $('cipherMsg').style.color = ok ? '#3e7d22' : '#e4572e';
+                  if (ok) setTimeout(() => journal(G2, 'clues'), 1400);
+                }
+              };
+              grid.addEventListener('change', (e) => {
+                const sl = e.target; if (sl.tagName !== 'SELECT') return;
+                G2.cipherGuess[sl.dataset.g] = sl.value;
+                grid.querySelectorAll(`select[data-g="${sl.dataset.g}"]`).forEach(o => { o.value = sl.value; });
+                paint();
+              });
+              setTimeout(paint);
             }
           } else if (id === 'statue') {
             const row = document.createElement('div'); row.className = 'faces';
@@ -515,7 +553,7 @@ const UI = (() => {
       skillBlock('fly', '🪽 Flying', 'Captain Penne', 'on the hill in Crunch Meadow');
       if (G.daily && G.daily.list) {
         const d = document.createElement('div'); d.className = 'clue';
-        d.innerHTML = `<span class="where">New ones every morning, forever</span><h3>📅 Today's challenges (day ${G.day})</h3>`;
+        d.innerHTML = `<span class="where">New ones every morning, forever · finish all 3 for a Perfect Day (⭐ +2)</span><h3>📅 Today's challenges (day ${G.day})${G.streak && G.lastPerfect >= G.day - 1 ? ` · 🔥 ${G.streak}-day streak` : ''}</h3>`;
         G.daily.list.forEach(c => {
           const done = G.daily.done[c.id], prog = Math.min(c.goal, Math.floor(G.daily.prog[c.id] || 0));
           d.insertAdjacentHTML('beforeend', `<div class="lesson ${done ? 'done' : 'next'}"><span class="mark">${done ? '✓' : '•'}</span><span><b>${c.title}</b> · ⭐ 1<br><small>${prog} / ${c.goal}</small></span></div>`);
@@ -533,7 +571,7 @@ const UI = (() => {
   }
 
   return {
-    players, openSheet, skills, leaderboard, cook, account,
+    players, openSheet, skills, leaderboard, cook, account, goalHint,
     hud, goal, toast, combo, say, advance, close, dex, journal, closeSheet, drawPortrait,
     get busy() { return !!dlg || !$('sheet').hidden; },
     get talking() { return !!dlg; },

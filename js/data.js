@@ -125,6 +125,14 @@ const FORTUNES = [
   { text: 'The bowl that knows everything is hiding a coin under its chin.', target: 'oracle', where: { x: 900, y: 910 } },
   { text: 'Where you dream, check the doormat.', target: 'house', where: { x: 480, y: 575 } },
   { text: 'Three bricks in a row, then look where the smallest flower grows.', target: 'meadow', where: { x: 760, y: 1330 } },
+  { text: 'Where the rocket naps, peek under its fins.', target: 'rocket', where: { x: 420, y: 1515 } },
+  { text: 'The coach who loves water hides a coin by his whistle.', target: 'kombu', where: { x: 752, y: 985 } },
+  { text: 'Where the arrows argue about which way to go, look down.', target: 'signpost', where: { x: 640, y: 690 } },
+  { text: 'The tree that grows breakfast keeps a secret at its roots.', target: 'egg', where: { x: 1140, y: 990 } },
+  { text: 'Under the second wooden hat on the water, something glints.', target: 'bridge2', where: { x: 1340, y: 1265 } },
+  { text: 'Where the pink swirls sway in the wind, a shiny thing waits.', target: 'naruto', where: { x: 1180, y: 335 } },
+  { text: 'The captain of the skies keeps a coin inside his penne.', target: 'penne', where: { x: 1150, y: 1612 } },
+  { text: 'Where the water dreams in purple, check the shore.', target: 'pond', where: { x: 1215, y: 1060 } },
 ];
 const FORTUNE_SPAWNS = [[700, 1300], [1100, 1400], [1850, 900], [300, 1000], [1600, 600]];
 
@@ -144,7 +152,7 @@ const CLUES = {
     title: 'The Noodle Letters', where: 'Inside the golden root brick',
     text: 'A note written in noodle shapes. You can\'t read it... yet.',
     answer: 'ECHO CRUNCHES TWICE',
-    hints: ['Grandma collects old signs. Maybe one of them is an alphabet.', 'Look at the poster on the side of Grandma\'s noodle stand.', 'Each shape is one letter. The first word is ECHO.'],
+    hints: ['Grandma collects old signs. Maybe one of them is an alphabet.', 'Look at the poster on the side of Grandma\'s noodle stand. I also filled in E, C, H and O for you in your journal!', 'I filled in the whole note in your journal. Bloop!'],
   },
 };
 
@@ -240,7 +248,7 @@ const DAILY_POOL = [
   { id: 'drink', title: 'Drink {n} times', min: 3, max: 6 },
   { id: 'hop', title: 'Hop or fly {n} times', min: 6, max: 12 },
   { id: 'coins', title: 'Earn {n} coins', min: 10, max: 25 },
-  { id: 'swim', title: 'Swim for {n} seconds', min: 10, max: 30 },
+  { id: 'swim', title: 'Swim for {n} seconds', min: 10, max: 30, needSwim: true },
   { id: 'air', title: 'Spend {n} seconds in the air', min: 4, max: 12, needFly: true },
   { id: 'combo', title: 'Get a x3 crunch combo', min: 1, max: 1 },
   { id: 'food', title: 'Pick {n} foods from trees', min: 3, max: 6 },

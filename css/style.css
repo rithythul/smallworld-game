@@ -519,3 +519,13 @@ body.touch #roomPill { min-height: 38px; }
 @media (max-width: 360px) { .clock-day { display: none; } }
 /* long dialogue: only the text scrolls; name, hint and choices keep their size */
 .dialog-name, .dialog-next, .dialog-choices { flex-shrink: 0; }
+.goal { flex-wrap: wrap; }
+#goalText { flex: 1 1 60%; min-width: 0; }
+.goal-hint { flex-basis: 100%; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.25; padding: 2px 0 0 2px; }
+.decoder { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 10px 0 4px; }
+.dword { display: flex; gap: 4px; }
+.dcell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.dcell canvas { width: 30px; height: 36px; }
+.dcell select { font: inherit; font-weight: 800; font-size: 16px; width: 40px; min-height: 36px; text-align: center; border: 2.5px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); padding: 0; appearance: none; -webkit-appearance: none; text-align-last: center; }
+.dcell select.ok { background: #d8f0c4; }
+.dcell select.bad { background: #fbd6cc; }

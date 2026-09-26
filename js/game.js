@@ -3,7 +3,7 @@ const Game = (() => {
   const canvas = $('world');
   const ctx = canvas.getContext('2d');
   const SAVE_KEY = 'noodle-universe-save-v1';
-  const START_TIME = 5 * 60 + 58;
+  const START_TIME = 5 * 60 + 59;
   const POOL_OPEN = 6 * 60, POOL_CLOSE = 8 * 60;
   const DOOR = { x: 508, y: 588 };
   const GATE = { x: 500, y: 768 };
@@ -251,7 +251,7 @@ const Game = (() => {
       add('TALK', COACHES.penne.x, COACHES.penne.y + 20, 70, () => talkCoach('penne'), 2, 'talk');
       add('LOOK', POSTER.x, POSTER.y, 70, lookPoster, 2, 'look');
       add('ASK', ORACLE_AT.x, ORACLE_AT.y, 80, askOracle, 2, 'look');
-      add(G.flags.pillowReady && !G.clues.includes('pillow') ? 'LOOK' : 'SLEEP', DOOR.x, DOOR.y, 70, useDoor, 2, 'look');
+      add(G.flags.pillowReady && !G.clues.includes('pillow') ? 'LOOK' : canSleep() ? 'SLEEP' : 'HOME', DOOR.x, DOOR.y, 70, useDoor, 2, 'look');
       add(poolOpen() ? 'SWIM' : 'CLOSED', GATE.x, GATE.y, 70, enterPool, 2, 'swim');
       if (!canyonOpen()) {
         const gy = CANYON.wallY - 30;
@@ -264,6 +264,7 @@ const Game = (() => {
       if (fogGone()) {
         add(G.statueStep === 3 && !G.pieces.includes(6) ? 'SLEEP' : 'LOOK', STATUE.x, STATUE.y + 40, 90, useStatue, 2, 'look');
         add('SWIM', PEAKS.lakeEntry.x, PEAKS.lakeEntry.y, 70, enterLake, 2, 'swim');
+        add('DRINK', LAKE.x + LAKE.w / 2, LAKE.y - 26, 70, () => startDrink('lake'), 2, 'water');
         add('TALK', NEST.x, NEST.y + 44, 70, talkBird, 2, 'talk');
         add(stormy() && !has('thunder') ? 'PICK' : 'LOOK', TROCK.x, TROCK.y + 36, 70, useThunderRock, 2, 'look');
       }
@@ -411,11 +412,12 @@ const Game = (() => {
   function ensureDaily() {
     if (G.daily && G.daily.day === G.day) return;
     const rnd = mulberry(G.day * 7919 + 13);
-    const pool = DAILY_POOL.filter(d => !d.needFly || G.skills.fly >= 1);
+    const pool = DAILY_POOL.filter(d => (!d.needFly || G.skills.fly >= 1) && (!d.needSwim || G.skills.swim >= 1));
     const list = [];
     while (list.length < 3 && pool.length) {
       const d = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
-      const goal = d.min + Math.floor(rnd() * (d.max - d.min + 1));
+      let goal = d.min + Math.floor(rnd() * (d.max - d.min + 1));
+      if (d.id === 'crunch' && G.day <= 3) goal = 6 + Math.floor(rnd() * 7);
       list.push({ id: d.id, goal, title: d.title.replace('{n}', goal) });
     }
     G.daily = { day: G.day, list, prog: {}, done: {} };
@@ -431,6 +433,12 @@ const Game = (() => {
       Sound.coin();
       UI.toast(`<span class="t-small">⭐ +1 · Daily challenge</span>${c.title}. Done!`, { life: 3 });
       addCoins(5);
+      if (G.daily.list.every(x => G.daily.done[x.id])) {
+        G.streak = G.lastPerfect === G.day - 1 ? (G.streak || 0) + 1 : 1;
+        G.lastPerfect = G.day;
+        G.bonusStars = (G.bonusStars || 0) + 2;
+        setTimeout(() => { Sound.secret(); addCoins(15); UI.toast(`<span class="t-small">🌟 Perfect Day! ⭐ +2</span>All 3 challenges done. Streak: ${G.streak} day${G.streak > 1 ? 's' : ''} 🔥`, { big: true, life: 4 }); }, 1200);
+      }
     }
   }
 
@@ -524,7 +532,7 @@ const Game = (() => {
     const cols = { normal: ['#f4c35a', '#e0a13a', '#fff3d6'], woods: ['#c6d77a', '#9ccb6b', '#fff3d6'], gold: ['#ffd23f', '#fff8e8', '#e4572e'], fortune: ['#ffb3c8', '#fff8e8', '#b98cff'], canyon: ['#e59866', '#c9784a', '#fff3d6'], boulder: ['#c9784a', '#a45a33', '#e9a36b'], peak: ['#a9a39a', '#9a7b5b', '#fff3d6'], snow: ['#ffffff', '#dfe8f2', '#bfe9ff'] }[b.kind];
     burst(b.x, b.y - 16, 22, cols, { speed: 280, up: 260, size: 6 });
     floatText(b.x, b.y - 50, 'CRUNCH!', '#fff8e8');
-    G.water = Math.max(0, G.water - 7);
+    G.water = Math.max(0, G.water - 5);
 
     const t = now;
     const win = (buffed() ? 2.6 : 1.7) + (dishOn('dumpling') ? 1.2 : 0);
@@ -625,9 +633,22 @@ const Game = (() => {
     const [a, b, c] = drumBeats.slice(-3);
     drumBeats = [];
     const g1 = b - a, g2 = c - b;
-    const right = g1 < 0.55 && g2 > 0.6 && g2 < 2.4 && g2 > g1 * 1.7;
+    const miss = G.drumMiss || 0;
+    const right = miss >= 4 ? g2 > g1 : (g1 < 0.8 && g2 > 0.6 && g2 < 3.0 && g2 > g1 * 1.4);
+    const played = '● ' + (g1 > 0.6 ? '· · ' : '') + '● ' + (g2 > 0.6 ? '· · ' : '') + '●';
     if (!G.pieces.includes(3)) { setTimeout(() => UI.toast('The drum hums. It seems to be waiting for a special rhythm.', { life: 2.6 }), 300); return; }
-    if (!right) { setTimeout(() => { Sound.wrong(); UI.toast('The drum grumbles. That was not the rhythm.', { life: 2.2 }); }, 250); return; }
+    if (!right) {
+      G.drumMiss = miss + 1;
+      setTimeout(() => {
+        Sound.wrong();
+        UI.toast(`<span class="t-small">You played: ${played}</span>The drum grumbles. The echo went: ● ● · · ●`, { life: 3 });
+        if (G.drumMiss === 2) setTimeout(() => {
+          UI.toast('<span class="t-small">🥁 The drum plays by itself!</span>Listen: BOM BOM ... BOOM', { life: 3.4 });
+          [0, 0.3, 1.3].forEach((d, i) => setTimeout(() => { Sound.drum(i); drumHit = 1; floatText(DRUM.x, DRUM.y - 130, i < 2 ? 'BOM' : 'BOOM', '#ffd23f'); }, 900 + d * 1000));
+        }, 800);
+      }, 250);
+      return;
+    }
     G.pieces.push(4); solve('piece3');
     setTimeout(() => {
       Sound.secret(); P.wow = 1.6; shake = 14;
@@ -709,6 +730,15 @@ const Game = (() => {
     save();
   }
 
+  function nearestWater() {
+    const spots = [...streamSamples.filter((_, i) => i % 6 === 0).map(([x, y]) => ({ x, y, n: 'the stream' })), { x: MIRROR.x, y: MIRROR.y, n: 'the Mirror Pond' }, { x: LAKE.x + LAKE.w / 2, y: LAKE.y - 20, n: 'the mountain lake' }];
+    if (canyonOpen()) spots.push({ x: SPRING.x, y: SPRING.y, n: 'the Minty Spring' });
+    let best = spots[0], bd = 1e9;
+    spots.forEach(sp => { const d = dist(P.x, P.y, sp.x, sp.y); if (d < bd) { bd = d; best = sp; } });
+    const a = Math.atan2(best.y - P.y, best.x - P.x) * 180 / Math.PI;
+    const dir = a > -45 && a <= 45 ? 'east' : a > 45 && a <= 135 ? 'south' : a < -45 && a >= -135 ? 'north' : 'west';
+    return `Drink from ${best.n}, to the ${dir}. Your face is getting hot!`;
+  }
   function startDrink(where = 'stream') {
     drinkHeld = true; drinkWhere = where;
     G.drinks++;
@@ -873,7 +903,7 @@ const Game = (() => {
       return;
     }
     P.swimming = true; P.area = 'pool'; P.x = GATE.x; P.y = POOL.y + 40;
-    swim = { t: 25, score: 0, bubbles: [], spawn: 0, dawn: G.time < POOL_OPEN + 30 && !has('dawn') ? { x: POOL.x + 200, y: POOL.y + 120 } : null, done: false };
+    swim = { t: 25, score: 0, bubbles: [], spawn: 0, dawn: G.time < POOL_OPEN + 60 && !has('dawn') ? { x: POOL.x + 200, y: POOL.y + 120 } : null, done: false };
     Sound.splash();
     burst(P.x, P.y, 30, ['#8fe0ea', '#ffffff', '#5ed0e6'], { speed: 240, up: 200, size: 5, type: 'drop' });
     G.flags.swam = true;
@@ -911,9 +941,10 @@ const Game = (() => {
       ], { onDone: () => { addClue('pillow'); save(); } });
       return;
     }
-    if (hour() >= 18 || hour() < 5) {
-      UI.say('me', 'Your bed looks very cozy. Sleep until morning?', { choices: [
-        { label: 'Sleep until 5:58 AM', fn: () => { const stuck = sameGoalT > 90; newDay('You slept like a noodle.'); if (stuck || Math.random() < 0.35) setTimeout(() => startDaydream('sleep'), 300); } },
+    if (canSleep()) {
+      const nap = !(hour() >= 18 || hour() < 5);
+      UI.say('me', nap ? 'You need the morning! Take a nap and wake up just before the pool opens?' : 'Your bed looks very cozy. Sleep until morning?', { choices: [
+        { label: nap ? 'Nap until 6 AM ☀' : 'Sleep until morning', fn: () => { const stuck = sameGoalT > 90; newDay('You slept like a noodle.'); if (stuck || Math.random() < 0.35) setTimeout(() => startDaydream('sleep'), 300); } },
         { label: 'Not yet', alt: true },
       ] });
     } else {
@@ -921,19 +952,28 @@ const Game = (() => {
     }
   }
 
+  // Some puzzles need the early morning; never make players wait 10 minutes for it.
+  function needsMorning() {
+    const c = (id) => G.clues.includes(id);
+    return !poolOpen() && ((c('pillow') && !G.pieces.includes(1)) || (c('mirror') && !G.pieces.includes(5) && !has('dawn')));
+  }
+  const canSleep = () => hour() >= 18 || hour() < 5 || needsMorning();
+
   function talkGrandma() {
     dailyAdd('talk');
     if (!G.flags.metGrandma) {
       UI.say('grandma', [
-        'Oh! You switched on! Good morning, little square one.',
-        'I\'m Grandma Ramen. Welcome to the <em>Noodle Universe</em>.',
-        'Long ago I collected every noodle there is. My old Noodle-dex is empty now... Would you fill it up for me?',
-        'Crunch the noodle bricks, drink from the stream when your face gets hot, and never skip your morning swim.',
-        'And if you ever find a strange note... keep it. Some things are hidden on purpose. Hee hee.',
+        'Oh! You switched on! Good morning, little square one. I\'m Grandma Ramen.',
+        'My old Noodle-dex is empty... Would you fill it up for me?',
+        'Start by crunching the noodle bricks in Crunch Meadow, just south of here!',
       ], { onDone: () => { G.flags.metGrandma = true; addCoins(5); milestone(); save(); } });
       return;
     }
     const n = G.found.length;
+    if (!G.flags.welcome2) {
+      G.flags.welcome2 = true;
+      return UI.say('grandma', ['Drink from the stream when your face gets hot, and never skip your morning swim.', 'And if you ever find a strange note... keep it. Some things are hidden on purpose. Hee hee.']);
+    }
     if (G.clues.includes('cipher') && !G.flags.decoder) return UI.say('grandma', ['Noodle letters? My, I haven\'t seen those in years!', 'I used to hang the whole alphabet up somewhere. On the side of this stand, maybe? My memory is soft as udon.']);
     if (G.clues.includes('pillow') && !G.pieces.includes(1)) return UI.say('grandma', ['A note under your pillow? How mysterious.', 'I always say: the pool water is newest the moment the gate opens.']);
     if (G.pieces.includes(1) && !G.pieces.includes(2)) return UI.say('grandma', ['An upside-down tree? Well. Every willow I know hangs its noodles down.', 'If one ever grew them up... that would be a very special tree. Deep in the woods, I bet.']);
@@ -965,17 +1005,19 @@ const Game = (() => {
     UI.say('me', G.flags.decoder ? 'The Noodle Alphabet poster. You already copied it into your journal.' : 'An old poster covered in wiggly noodle shapes, with a letter under each one. Pretty. A bit strange.');
   }
 
-  const HINT_COST = [3, 6, 10];
+  const HINT_COST = [0, 3, 6];
   function askOracle() {
     const open = ['pillow', 'piece1', 'cipher', 'canyon', 'piece3', 'piece4', 'mirror', 'piece5', 'statue'].find(id => G.clues.includes(id) && !G.solved.includes(id));
     if (!open) return UI.say('oracle', ['Bloop. I am the Noodle Oracle.', 'Nothing troubles you yet, little screen. Come back when you find something strange.']);
     const lvl = G.hints[open] || 0;
     const clue = CLUES[open];
     if (lvl >= 3) return UI.say('oracle', ['I have told you all I know about ' + clue.title + ':', clue.hints[2]]);
-    const cost = HINT_COST[lvl];
+    const mercy = sameGoalT > 300;
+    const cost = mercy ? 0 : HINT_COST[lvl];
+    if (mercy) { G.hints[open] = 3; save(); return UI.say('oracle', ['Bloop... you have been stuck a long time. The Oracle feels sorry for you. This one is free:', clue.hints[2]]); }
     const prev = lvl ? ['Last time I said: ' + clue.hints[lvl - 1]] : [];
-    UI.say('oracle', [...prev, `Bloop... "${clue.title}" troubles you. A ${['small nudge', 'bigger hint', 'full answer'][lvl]} costs ${cost} Crunch Coins.`], { choices: [
-      { label: `Pay ${cost} coins`, fn: () => {
+    UI.say('oracle', [...prev, `Bloop... "${clue.title}" troubles you. A ${['small nudge', 'bigger hint', 'full answer'][lvl]} costs ${cost ? cost + ' Crunch Coins' : 'nothing. The first one is free'}.`], { choices: [
+      { label: cost ? `Pay ${cost} coins` : 'Yes please', fn: () => {
         if (G.coins < cost) { Sound.wrong(); return UI.say('oracle', `You have ${G.coins} coins. Crunch more bricks and come back.`); }
         G.coins -= cost; G.hints[open] = lvl + 1; Sound.coin(); save();
         UI.say('oracle', clue.hints[lvl]);
@@ -1007,21 +1049,21 @@ const Game = (() => {
         { text: 'Say good morning to Grandma Ramen', where: 'Her noodle stand is north-east of your house, in Ramen Village.', done: !!G.flags.metGrandma },
         { text: 'Collect 3 noodles', where: 'Crunch the bricks in Crunch Meadow, south of the village.', done: n >= 3 },
         { text: 'Check your house', where: 'Your antenna twitches... something is waiting at home.', done: c('pillow') },
-        { text: 'Solve the Pillow Note riddle', where: 'Read it in your journal. Think about the early morning and water.', done: p(1) },
-        { text: 'Find the place on Map Piece 1', where: 'Cross the stream into Spaghetti Woods and look for a tree that breaks the rules.', done: p(2) },
-        { text: 'Learn to read the noodle letters', where: 'Grandma collects old signs. Look around her stand.', done: !!G.flags.decoder },
-        { text: 'Decode the note', where: 'Journal, Clues tab. Match each shape using the Noodle alphabet tab.', done: G.solved.includes('cipher') },
+        { clue: 'pillow', text: 'Solve the Pillow Note riddle', where: 'Read it in your journal. Think about the early morning and water.', done: p(1) },
+        { clue: 'piece1', text: 'Find the place on Map Piece 1', where: 'Cross the stream into Spaghetti Woods and look for a tree that breaks the rules.', done: p(2) },
+        { clue: 'cipher', text: 'Learn to read the noodle letters', where: 'Grandma collects old signs. Look around her stand.', done: !!G.flags.decoder },
+        { clue: 'cipher', text: 'Decode the note', where: 'Journal, Clues tab. Match each shape using the Noodle alphabet tab.', done: G.solved.includes('cipher') },
       ]),
       ch('Chapter 2 · Crunch Canyon', [
         { text: 'Break through the boulder wall', where: 'South of Crunch Meadow. It cracked when you decoded the note.', done: canyonOpen() },
-        { text: 'Find the echo that crunches twice', where: 'Crunch the tall rocks in the canyon and listen.', done: p(3) },
-        { text: 'Play the rhythm you heard', where: 'Something big you can hit, east across the canyon bridge.', done: p(4) },
-        { text: 'Drink where the water lies', where: 'Water that lies... like a mirror. Follow the stream.', done: c('mirror') },
-        { text: 'Read the reflection', where: 'It is backwards in your journal. Then find who it talks about in the canyon.', done: p(5) },
+        { clue: 'canyon', text: 'Find the echo that crunches twice', where: 'Crunch the tall rocks in the canyon and listen.', done: p(3) },
+        { clue: 'piece3', text: 'Play the rhythm you heard', where: 'Something big you can hit, east across the canyon bridge.', done: p(4) },
+        { clue: 'piece4', text: 'Drink where the water lies', where: 'Water that lies... like a mirror. Follow the stream.', done: c('mirror') },
+        { clue: 'mirror', text: 'Read the reflection', where: 'It is backwards in your journal. Then find who it talks about in the canyon.', done: p(5) },
       ]),
       ch('Chapter 3 · Soba Peaks', [
-        { text: 'Climb the Soba Peaks', where: 'East, past Spaghetti Woods. Follow the road out of the woods and up the zigzag.', done: c('statue') },
-        { text: 'Show the statue your faces', where: 'Crunchy, thirsty, cool, sleepy, in that order. Look at what makes your face change.', done: p(6) },
+        { clue: 'piece5', text: 'Climb the Soba Peaks', where: 'East, past Spaghetti Woods. Follow the road out of the woods and up the zigzag.', done: c('statue') },
+        { clue: 'statue', text: 'Show the statue your faces', where: 'Crunchy, thirsty, cool, sleepy, in that order. Look at what makes your face change.', done: p(6) },
       ]),
       ch('Chapter 4 · The Glass Noodle Caves', [
         { text: 'Coming in the next update', where: 'Map Piece 6 shows a dark cave full of glowing noodles.', done: false, soon: true },
@@ -1042,7 +1084,7 @@ const Game = (() => {
     if (!G.flags.metGrandma) return { ...TALK, label: 'Grandma' };
     if (G.found.length < 3) return { x: 760, y: 1300, label: 'Meadow' };
     if (G.flags.pillowReady && !c('pillow')) return { ...DOOR, label: 'Home' };
-    if (c('pillow') && !p(1)) return { ...GATE, label: 'Pool' };
+    if (c('pillow') && !p(1)) return poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
     if (p(1) && !p(2)) return { x: 2100, y: 450, label: 'Deep woods' };
     if (c('cipher') && !G.flags.decoder) return { ...TALK, label: "Grandma's stand" };
     if (G.flags.decoder && !G.solved.includes('cipher')) return null;
@@ -1050,12 +1092,25 @@ const Game = (() => {
     if (canyonOpen() && !p(3)) return { x: 600, y: 2150, label: 'Canyon rocks' };
     if (p(3) && !p(4)) return { x: 1900, y: 2350, label: 'East canyon' };
     if (p(4) && !c('mirror')) return { x: 1250, y: 900, label: 'The stream' };
-    if (c('mirror') && !p(5)) return { x: 800, y: 2380, label: 'Canyon' };
+    if (c('mirror') && !p(5)) return has('dawn') ? { x: 800, y: 2380, label: 'Udon Snail' } : poolOpen() ? { ...GATE, label: 'Pool' } : { ...DOOR, label: 'Home (nap)' };
     if (p(5) && !c('statue')) return { x: STATUE.x, y: STATUE.y + 80, label: 'Summit' };
     if (c('statue') && !p(6)) return G.statueStep === 2 ? { ...PEAKS.lakeEntry, label: 'Lake' } : G.statueStep === 3 ? { x: STATUE.x, y: STATUE.y + 80, label: 'Statue' } : null;
     return null;
   }
-  let guideOn = false, sameGoalT = 0, lastGoalKey = '';
+  let guideOn = false, sameGoalT = 0, lastGoalKey = '', hintStep = 0, lastSecrets = [];
+  // A hint that always matches what the goal pill is asking for right now.
+  function hintFor(level) {
+    if (G.lesson) { const l = LESSONS.find(x => x.id === G.lesson.id); return level === 0 ? l.desc : null; }
+    if (hour() >= 21 || hour() < 5) return level === 0 ? 'Walk to your front door in Ramen Village and choose Sleep.' : null;
+    for (const chap of story()) {
+      const st = chap.steps.find(x => !x.done);
+      if (!st) continue;
+      if (st.soon) return null;
+      if (st.clue && G.clues.includes(st.clue) && CLUES[st.clue].hints[level]) return CLUES[st.clue].hints[level];
+      return level === 0 ? st.where : null;
+    }
+    return null;
+  }
 
   function goalText() {
     const lt = lessonText(); if (lt) return lt;
@@ -1065,7 +1120,7 @@ const Game = (() => {
     if (!G.flags.metGrandma) return 'Say good morning to Grandma Ramen at her noodle stand';
     if (n < 3) return `Collect 3 noodles (${n}/3). Crunch bricks in the meadow!`;
     if (G.flags.pillowReady && !G.clues.includes('pillow')) return 'Your antenna twitches… check your house';
-    if (G.clues.includes('pillow') && !G.pieces.includes(1)) return 'Solve the Pillow Note (journal)';
+    if (G.clues.includes('pillow') && !G.pieces.includes(1)) return poolOpen() ? 'Swim in the pool and follow the floor arrows' : 'The pool is closed. Nap at home to wake up at 6 AM';
     if (G.pieces.includes(1) && !G.pieces.includes(2)) return 'Find the place drawn on Map Piece 1';
     if (G.clues.includes('cipher') && !G.flags.decoder) return 'Find a way to read the noodle letters';
     if (G.flags.decoder && !G.solved.includes('cipher')) return 'Decode the noodle letters in your journal';
@@ -1073,7 +1128,7 @@ const Game = (() => {
     if (canyonOpen() && !G.pieces.includes(3)) return 'Find the echo that crunches twice';
     if (G.pieces.includes(3) && !G.pieces.includes(4)) return 'Where could that rhythm be played?';
     if (G.pieces.includes(4) && !G.clues.includes('mirror')) return 'Drink where the water lies';
-    if (G.clues.includes('mirror') && !G.pieces.includes(5)) return 'Read the reflection (journal)';
+    if (G.clues.includes('mirror') && !G.pieces.includes(5)) return has('dawn') ? 'Ask the Udon Snail about its house (canyon)' : (poolOpen() ? 'Catch the Dawn Noodle in the pool (6–7 AM)' : 'Catch the Dawn Noodle: nap at home, swim at 6 AM');
     if (G.pieces.includes(5) && !G.clues.includes('statue')) return 'Climb to the top of the Soba Peaks (east)';
     if (G.clues.includes('statue') && !G.pieces.includes(6)) return `Show the statue your faces (${G.statueStep}/4)`;
     return `Chapter 3 done! Fill the Noodle-dex (${n}/${NOODLES.length})`;
@@ -1153,7 +1208,7 @@ const Game = (() => {
     const len = Math.hypot(mx, my);
     if (len > 1) { mx /= len; my /= len; }
     let speed = P.swimming ? 170 : 210;
-    if (G.water < 25) speed *= 0.62;
+    if (G.water < 25) speed *= 0.8;
     if (buffed()) speed *= 1.2;
     if (minty()) speed *= 1.2;
     if (dishOn('spicy')) speed *= 1.25;
@@ -1195,7 +1250,7 @@ const Game = (() => {
 
     // hydration
     if (!busy) {
-      if (!P.swimming) G.water -= dt * (P.moving ? 0.5 : 0.25);
+      if (!P.swimming) G.water -= dt * (P.moving ? 0.35 : 0.12);
       if (drinkHeld) {
         G.water += dt * 45;
         drinkSound -= dt;
@@ -1203,7 +1258,7 @@ const Game = (() => {
         if (G.water >= 100 && drinkWhere !== 'mirror') { drinkHeld = false; floatText(P.x, P.y - 90, 'Ahh!', '#8fe0ea'); }
       }
       G.water = clamp(G.water, 0, 100);
-      if (G.water < 25 && !thirstWarned) { thirstWarned = true; UI.toast('<span class="t-small">Thirsty 🥵</span>Drink from the stream to walk at full speed.', { life: 3 }); }
+      if (G.water < 25 && !thirstWarned) { thirstWarned = true; UI.toast(`<span class="t-small">Thirsty 🥵</span>${nearestWater()}`, { life: 3.4 }); }
       if (G.water > 50) thirstWarned = false;
       if (hour() >= 21 && !nightWarned) { nightWarned = true; UI.toast('<span class="t-small">Getting sleepy 😴</span>Head home and sleep, or you\'ll nap outside.', { life: 3.2 }); }
     }
@@ -1233,13 +1288,13 @@ const Game = (() => {
         swim.dawn.x = POOL.x + 180 + Math.sin(now * 0.8) * 130;
         swim.dawn.y = POOL.y + 150 + Math.cos(now * 1.1) * 40;
         if (dist(P.x, P.y, swim.dawn.x, swim.dawn.y) < 36) { swim.dawn = null; giveNoodle('dawn'); }
-        else if (G.time >= POOL_OPEN + 30) swim.dawn = null;
+        else if (G.time >= POOL_OPEN + 60) swim.dawn = null;
       }
     }
 
     // stop drinking if walked away
     if (drinkHeld) {
-      const still = drinkWhere === 'spring' ? inSpring(P.x, P.y, 50) : drinkWhere === 'mirror' ? inPond(P.x, P.y, 50) : streamDist(P.x, P.y) < STREAM.width / 2 + 40;
+      const still = drinkWhere === 'lake' ? dist(P.x, P.y, LAKE.x + LAKE.w / 2, LAKE.y - 26) < 90 : drinkWhere === 'spring' ? inSpring(P.x, P.y, 50) : drinkWhere === 'mirror' ? inPond(P.x, P.y, 50) : streamDist(P.x, P.y) < STREAM.width / 2 + 40;
       if (P.swimming || !still) drinkHeld = false;
     }
     if (drinkHeld && drinkWhere === 'mirror' && !busy) {
@@ -1280,6 +1335,7 @@ const Game = (() => {
     if (stormy() && !has('thunder') && fogGone()) secrets.push(TROCK);
     if (G.fortune && G.fortune.crunched && !G.fortune.done) secrets.push(FORTUNES[G.fortune.idx].where);
     glassNoodles().forEach(g => !has('glass') && secrets.push(g));
+    lastSecrets = secrets;
     let near = 1e9;
     secrets.forEach(s => near = Math.min(near, dist(P.x, P.y, s.x, s.y)));
     const range = dishOn('forest') ? 1040 : 520;
@@ -1336,8 +1392,12 @@ const Game = (() => {
     P.suit = !!(G.flags.suit && G.flags.wearSuit);
     const gt = goalText();
     UI.goal(gt);
-    if (gt !== lastGoalKey) { lastGoalKey = gt; sameGoalT = 0; } else if (!busy) sameGoalT += dt;
-    if (sameGoalT > 120 && !guideOn && goalTarget()) { guideOn = true; UI.toast('<span class="t-small">Need a hint? 🧭</span>Follow the yellow arrow. Tap the goal to hide it.', { life: 3.6 }); }
+    if (gt !== lastGoalKey) { lastGoalKey = gt; sameGoalT = 0; hintStep = 0; guideOn = false; UI.goalHint(''); } else if (!busy && !Space.active) sameGoalT += dt;
+    // Hint ladder: the longer you are stuck on one goal, the more help you get.
+    if (hintStep < 1 && sameGoalT > 45) { hintStep = 1; const h = hintFor(0); if (h) { P.wow = 0; UI.toast(`<span class="t-small">🤔 Squareface thinks…</span>${h}`, { life: 5 }); } }
+    if (hintStep < 2 && sameGoalT > 90) { hintStep = 2; const h = hintFor(1); if (h) UI.goalHint(h); }
+    if (hintStep < 3 && sameGoalT > 150) { hintStep = 3; if (goalTarget()) { guideOn = true; UI.toast('<span class="t-small">Need a hand? 🧭</span>Follow the yellow arrow. Tap the goal to hide it.', { life: 3.6 }); } }
+    if (hintStep < 4 && sameGoalT > 240) hintStep = 4;
 
     // camera
     const viewW = vw / zoom, viewH = vh / zoom;
@@ -1417,7 +1477,7 @@ const Game = (() => {
       }
     }
     if (drinkHeld && drinkWhere === 'mirror') drawReflection(ctx, t, Math.min(1, mirrorTimer / 1.2), G.pieces.includes(4));
-    drawPool(ctx, POOL, t, { open: poolOpen(), dawn, showArrows: dawn, lastTile: G.clues.includes('pillow') && !G.pieces.includes(1) });
+    drawPool(ctx, POOL, t, { soon: G.time >= POOL_OPEN - 10 && G.time < POOL_OPEN ? Math.ceil(POOL_OPEN - G.time) : 0, open: poolOpen(), dawn, showArrows: dawn, lastTile: G.clues.includes('pillow') && !G.pieces.includes(1) });
 
     // pool bubbles and dawn noodle
     if (swim) {
@@ -1488,6 +1548,10 @@ const Game = (() => {
     }
     draw.sort((a, b) => a.y - b.y).forEach(d => d.fn());
 
+    if (hintStep >= 4) lastSecrets.forEach(sc => {
+      if (!inView(sc.x, sc.y)) return;
+      for (let i = 0; i < 5; i++) { const a = t * 2 + i * 1.26, r = 30 + Math.sin(t * 3 + i) * 8; ctx.fillStyle = `rgba(255,236,140,${0.6 + Math.sin(t * 6 + i) * 0.4})`; circle(ctx, sc.x + Math.cos(a) * r, sc.y - 30 + Math.sin(a) * r * 0.6, 4); ctx.fill(); }
+    });
     // guide arrow toward the current goal
     if (guideOn) {
       const tg = goalTarget();
@@ -1821,8 +1885,14 @@ const Game = (() => {
       roundEnd = 0;
       const won = m.winners.includes(Net.me);
       const names = m.list.filter(e => m.winners.includes(e.id)).map(e => e.name).join(' & ') || 'Nobody';
-      if (won) { G.bonusStars = (G.bonusStars || 0) + 3; G.trophies = (G.trophies || 0) + 1; addCoins(20); Sound.secret(); P.wow = 2; }
-      UI.toast(`<span class="t-small">🏆 Race over</span>${won ? 'You win! ⭐ +3 and 20 coins' : names + ' wins'}. Start another round any time!`, { big: true, life: 5 });
+      const rank = m.list.findIndex(e => e.id === Net.me), mine = rank >= 0 ? m.list[rank].n : 0;
+      let stars = won ? 3 : rank === 1 && mine > 0 ? 2 : rank === 2 && mine > 0 ? 1 : 0;
+      if (!stars && mine >= 5) stars = 1;
+      if (won) { G.trophies = (G.trophies || 0) + 1; addCoins(20); Sound.secret(); P.wow = 2; }
+      if (stars) G.bonusStars = (G.bonusStars || 0) + stars;
+      const best = mine > (G.bestRace || 0);
+      if (best) G.bestRace = mine;
+      UI.toast(`<span class="t-small">🏆 Race over · you crunched ${mine}${best && mine ? ' · personal best!' : ''}</span>${won ? 'You win! ⭐ +3 and 20 coins' : names + ' wins' + (stars ? `. You get ⭐ +${stars}` : '')}. Start another round any time!`, { big: true, life: 5 });
       save();
     }
     updateRoomPill();

@@ -455,7 +455,7 @@ function drawPool(ctx, p, t, state) {
   ctx.strokeStyle = '#a0673b'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(sgx, fy); ctx.lineTo(sgx, fy - 22); ctx.stroke();
   rr(ctx, sgx - 58, fy - 50, 116, 30, 10); fillStroke(ctx, state.open ? '#8cbf5a' : '#e4572e', 3);
   ctx.fillStyle = '#fff8e8'; ctx.font = '800 14px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(state.open ? 'OPEN 6–8 AM' : 'OPENS 6 AM', sgx, fy - 34);
+  ctx.fillText(state.open ? 'OPEN 6–8 AM' : state.soon ? `OPENS IN 0:${String(state.soon).padStart(2, '0')}` : 'OPENS 6 AM', sgx, fy - 34);
   if (!state.open) { ctx.strokeStyle = '#a0673b'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(p.gate.x - 36, fy); ctx.lineTo(p.gate.x + 36, fy); ctx.stroke(); }
 }
 
