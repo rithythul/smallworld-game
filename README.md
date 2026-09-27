@@ -12,25 +12,30 @@ npm start
 # then open http://localhost:3000
 ```
 
-**Controls:** WASD or arrows to walk. Space, E or the big button does whatever is nearby: talk, plant, water, harvest, chop, buy land, deliver a letter. With nothing nearby, Space hops. `M` opens the map, `1` to `6` make faces, `C` opens chat in a room. Scroll to zoom.
+**Controls:** WASD or arrows to walk. Space, E or the big button does whatever is nearby. With nothing nearby, Space hops. `R` gets on or off your vehicle, `M` opens the map, `1` to `6` make faces, `C` opens chat in a room. Scroll to zoom.
 
 **Phones and tablets:** drag anywhere to walk, tap the big button to do things, and tap quickly to hop.
 
 ## Small World: what's in the town
 
-- **Work:** at the 💼 Jobs office, pick a job and go to work. There are 7 jobs: Farmhand, Lumberjack, Mail Carrier, Builder, Town Clerk, Bank Teller and Tutor. A shift is a few small tasks, marked by yellow diamonds. The pay slip shows the wage, the income tax that goes to the town, and what you keep. Experience gives raises. You can work 3 shifts a day.
-- **School:** 🏫 classes in Money, Civics, Building, Math and Science, with questions for ages 6–8, 9–12 or 13–16. Pass 2 classes in a subject to earn its certificate. Certificates unlock better jobs. Classes are free because taxes pay for the school.
-- **Bank:** 🏦 savings earn 2% interest every morning. Loans cost 5% a day. You can borrow more when you hold certificates and land.
-- **Market:** 🧺 sell crops and logs. Prices follow supply and demand: every sale lowers the price a little, and prices recover over time. Buy logs from the sawmill.
-- **Land:** 12 farms and 12 building lots are for sale, and each has a daily land tax. Farms have 6 soil beds: buy seeds, plant, water and harvest. On a lot you can build a house (no more rent) or a shop (customers buy from your shelf every morning at a markup).
-- **The forest:** chop a tree for logs, then plant a sapling on a stump before you chop again ("cut one, plant one"). The forest closes when too few trees are left.
-- **The town:** 🏛️ taxes fill the treasury. Citizens vote on projects: a fountain, street lights, a bus line, a park, a library and a clinic, then festivals and new forests forever. Each project appears in the 3D town when it is built. Anyone with the Good Citizen certificate can run for mayor. The mayor sets the tax rate, and their project vote counts 3 times.
-- **Every morning:** a budget card shows the rent, land taxes, savings interest, loan interest and shop sales. If you can't pay the bills, the bank lends the rest, and that loan costs interest.
-- **Dreams:** choose to become a Farmer, Builder, Shopkeeper, Mayor, Banker or Teacher. Each dream is a path of real steps, and the yellow diamond shows the way to the next one. After the last step the dream keeps levelling up forever, and your title shows over your head.
-- **Day and night:** a Small Town day is 6 minutes. Everyone in a room shares the same clock, so the whole room has the same day and night.
-- **Friends:** type a room name (3 to 8 letters or numbers) to share one town: the same land, market prices, votes and mayor. Towns are saved on the server. You can chat (bad words, links and phone numbers are hidden), make faces, and use WebRTC voice (a grown-up says OK first).
-- **Healthy play:** breaks, a daily play limit, and grown-up settings behind a math question (⋯ menu → 🔒).
-- **The Small World mark:** the logo, recoloured in the town's greens, is mown into the lawn beside the plaza (`icons/smallworld-mark.png`; the original is `icons/smallworld-logo.png`).
+The UI is pictures first. One big button does whatever is in front of you, and a yellow arrow (on the ground and at the screen edge) always points to your next step.
+
+- **Dreams (15):** Farmer, Builder, Shopkeeper, Mayor, Banker, Teacher, YouTuber, Digital Marketer, Online Seller, Coder, Chef, Entrepreneur, Explorer, Pilot, Astronaut. Six are shown first; the rest are one tap away. Each dream is a path of real steps, then endless levels. Your name and title float over your head, and over your friends' heads.
+- **Work (10 jobs):** Farmhand, Lumberjack, Mail Carrier, Park Ranger, Builder, Town Clerk, Bank Teller, Marketer, Coder, Tutor. Shifts end with a pay slip: wage, income tax, what you keep. Experience brings raises.
+- **School:** Money, Civics, Building, Math and Science classes for ages 6–8, 9–12 and 13–16. Certificates unlock jobs, companies, flight school and astronaut training.
+- **Money:** savings earn 2% a day, loans cost 5% a day. A morning budget shows rent, land tax, fuel, loan interest, shop and company results and video views.
+- **Land and building:** farms (plant, water, harvest; rain waters crops for free), lots for a house, a villa, a shop or a company building.
+- **Companies:** Bakery, Restaurant, Toy Workshop, Building Co. (on your own lot), Online Store, Ad Agency, App Studio. Hire staff, upgrade, run ads; revenue minus costs is profit, or a loss.
+- **Creators:** take photos in nature, make videos at the Media Studio, gain subscribers, earn from views.
+- **An endless town:** taxes, fares, building and projects are "growth". Every time growth reaches the next goal, a new district opens to the east with a train station, two new places (Tech Hub, Business Center, Media Studio, Wheels & Wings, Airport, Harbor, Space Center, Stadium, then Museum, Zoo, Cafe, Arcade, Hotel...), land for sale and a piece of nature (lake, hills, beach, star hill, mushroom grove, meadow). It never stops.
+- **Getting around:** the town bus (once voted for) and the train cost a fare and speed up and brake like real vehicles. Buy a bike, scooter, car or plane at Wheels & Wings; each has a daily upkeep.
+- **Adventures:** fish, collect shells and crystals, pick berries, swim, watch the stars at night, sit by a campfire. Fly to Sunny Island, Snow Peak, the Safari and the Volcano, or train as an astronaut and walk on the Moon. Every first time becomes a memory in your album.
+- **Physics, the same everywhere:** gravity brings hops back down (one sixth of it on the Moon), hills slow you going up, water holds you up, balls bounce and roll downhill and take your momentum when you run into them, chopped trees tip slowly then crash, and vehicles need distance to stop. Each rule comes with a short science card the first time you meet it.
+- **The town:** taxes fill the treasury; citizens vote for a fountain, street lights, a bus line, a park, a library, a clinic, festivals and forests; anyone with the Good Citizen certificate can run for mayor.
+- **Music:** gentle songs made in code that change with the time of day, trips and space (⋯ → 🎵 to turn off).
+- **Friends:** a room name puts everyone in one shared, saved town. Chat, faces and voice (a grown-up says OK first).
+- **Healthy play:** breaks, a daily limit and grown-up settings behind a math question.
+- **The Small World mark** is mown into the lawn beside the plaza.
 
 The 3D is made with [three.js](https://threejs.org) (MIT, bundled in `js/vendor/`). All models are built in code: no model files to download.
 
@@ -91,8 +96,9 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 | `index.html`, `css/sw.css` | Small World page and styles |
 | `js/world3d.js` | The 3D town (three.js): buildings, farms, forest, projects, Squarefaces, name tags, day and night, walking |
 | `js/sw.js` | Small World game: HUD, places, jobs, school, bank, market, land, dreams, rooms |
-| `js/town.js` | Town rules shared by the browser and the server: land, crops, prices, forest, taxes, votes, elections |
-| `js/life.js` | Your life's rules: money, jobs and wages, certificates, bank, morning bills, dreams |
+| `js/town.js` | Town rules shared by the browser and the server: land, crops, prices, forest, weather, taxes, votes, elections, growing districts |
+| `js/life.js` | Your life's rules: money, jobs and wages, certificates, bank, vehicles, companies, channel, memories, morning bills, dreams |
+| `js/music.js` | Background music made with WebAudio |
 | `classic.html` | The classic 2D Noodle Universe |
 | `js/data.js` | Noodles, map layout, clues, riddles |
 | `js/art.js` | All drawing (characters, world, icons), no image files |

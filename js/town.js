@@ -21,9 +21,12 @@
   const TOWN_FARM = { x: 5160, y: 260, w: 720, h: 420 };
   const FARM_SPOTS = []; for (let r = 0; r < 2; r++) for (let c = 0; c < 5; c++) FARM_SPOTS.push({ x: TOWN_FARM.x + 90 + c * 135, y: TOWN_FARM.y + 150 + r * 160 });
   const ROADS = [   // [x0, y0, x1, y1] straight roads, 90 wide
-    [X0 - 1000, 1760, X1, 1760], [4800, 1000, 4800, 2560], [4330, 1180, 5270, 1180], [4330, 1580, 5270, 1580],
+    [X0 - 1000, 1760, 6220, 1760], [4800, 1000, 4800, 2560], [4330, 1180, 5270, 1180], [4330, 1580, 5270, 1580],
     [4330, 1180, 4330, 1760], [5270, 1180, 5270, 1760], [5520, 760, 5520, 1760], [4560, 760, 5520, 760], [4560, 760, 4560, 1180],
+    [3560, -60, 3560, 1760],   // up to the train station
   ];
+  const RAIL_Y = -250;                      // the railway runs along the north edge, east forever
+  const STATION = { id: 'station0', type: 'station', x: 3740, y: -20, w: 260 };
   const PROJECT_SPOTS = { fountain: { x: 4800, y: 1340 }, park: { x: 5100, y: 2230 }, library: { x: 5330, y: 2010 }, clinic: { x: 5000, y: 2000 }, busTown: { x: 3740, y: 1700 }, busVillage: { x: 560, y: 680 } };
 
   // land for sale: farms east of the market, building lots in the west and south
@@ -32,6 +35,86 @@
   [1000, 1210, 1420].forEach((y, r) => [3700, 3930].forEach((x, c) => PLOTS.push({ id: `L${r * 2 + c + 1}`, kind: 'lot', x, y, w: 200, h: 170, price: 110 + r * 15 + c * 10 })));
   [1900, 2110, 2330].forEach((y, r) => [4290, 4520].forEach((x, c) => PLOTS.push({ id: `L${r * 2 + c + 7}`, kind: 'lot', x, y, w: 200, h: 170, price: 130 + r * 10 + c * 10 })));
   const PLOT_BY_ID = {}; PLOTS.forEach(p => { PLOT_BY_ID[p.id] = p; });
+
+  /* ---------------- the town grows: new districts to the east, forever ---------------- */
+  const DX0 = 6220, DW = 2000;
+  // what each new district brings. After the first four, districts keep coming with new landmarks from a pool.
+  const PLACES = {
+    station: { name: 'Train Station', icon: '🚉', npc: { name: 'Conductor Rails', color: '#5b7cfa', hat: 'beanie' }, wall: '#e8f1f7', roof: '#5b7cfa' },
+    tech: { name: 'Tech Hub', icon: '💻', npc: { name: 'Techie Pixel', color: '#2fa4b5', hat: 'propeller' }, wall: '#d6f1ff', roof: '#2fa4b5' },
+    biz: { name: 'Business Center', icon: '🏢', npc: { name: 'Investor Ivy', color: '#9a7b5b', hat: 'crown' }, wall: '#f3eddd', roof: '#34233f' },
+    studio: { name: 'Media Studio', icon: '🎬', npc: { name: 'Director Reel', color: '#ff8fb1', hat: 'beanie' }, wall: '#ffe2ef', roof: '#b98cff' },
+    dealer: { name: 'Wheels & Wings', icon: '🚗', npc: { name: 'Dealer Gears', color: '#e4572e', hat: 'propeller' }, wall: '#fff1a8', roof: '#e4572e' },
+    airport: { name: 'Airport', icon: '✈️', npc: { name: 'Captain Sky', color: '#5b7cfa', hat: 'crown' }, wall: '#eef6ff', roof: '#9ff3ff' },
+    harbor: { name: 'Harbor', icon: '⚓', npc: { name: 'Skipper Wave', color: '#2fa4b5', hat: 'bowl' }, wall: '#fff3d6', roof: '#2fa4b5' },
+    space: { name: 'Space Center', icon: '🚀', npc: { name: 'Commander Nova', color: '#b98cff', hat: 'propeller' }, wall: '#f7f1e3', roof: '#34233f' },
+    stadium: { name: 'Stadium', icon: '⚽', npc: { name: 'Coach Kick', color: '#8cbf5a', hat: 'beanie' }, wall: '#e0f5d0', roof: '#8cbf5a' },
+    museum: { name: 'Museum', icon: '🦕', npc: { name: 'Curator Bones', color: '#f4b942', hat: 'bowl' }, wall: '#f3eddd', roof: '#9a7b5b' },
+    zoo: { name: 'Zoo', icon: '🦁', npc: { name: 'Keeper Paws', color: '#f08a3c', hat: 'flower' }, wall: '#e0f5d0', roof: '#8cbf5a' },
+    cafe: { name: 'Cafe', icon: '☕', npc: { name: 'Barista Bean', color: '#9a7b5b', hat: 'chef' }, wall: '#ffe2c6', roof: '#e4572e' },
+    arcade: { name: 'Arcade', icon: '🕹️', npc: { name: 'Gamer Glitch', color: '#b98cff', hat: 'propeller' }, wall: '#eadcff', roof: '#5b7cfa' },
+    hotel: { name: 'Hotel', icon: '🏨', npc: { name: 'Manager Mint', color: '#8cbf5a', hat: 'crown' }, wall: '#fff3d6', roof: '#b98cff' },
+  };
+  Object.assign(STATION, PLACES.station);
+  const DISTRICTS = [
+    { name: 'Station District', land: ['tech', 'biz'], nature: 'lake' },
+    { name: 'Studio District', land: ['studio', 'dealer'], nature: 'hills' },
+    { name: 'Airport District', land: ['airport', 'harbor'], nature: 'beach' },
+    { name: 'Space District', land: ['space', 'stadium'], nature: 'stars' },
+  ];
+  const POOL = ['museum', 'zoo', 'cafe', 'arcade', 'hotel'], NATURES = ['grove', 'lake', 'meadow', 'hills', 'beach'];
+  const NATURE_NAME = { lake: 'Blue Lake', hills: 'Sunny Hills', beach: 'Seashell Beach', stars: 'Star Hill', grove: 'Mushroom Grove', meadow: 'Butterfly Meadow' };
+  const NAMES = ['Maple', 'Cedar', 'Willow', 'Pine', 'Birch', 'Aspen', 'Juniper', 'Elm', 'Hazel', 'Rowan'];
+  const growthNeed = (k) => 25 + 60 * (k - 1) + 20 * (k - 1) * (k - 1);   // growth points to open district k
+  const dcache = {};
+  function district(k) {
+    if (dcache[k]) return dcache[k];
+    const x0 = DX0 + (k - 1) * DW, d = DISTRICTS[k - 1];
+    const land = d ? d.land : [POOL[(k * 2) % POOL.length], POOL[(k * 2 + 1) % POOL.length]];
+    const nature = d ? d.nature : NATURES[k % NATURES.length];
+    const name = d ? d.name : `${NAMES[k % NAMES.length]} District`;
+    const mk = (type, x, y, w) => ({ id: type + k, type, x, y, w, ...PLACES[type] });
+    const landmarks = [mk(land[0], x0 + 520, 1690, type0w(land[0])), mk(land[1], x0 + 1480, 1690, type0w(land[1]))];
+    const station = { ...mk('station', x0 + 1180, -20, 260), id: 'station' + k };
+    const plots = [];
+    [1900, 2110].forEach((y, r) => [150, 380, 1100, 1330].forEach((dx, c) => plots.push({ id: `D${k}L${r * 4 + c + 1}`, kind: 'lot', x: x0 + dx, y, w: 200, h: 170, price: 100 + 10 * k + r * 10 + c * 5 })));
+    [880, 1090].forEach((y, r) => [1150, 1380].forEach((dx, c) => plots.push({ id: `D${k}F${r * 2 + c + 1}`, kind: 'farm', x: x0 + dx, y, w: 200, h: 165, price: 70 + 5 * k + r * 10 + c * 5 })));
+    const roads = [[x0 - 20, 1760, x0 + DW, 1760], [x0 + 1000, -60, x0 + 1000, 2560], [x0 + 1000, 1330, x0 + 1760, 1330]];
+    const cx = x0 + 480, cy = 620;
+    const SP = {
+      lake: [['fish', -250, 230], ['fish', 270, 170], ['photo', 0, -280], ['camp', 330, -210]],
+      hills: [['view', 0, 40], ['gem', -260, 200], ['gem', 250, 220], ['photo', 300, -200]],
+      beach: [['shell', -250, 240], ['shell', 60, 300], ['swim', 0, 60], ['photo', 300, 260]],
+      stars: [['stars', 0, 60], ['photo', -260, 230], ['gem', 280, 240], ['camp', -300, -200]],
+      grove: [['berry', -240, 180], ['berry', 240, 200], ['photo', 0, -250], ['camp', 300, -150]],
+      meadow: [['photo', -200, 150], ['berry', 220, 220], ['camp', 0, -220], ['view', 280, -60]],
+    }[nature];
+    const spots = SP.map(([type, dx, dy], i) => ({ id: `n${k}.${i}`, type, x: cx + dx, y: cy + dy }));
+    return (dcache[k] = { k, x0, x1: x0 + DW, name, nature, natureName: NATURE_NAME[nature], nat: { x: cx, y: cy }, landmarks, station, plots, roads, spots, stop: { x: x0 + 250, y: 1700 } });
+  }
+  function type0w(t) { return t === 'airport' ? 360 : t === 'stadium' ? 320 : 280; }
+  const districtsOf = (town) => Array.from({ length: (town && town.districts) || 0 }, (_, i) => district(i + 1));
+  const allPlots = (town) => PLOTS.concat(...districtsOf(town).map(d => d.plots));
+  function plotById(id) {
+    if (Object.prototype.hasOwnProperty.call(PLOT_BY_ID, id)) return PLOT_BY_ID[id];
+    const m = /^D(\d{1,3})[FL]\d{1,2}$/.exec(id || ''); if (!m) return null;
+    return district(+m[1]).plots.find(p => p.id === id) || null;
+  }
+  // every place with a keeper you can talk to: the old town, the train station, and each district's landmarks
+  const placesOf = (town) => [...BUILDINGS, STATION, ...districtsOf(town).flatMap(d => [d.station, ...d.landmarks])];
+  const hasPlace = (town, type) => districtsOf(town).some(d => d.landmarks.some(l => l.type === type));
+  const stopsOf = (town) => [{ id: 'stop0', name: 'Small Town', x: PROJECT_SPOTS.busTown.x, y: PROJECT_SPOTS.busTown.y }, ...districtsOf(town).map(d => ({ id: 'stop' + d.k, name: d.name, x: d.stop.x, y: d.stop.y }))];
+  const stationsOf = (town) => [{ id: 'station0', name: 'Small Town', x: STATION.x, y: STATION.y }, ...districtsOf(town).map(d => ({ id: d.station.id, name: d.name, x: d.station.x, y: d.station.y }))];
+  const worldRight = (town) => DX0 + ((town && town.districts) || 0) * DW;
+  function grow(town, n, now) {
+    town.growth = (town.growth || 0) + n;
+    while (town.growth >= growthNeed((town.districts || 0) + 1)) {
+      town.districts = (town.districts || 0) + 1;
+      const d = district(town.districts);
+      news(town, `🏙️ Small Town grew! ${d.name} opened: ${d.landmarks.map(l => l.icon + ' ' + l.name).join(', ')}.`);
+      town.justGrew = { k: town.districts, at: now };
+    }
+  }
   // 6 soil spots on a farm, 2 rows of 3
   const soilSpot = (p, i) => ({ x: p.x + 40 + (i % 3) * 60, y: p.y + 60 + Math.floor(i / 3) * 62 });
 
@@ -51,14 +134,20 @@
     corn: { name: 'Corn', icon: '🌽', base: 14, seed: 5, grow: 3.5 * MIN },
     tree: { name: 'Tree', icon: '🌳', base: 0, seed: 4, grow: 5 * MIN, sapling: true },
     log: { name: 'Log', icon: '🪵', base: 6 },
+    fish: { name: 'Fish', icon: '🐟', base: 9 },
+    shell: { name: 'Shell', icon: '🐚', base: 6 },
+    gem: { name: 'Crystal', icon: '💎', base: 16 },
+    berry: { name: 'Berries', icon: '🫐', base: 5 },
   };
   const CROPS = ['wheat', 'carrot', 'tomato', 'corn'];
-  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log'];
+  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log', 'fish', 'shell', 'gem', 'berry'];
   const NORM = 20;   // how much of each good the market usually has
   const FARM_REGROW = 40 * 1000, TREE_REGROW = 5 * MIN;
   const TAX = { farm: 2, lot: 3 };          // property tax per day
   const RENT = 5;                            // apartment rent per day
-  const BUILD = { house: { name: 'House', icon: '🏠', logs: 12, coins: 60 }, shop: { name: 'Shop', icon: '🏪', logs: 18, coins: 110 } };
+  const BUILD = { house: { name: 'House', icon: '🏠', logs: 12, coins: 60 }, shop: { name: 'Shop', icon: '🏪', logs: 18, coins: 110 },
+    villa: { name: 'Villa', icon: '🏡', logs: 30, coins: 400 }, company: { name: 'Company', icon: '🏭', logs: 16, coins: 90 } };
+  const COMPANY_TYPES = ['bakery', 'restaurant', 'builders', 'toys'];
 
   const PROJECTS = [
     { id: 'fountain', name: 'Plaza Fountain', icon: '⛲', cost: 60, desc: 'A place to meet friends. The town looks happier.' },
@@ -88,7 +177,7 @@
 
   /* ---------------- a new town ---------------- */
   function newTown(now) {
-    return { v: 1, created: now, at: now, treasury: 40, taxRate: 10, plots: {}, cut: {}, saplings: {}, farm: {},
+    return { v: 1, created: now, at: now, treasury: 40, growth: 0, districts: 0, taxRate: 10, plots: {}, cut: {}, saplings: {}, farm: {},
       stock: Object.fromEntries(SELLABLE.map(g => [g, NORM])), built: [], votes: {}, mayor: null, election: null,
       lastNpcTax: now, lastForester: now, news: [] };
   }
@@ -114,7 +203,13 @@
 
   // Time passes: prices settle back, the town collects a little tax from its other citizens,
   // a forester plants trees, elections close and projects get built.
+  // Weather is the same for everyone: some afternoons it rains, and rain waters every thirsty crop.
+  const DAY = 6 * MIN;
+  function raining(now) { const d = Math.floor(now / DAY), f = (now % DAY) / DAY; return ((d * 2654435761) >>> 0) % 4 === 1 && f > 0.32 && f < 0.52; }
   function settle(town, now) {
+    if (raining(now)) Object.values(town.plots).forEach(p => (p.soil || []).forEach(c => { if (c && !c.w) c.w = now; }));
+    SELLABLE.forEach(g => { if (typeof town.stock[g] !== 'number') town.stock[g] = NORM; });
+    if (typeof town.growth !== 'number') { town.growth = 0; town.districts = 0; }
     const dt = Math.max(0, now - town.at);
     if (dt > 20 * 1000) {
       const steps = Math.min(60, Math.floor(dt / (30 * 1000)));
@@ -122,7 +217,7 @@
       town.at = now;
     }
     const npcTaxes = Math.floor((now - town.lastNpcTax) / (2 * MIN));
-    if (npcTaxes > 0) { town.treasury += Math.min(30, npcTaxes * 2); town.lastNpcTax += npcTaxes * 2 * MIN; }
+    if (npcTaxes > 0) { town.treasury += Math.min(30, npcTaxes * 2); grow(town, Math.min(30, npcTaxes * 2), now); town.lastNpcTax += npcTaxes * 2 * MIN; }
     if (now - town.lastForester > 4 * MIN) {
       town.lastForester = now;
       const stump = FOREST.find(t => treeState(town, t.id, now) === 'stump');
@@ -150,6 +245,7 @@
       town.treasury -= pick.cost; town.built.push(pick.id); town.votes = {};
       if (/^forest/.test(pick.id)) FOREST.filter(t => treeState(town, t.id, now) === 'stump').slice(0, 6).forEach(t => { town.saplings[t.id] = now; });
       news(town, `${pick.icon} The town built: ${pick.name}! Paid with everyone's taxes.`);
+      grow(town, 15, now);
       town.justBuilt = { id: pick.id, at: now };
     }
   }
@@ -160,7 +256,8 @@
     settle(town, now);
     const fail = (msg) => ({ ok: false, msg });
     const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-    const plot = a.id && own(PLOT_BY_ID, a.id) ? PLOT_BY_ID[a.id] : null, st = plot && own(town.plots, a.id) ? town.plots[a.id] : null;
+    const dm = /^D(\d+)/.exec(a.id || ''), plot = a.id && (!dm || +dm[1] <= (town.districts || 0)) ? plotById(a.id) : null;   // land in districts that exist
+    const st = plot && own(town.plots, a.id) ? town.plots[a.id] : null;
     if (a.i !== undefined && !(Number.isInteger(a.i) && a.i >= 0 && a.i < 10)) return fail('?');
     const mine = st && st.owner === who.uid;
     switch (a.type) {
@@ -169,6 +266,7 @@
         if (st && st.owner) return fail(`${st.name} already owns this land.`);
         town.plots[a.id] = { owner: who.uid, name: who.name, build: null, soil: plot.kind === 'farm' ? [null, null, null, null, null, null] : [] };
         news(town, `🏡 ${who.name} bought ${plot.kind === 'farm' ? 'a farm' : 'a lot'} (${a.id}).`);
+        grow(town, 5, now);
         return { ok: true, cost: plot.price };
       }
       case 'build': {
@@ -176,6 +274,8 @@
         if (plot.kind !== 'lot' || st.build) return fail('You cannot build here.');
         if (!BUILD[a.kind]) return fail('Build what?');
         st.build = a.kind; st.buildAt = now;
+        if (a.kind === 'company') st.co = COMPANY_TYPES.includes(a.k) ? a.k : 'bakery';
+        grow(town, 10, now);
         news(town, `${BUILD[a.kind].icon} ${who.name} built a ${BUILD[a.kind].name.toLowerCase()}!`);
         return { ok: true };
       }
@@ -227,7 +327,11 @@
       }
       case 'tax': {
         const n = Math.max(0, Math.min(500, Math.round(a.n || 0)));
-        town.treasury += n; return { ok: true };
+        town.treasury += n; grow(town, n, now); return { ok: true };
+      }
+      case 'fare': {   // a bus or train ticket: fares help pay for public transport
+        const n = Math.max(1, Math.min(20, Math.round(a.n || 1)));
+        town.treasury += n; grow(town, n, now); return { ok: true };
       }
       case 'vote': {
         if (!projectChoices(town).some(p => p.id === a.project)) return fail('That project is not on the list.');
@@ -257,6 +361,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
+    RAIL_Y, STATION, DX0, DW, DAY, raining, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);

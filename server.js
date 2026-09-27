@@ -181,7 +181,7 @@ const UIDRE = /^[a-z0-9]{8,24}$/;
 function cleanAction(a) {
   if (!a || typeof a !== 'object' || typeof a.type !== 'string') return null;
   const out = { type: a.type.slice(0, 12) };
-  if (typeof a.id === 'string' && /^[FL]\d{1,2}$/.test(a.id)) out.id = a.id;
+  if (typeof a.id === 'string' && /^(D\d{1,3})?[FL]\d{1,2}$/.test(a.id)) out.id = a.id;
   if (Number.isInteger(a.i) && a.i >= 0 && a.i < 10) out.i = a.i;
   ['k', 'g', 'kind', 'tree', 'project'].forEach(k => { if (typeof a[k] === 'string' && /^[a-z0-9]{1,16}$/.test(a[k])) out[k] = a[k]; });
   if (typeof a.cand === 'string' && UIDRE.test(a.cand)) out.cand = a.cand;

@@ -24,6 +24,7 @@
   <canvas id="world" aria-label="Small Town in 3D"></canvas>
   <div class="tilt top"></div><div class="tilt bot"></div><div class="vignette"></div>
   <div id="tags" aria-hidden="true"></div>
+  <div id="guide" hidden aria-hidden="true"><span class="guide-arrow">➤</span><span class="guide-icon"></span></div>
 
   <!-- HUD -->
   <div id="hud" hidden>
@@ -37,6 +38,7 @@
       <button class="pill room" id="roomPill" type="button" hidden><span class="room-dot"></span><span id="roomText">ABCD</span></button>
     </div>
     <div class="hud-right">
+ <button class="icon-btn" id="rideBtn" type="button" aria-label="Get on or off your vehicle" hidden>🚲</button>
       <button class="icon-btn" id="lifeBtn" type="button" aria-label="My life: money, bag, school, dream">🎒<span class="badge" id="bagText">0</span></button>
       <button class="icon-btn" id="mapBtn" type="button" aria-label="Town map">🗺️</button>
       <button class="icon-btn" id="menuBtn" type="button" aria-label="More">⋯</button>
@@ -46,6 +48,7 @@
         <button type="button" id="helpBtn">❓ How it works</button>
         <button type="button" id="awayBtn">🍽️ Going to eat (pause)</button>
         <button type="button" id="grownBtn">🔒 Grown-up settings</button>
+        <button type="button" id="musicBtn"><span id="musicIcon">🎵</span> Music</button>
         <button type="button" id="soundBtn"><span id="soundIcon">🔊</span> Sound</button>
         <a class="menu-link" href="classic.html">🍜 Classic Noodle Universe</a>
       </div>
@@ -103,6 +106,7 @@
   <div id="boot">Building Small Town…</div>
 </div>
 <script src="js/audio.js"></script>
+<script src="js/music.js"></script>
 <script src="js/data.js"></script>
 <script src="js/art.js"></script>
 <script src="js/learn.js"></script>
