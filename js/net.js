@@ -42,7 +42,8 @@ const Net = (() => {
       s.onclose = () => {
         const wasIn = !!code;
         ws = null; code = null; others.clear();
-        pending.forEach(fn => fn({ ok: false, msg: 'Lost the connection.' })); pending.clear();
+        pending.forEach(fn => fn({ ok: false, lost: true, msg: 'Lost the connection.' })); pending.clear();
+        late.forEach(x => emit('lost', x)); late.clear();
         if (wasIn) emit('disconnected', { replaced });
         replaced = false;
       };
@@ -57,6 +58,7 @@ const Net = (() => {
 
   function onMessage(ev) {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (!code && (m.t === 'town' || m.t === 'states' || m.t === 'player')) return;   // left the room: its news is no longer ours
     switch (m.t) {
       case 'joined':
         me = m.you; code = m.code; mode = m.mode; others.clear();
@@ -85,7 +87,7 @@ const Net = (() => {
       case 'replaced': replaced = true; break;
       case 'tres': {
         const fn = pending.get(m.rid); if (fn) { pending.delete(m.rid); fn(m.res); break; }
-        const a = late.get(m.rid); if (a) { late.delete(m.rid); if (m.res && m.res.ok) emit('late', { a, res: m.res }); }
+        const x = late.get(m.rid); if (x) { late.delete(m.rid); if (m.res && m.res.ok) emit('late', { ...x, res: m.res }); }
         break;
       }
       default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
@@ -115,7 +117,8 @@ const Net = (() => {
       return new Promise((resolve) => {
         pending.set(id, resolve);
         send({ t: 'tact', rid: id, a });
-        setTimeout(() => { if (pending.has(id)) { pending.delete(id); late.set(id, a); if (late.size > 30) late.delete(late.keys().next().value); resolve({ ok: false, slow: true, msg: 'The town is slow to answer. If it goes through, you will still get it.' }); } }, 10000);
+        const key = 'room:' + code;   // the room this was sent to, even if you leave before the answer comes
+        setTimeout(() => { if (pending.has(id)) { pending.delete(id); late.set(id, { a, key }); if (late.size > 30) { const old = late.keys().next().value; emit('lost', late.get(old)); late.delete(old); } resolve({ ok: false, slow: true, msg: 'The town is slow to answer. If it goes through, you will still get it.' }); } }, 10000);
       });
     },
     crunch(id, n = 0, v = '') { if (code) send({ t: 'crunch', b: id, n, v }); },

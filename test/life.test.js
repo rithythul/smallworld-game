@@ -132,4 +132,40 @@ test('market prices come back when nobody sells, even with frequent checks', () 
   assert(t.stock.corn < 25, 'corn stock drifted back toward normal: ' + t.stock.corn.toFixed(1));
 });
 
+test('repair keeps a new kid on the first steps; only old saves skip them', () => {
+  const l = Life.fresh(1); l.day = 5; Life.doRitual(l, 'swim', at(5, 7)); Life.checkStarter(l);
+  assert.strictEqual(l.starter, 1); assert(l.stats.earned > 0);
+  const r = Life.repair(JSON.parse(JSON.stringify(l))); assert.strictEqual(r.starter, 1);
+  const lv = Life.repair(JSON.parse(JSON.stringify({ ...l, xp: 30, levelClaimed: 2 }))); assert.strictEqual(lv.levelClaimed, 2, 'unclaimed levels stay to be claimed');
+});
+
+test('changing age in the middle of a shift pays the tasks done so far, once', () => {
+  const town = Town.newTown(0), l = Life.fresh(1); l.day = 1;
+  Life.startShift(l, 'farmhand', [], town); Life.workDone(l, 10); Life.workDone(l, 10);
+  const c = l.coins; Life.setBand(l, 2); assert.strictEqual(l.shift, null); assert.strictEqual(l.coins, c, 'band 1 tasks were already paid');
+  const k = Life.fresh(2); k.day = 1; Life.startShift(k, 'farmhand', [], town); Life.workDone(k, 10); Life.workDone(k, 10);
+  const c2 = k.coins; Life.setBand(k, 1); assert.strictEqual(k.coins - c2, 8, 'band 2: paid for 2 of 3 tasks');
+});
+
+test('a clock going backwards never gives another morning', () => {
+  const town = Town.newTown(0), l = Life.fresh(3); l.day = 1000; l.rentFree = 0; l.coins = 50;
+  assert.strictEqual(Life.newDay(l, town, 'u', 996), null); assert.strictEqual(Life.newDay(l, town, 'u', 999), null);
+  assert.strictEqual(l.coins, 50);
+});
+
+test('challenges are the same for every age on the same day, and never need more shifts than allowed', () => {
+  for (let day = 1; day < 300; day++) {
+    const ids = [1, 2, 3].map(b => { const l = Life.fresh(b); l.day = day; l.xp = 5000; return Life.ensureDaily(l, day, { plots: [] }); });
+    assert.deepStrictEqual(ids[0].list.map(c => c.id), ids[2].list.map(c => c.id));
+    ids.forEach((d, i) => d.list.forEach(c => { if (c.id === 'shift') assert(c.goal <= Life.RULES[i + 1].shifts); }));
+  }
+});
+
+test('bills by age: band 1 pays no land tax or fuel, band 2 half', () => {
+  const b1 = Life.fresh(1), b2 = Life.fresh(2), b3 = Life.fresh(3);
+  assert.strictEqual(Life.landTaxOf(b1, 'lot'), 0); assert.strictEqual(Life.landTaxOf(b2, 'lot'), 2); assert.strictEqual(Life.landTaxOf(b3, 'lot'), 3);
+  assert.strictEqual(Life.upkeepOf(b1, 'car'), 0); assert.strictEqual(Life.upkeepOf(b2, 'car'), 1); assert.strictEqual(Life.upkeepOf(b3, 'car'), 3);
+  assert.strictEqual(Life.effRate(b2, 15), 7.5);
+});
+
 console.log(`${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

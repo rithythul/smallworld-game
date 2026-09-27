@@ -2111,7 +2111,7 @@ function syncOthers(dt, t) {
     const k = 1 - Math.exp(-dt * 9);
     r.x += (tx - r.x) * k; r.z += (tz - r.z) * k;
     r.vx = (r.x - px) / Math.max(dt, 1e-3); r.vz = (r.z - pz) / Math.max(dt, 1e-3);
-    r.sf.ground = groundAt(r.x, r.z) + hillH(r.x, r.z);
+    r.sf.ground = o.sw ? -1.6 + Math.sin(t * 3) * 0.25 : groundAt(r.x, r.z) + hillH(r.x, r.z);   // friends swimming sit in the water, like you
     r.sf.speed = o.mv ? Math.min(20, Math.hypot(r.x - px, r.z - pz) / Math.max(dt, 1e-3)) : 0;
     r.sf.targetFace = (o.f || 0) * Math.PI;
     r.sf.y = Math.max(0, (o.tz || 0) / 10);

@@ -26,23 +26,28 @@
       saveRate: 5, saveMin: 5, saveCap: 10, payEach: true, shifts: 6, rested: 0, fairPrice: true, fishMiss: 0, coLossZero: true, maxPlots: 2, plantThanks: 2,
       quiz: { n: 2, opts: 2, pass: 1, retry: true }, mathLv: [1, 2],
       win: { swim: [6, 10], sip: [16, 20], sleep: [19, 23] }, rit: { swim: 3, sip: 2, sleep: 3 }, poolCoins: 5, dreamCoins: 5,
-      daily: 5, perfect: 15, streakResets: false, caps: { trail: 15, dream: 5, fair: 30, volunteer: 10, rain: 12 }, pickCap: 10, lvGift: [5, 50], endless: 60 },
+      daily: 5, perfect: 15, streakResets: false, caps: { trail: 15, dream: 5, fair: 30, volunteer: 10, rain: 12, arcade: 15, goal: 15 }, pickCap: 10, lvGift: [5, 50], endless: 60 },
     2: { start: 30, taxShare: 0.5, rent: 3, rentFree: 3, landTax: { farm: 1, lot: 2 }, upkeepShare: 0.5, loans: 'manual', loanRate: 3, loanMax: 80, shortfall: 'iou',
       saveRate: 3, saveMin: 10, saveCap: 0, payEach: false, shifts: 4, rested: 0.1, fairPrice: false, fishMiss: 0.15, coLossZero: false, maxPlots: 0, plantThanks: 1,
       quiz: { n: 3, opts: 3, pass: 2, retry: false }, mathLv: [4, 5],
       win: { swim: [6, 9], sip: [17, 20], sleep: [20, 23] }, rit: { swim: 2, sip: 1, sleep: 2 }, poolCoins: 5, dreamCoins: 3,
-      daily: 4, perfect: 12, streakResets: true, caps: { trail: 8, dream: 3, fair: 0, volunteer: 0, rain: 12 }, pickCap: 6, lvGift: [3, 30], endless: 120 },
+      daily: 4, perfect: 12, streakResets: true, caps: { trail: 8, dream: 3, fair: 0, volunteer: 0, rain: 12, arcade: 15, goal: 15 }, pickCap: 6, lvGift: [3, 30], endless: 120 },
     3: { start: 20, taxShare: 1, rent: 5, rentFree: 3, landTax: 'full', upkeepShare: 1, loans: 'full', loanRate: 5, loanMax: 400, shortfall: 'loan',
       saveRate: 2, saveMin: 0, saveCap: 0, payEach: false, shifts: 3, rested: 0.1, fairPrice: false, fishMiss: 0.25, coLossZero: false, maxPlots: 0, plantThanks: 1,
       quiz: { n: 3, opts: 4, pass: 2, retry: false }, mathLv: [6, 7],
       win: { swim: [6, 8], sip: [17, 19], sleep: [21, 23] }, rit: { swim: 1, sip: 1, sleep: 1 }, poolCoins: 3, dreamCoins: 0,
-      daily: 3, perfect: 10, streakResets: true, caps: { trail: 0, dream: 0, fair: 0, volunteer: 0, rain: 12 }, pickCap: 4, lvGift: [2, 20], endless: 180 },
+      daily: 3, perfect: 10, streakResets: true, caps: { trail: 0, dream: 0, fair: 0, volunteer: 0, rain: 12, arcade: 15, goal: 15 }, pickCap: 4, lvGift: [2, 20], endless: 180 },
   };
   const rules = (l) => RULES[l && l.band] || RULES[2];
   // income tax: band 1 pays none, band 2 half, band 3 all (always rounded down)
   const taxOf = (life, gross, rate) => Math.floor(gross * (rate || 0) * rules(life).taxShare / 100);
   // what the town would have got: for younger kids "the Mayor pays your tax", so the town still grows as fast
   const grantOf = (life, gross, rate) => rules(life).taxShare < 1 ? Math.max(0, Math.round(gross * (rate || 0) / 100) - taxOf(life, gross, rate)) : 0;
+  const rentOf = (life) => rules(life).rent;
+  const landTaxOf = (life, kind) => { const t = rules(life).landTax; return t === 'full' ? (Town ? Town.TAX[kind] : 0) : t ? t[kind] || 0 : 0; };
+  const upkeepOf = (life, v) => Math.floor((VEHICLES[v] ? VEHICLES[v].upkeep : 0) * rules(life).upkeepShare);
+  // the tax rate you really pay, e.g. 7.5 for a kid at half of 15%
+  const effRate = (life, rate) => Math.round((rate || 0) * rules(life).taxShare * 10) / 10;
   const seeded = (seed) => { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
 
   /* ---------------- school ---------------- */
@@ -118,9 +123,10 @@
     life.coins += net;
     note(life, 'pocket', gross, J.icon, `Wage: ${J.name} shift`, 'You finished all the tasks. This is your pay.');
     if (rested) note(life, 'pocket', rested, '😴', 'Well rested +10%', 'You slept in your bed last night, so you worked better today.');
-    note(life, 'pocket', -tax, '🏛️', `Income tax ${Math.round(rate * R.taxShare)}%`, `${R.taxShare < 1 ? 'Kids pay half the tax. ' : ''}${Math.round(rate * R.taxShare)}% of ${gross} is ${tax} (rounded down). It goes to the town and pays for the school, roads, parks and the bus.`, { link: 'wage' });
+    const eff = effRate(life, rate);
+    note(life, 'pocket', -tax, '🏛️', `Income tax ${eff}%`, `${R.taxShare < 1 ? 'Kids pay half the tax. ' : ''}${eff}% of ${gross} is ${Math.round(gross * eff) / 100}, rounded down to ${tax}. It goes to the town and pays for the school, roads, parks and the bus.`, { link: 'wage' });
     life.stats.wages += net; life.stats.earned += net; life.today.earned += net; life.today.tax += tax;
-    return finishShift(life, s, { gross, tax, net, rate: Math.round(rate * R.taxShare), townRate: rate, grant: grantOf(life, gross, rate), rested });
+    return finishShift(life, s, { gross, tax, net, rate: eff, townRate: rate, grant: grantOf(life, gross, rate), rested });
   }
   function finishShift(life, s, pay) {
     life.shift = null; life.shiftsToday++;
@@ -141,7 +147,7 @@
     const rate = shiftRate(s, taxRate), gross = Math.floor(wageOf(life, s.job) * s.done / s.need), tax = taxOf(life, gross, rate), net = gross - tax;
     life.coins += net;
     note(life, 'pocket', gross, JOBS[s.job].icon, `Paid for ${s.done} of ${s.need} tasks: ${JOBS[s.job].name}`, `You stopped early, so you are paid for the tasks you finished (${s.done} of ${s.need}).`);
-    note(life, 'pocket', -tax, '🏛️', `Income tax ${Math.round(rate * rules(life).taxShare)}%`, `${tax} of ${gross} (rounded down).`);
+    note(life, 'pocket', -tax, '🏛️', `Income tax ${effRate(life, rate)}%`, `${effRate(life, rate)}% of ${gross} is ${Math.round(gross * effRate(life, rate)) / 100}, rounded down to ${tax}.`);
     life.stats.wages += net; life.stats.earned += net; life.stats.taxPaid += tax; life.today.earned += net; life.today.tax += tax;
     return { done: s.done, need: s.need, job: s.job, gross, tax, net, rate, grant: grantOf(life, gross, rate) };
   }
@@ -164,7 +170,7 @@
     n = Math.floor(n);
     if (!(n > 0)) return { ok: false, why: 'Pick an amount.' };
     if (what === 'deposit') { if (n > life.coins) return { ok: false, why: 'You do not have that many coins.' }; life.coins -= n; life.bank += n; life.stats.deposits += n;
-      note(life, 'pocket', -n, '🐷', 'Moved to your savings', 'Still yours! It is safe in the bank and grows 2% every morning.', { move: true }); note(life, 'bank', n, '🐷', 'Saved from your pocket', '', { move: true }); return { ok: true }; }
+      note(life, 'pocket', -n, '🐷', 'Moved to your savings', `Still yours! It is safe in the bank and grows ${rules(life).saveRate}% every morning.`, { move: true }); note(life, 'bank', n, '🐷', 'Saved from your pocket', '', { move: true }); return { ok: true }; }
     if (what === 'withdraw') { if (n > life.bank) return { ok: false, why: 'Your savings are smaller than that.' }; life.bank -= n; life.coins += n;
       note(life, 'bank', -n, '👛', 'Taken out to your pocket', '', { move: true }); note(life, 'pocket', n, '🐷', 'Taken out of your savings', '', { move: true }); return { ok: true }; }
     if (what === 'borrow') { if (!rules(life).loans) return { ok: false, why: 'The bank lends to kids who are 9 or older.' };
@@ -235,7 +241,8 @@
     const v = VEHICLES[id]; if (!v || !life.vehicles[id]) return { ok: false, why: '?' };
     const back = Math.floor(v.price / 2);
     delete life.vehicles[id]; life.coins += back;
-    note(life, 'pocket', back, v.icon, `Sold your ${v.name.toLowerCase()}`, `Used things sell for half the price. No more daily costs for it${v.upkeep ? ` (it cost ${v.upkeep} every morning)` : ''}.`);
+    const u = upkeepOf(life, id);
+    note(life, 'pocket', back, v.icon, `Sold your ${v.name.toLowerCase()}`, `Used things sell for half the price.${u ? ` No more daily costs for it (it cost ${u} every morning).` : ''}`);
     return { ok: true, back };
   }
 
@@ -342,7 +349,7 @@
   function newDay(life, town, uid, day) {
     if (life.day === day) return null;
     // time only goes forward: a phone clock a little different from the server's must not charge a morning twice
-    if (life.day !== null && day < life.day && life.day - day < 3) return null;
+    if (life.day !== null && day < life.day && life.day - day < 240) return null;
     const first = life.day === null, R = rules(life);
     const lines = [];
     const yesterday = { ...life.today };
@@ -361,7 +368,8 @@
     const sg = saveGrowth(life);
     if (sg.n || life.bank > 0) {
       life.bankFrac = sg.frac;
-      if (sg.n) { life.bank += sg.n; life.stats.interest += sg.n; life.stats.earned += sg.n; line('bank', '🐷', `Savings grew ${R.saveRate}% (interest)`, sg.n, `${R.saveRate}% of ${before.bank} is ${Math.round(before.bank * R.saveRate) / 100}${R.saveMin && sg.n === 1 ? ' (at least 1)' : ''}. The bank pays you for keeping coins there.`, { night: true }); }
+      const raw = Math.round(before.bank * R.saveRate) / 100;
+      if (sg.n) { life.bank += sg.n; life.stats.interest += sg.n; life.stats.earned += sg.n; line('bank', '🐷', `Savings grew ${R.saveRate}% (interest)`, sg.n, `${R.saveRate}% of ${before.bank} is ${raw}${R.saveMin && sg.n === 1 && raw < 1 ? ' (kids get at least 1)' : ''}${R.saveCap && sg.n === R.saveCap && raw > R.saveCap ? ` (kids get at most ${R.saveCap} a day)` : ''}. The bank pays you for keeping coins there.`, { night: true }); }
     }
     const shop = shopPlot(town, uid);
     if (shop && town) {
@@ -398,9 +406,8 @@
     }
     // teens with a big business (star level 5+) pay business tax on profit, like real companies
     if (life.band === 3 && starLevel(life.xp) >= 5 && profits >= 10) { const bt = Math.floor(profits / 10); taxes += bt; bill('🏛️', 'Business tax 10%', bt, `10% of your companies' profit (${profits}) goes to the town, like income tax does.`); }
-    const landTax = (kind) => R.landTax === 'full' ? Town.TAX[kind] : R.landTax ? R.landTax[kind] || 0 : 0;
-    plots.forEach(p => { const t = landTax(p.plot.kind); if (!t) return; taxes += t; bill('🏛️', `Land tax for your ${p.plot.kind === 'farm' ? 'farm' : 'land'} ${p.id}`, t, 'Everyone who owns land pays a little to the town each day. You can sell land back at 🔑 My things.'); });
-    Object.keys(life.vehicles).forEach(v => { const u = Math.floor(VEHICLES[v].upkeep * R.upkeepShare); if (u) { bills += u; bill(VEHICLES[v].icon, `${VEHICLES[v].name}: fuel & repairs`, u, 'Owning a vehicle costs money every day, even when you park it. You can sell it at 🔑 My things.'); } });
+    plots.forEach(p => { const t = landTaxOf(life, p.plot.kind); if (!t) return; taxes += t; bill('🏛️', `Land tax for your ${p.plot.kind === 'farm' ? 'farm' : 'land'} ${p.id}`, t, 'Everyone who owns land pays a little to the town each day. You can sell land back at 🔑 My things.'); });
+    Object.keys(life.vehicles).forEach(v => { const u = upkeepOf(life, v); if (u) { bills += u; bill(VEHICLES[v].icon, `${VEHICLES[v].name}: fuel & repairs`, u, 'Owning a vehicle costs money every day, even when you park it. You can sell it at 🔑 My things.'); } });
     const due = bills + taxes;
     // not enough in your pocket? Your savings pay first. Then: band 2 owes it (no interest), band 3 borrows it.
     let fromSavings = 0, borrowed = 0, owed = 0;
@@ -441,12 +448,16 @@
   // only a grown-up changes the age group. Moving down forgives debts, moving up gives a few rent-free days.
   function setBand(life, b) {
     b = clamp(b | 0, 1, 3); const from = life.band; if (b === from) return false;
+    if (life.shift) quitShift(life, life.shift.rate);   // pay the tasks done so far under the old rules
     life.band = b;
     if (b === 1) {
       if (life.loan) { note(life, 'loan', -life.loan, '🎁', "Kids' rules: the bank forgave your loan"); life.loan = 0; }
       if (life.iou) { note(life, 'loan', -life.iou, '🎁', "Kids' rules: what you owed is forgiven"); life.iou = 0; }
     }
-    if (b === 2 && life.loan) { life.iou += life.loan; note(life, 'loan', 0, '🧾', 'Your loan became an IOU with no interest'); life.loan = 0; }
+    if (b === 2 && life.loan) {
+      const n = life.loan; life.loan = 0; life.iou += n; life.loanFrac = 0;
+      note(life, 'loan', -n, '🧾', 'Your loan is now an IOU'); note(life, 'loan', n, '🧾', 'IOU (no interest)', 'Kids of 9 to 12 owe without interest. It is paid back from your pocket each morning.');
+    }
     if (b > from) life.rentFree = Math.max(life.rentFree, 3);
     return true;
   }
@@ -455,7 +466,7 @@
   // The pool and the tap work all day; only the star and coins have a time window (wider for younger kids).
   const RITUALS = { swim: { icon: '🌅', name: 'Morning swim', at: 'pool' }, sip: { icon: '🌇', name: 'Sunset sip', at: 'tap' }, sleep: { icon: '🛏️', name: 'Bedtime', at: 'home' } };
   function ritualState(life, id, now) {
-    const day = dayOf(now);
+    const day = Math.max(dayOf(now), life.day || 0);
     if (life.rit[id] === day) return 'done';
     if (id === 'swim' && !life.stats.swims) return 'open';   // a brand-new kid's first swim counts at any hour
     const h = hourOf(now), [a, b] = rules(life).win[id];
@@ -464,7 +475,7 @@
   const ritualNext = (life, now) => Object.keys(RITUALS).find(id => ritualState(life, id, now) === 'open') || null;
   function doRitual(life, id, now) {
     if (ritualState(life, id, now) !== 'open') return null;
-    const day = dayOf(now), R = rules(life), T = RITUALS[id];
+    const day = Math.max(dayOf(now), life.day || 0), R = rules(life), T = RITUALS[id];
     life.rit[id] = day; life.stats[id + 's'] = (life.stats[id + 's'] || 0) + 1;
     earn(life, R.rit[id], null, T.icon, T.name, ({ swim: 'A swim at sunrise wakes up your body.', sip: 'A drink of water at sunset: your body is mostly water!', sleep: 'Sleep helps you grow and remember.' })[id]);
     addStars(life, 1);
@@ -516,17 +527,15 @@
     { id: 'kick', icon: '⚽', text: 'Kick the ball', goal: [3, 5, 8], at: 'ball' },
     { id: 'class', icon: '🎓', text: 'Take a class', goal: [1, 1, 1], at: 'school' },
     { id: 'fish', icon: '🎣', text: 'Catch a fish', goal: [1, 2, 3], at: 'spot:fish' },
-    { id: 'water', icon: '💧', text: 'Water your crops', goal: [2, 4, 6], at: 'myfarm', need: (l, c) => c.plots.some(p => p.plot.kind === 'farm') },
-    { id: 'vote', icon: '🗳️', text: 'Vote at the Town Hall', goal: [0, 1, 1], at: 'hall', need: (l) => l.band >= 2 },
-    { id: 'repay', icon: '💸', text: 'Pay back 10 of your loan', goal: [0, 0, 10], at: 'bank', need: (l) => l.band >= 3 && l.loan > 0 },
   ];
+  // these can grow with your star level; the others are limited by the day (shifts, stumps, fish, classes)
+  const DAILY_GROWS = ['pick', 'hello', 'hop', 'kick', 'sell', 'save'];
   const DAILY_BY_ID = Object.fromEntries(DAILY_POOL.map(d => [d.id, d]));
   function ensureDaily(life, day, ctx) {
     if (life.daily && life.daily.day === day) return life.daily;
     const r = seeded(day * 7919 + 13), order = DAILY_POOL.map(d => ({ d, k: r() })).sort((a, b) => a.k - b.k).map(x => x.d);
     const lv = starLevel(life.xp), b = clamp(life.band | 0, 1, 3) - 1;
-    const list = order.filter(d => d.goal[b] > 0 && (!d.need || d.need(life, ctx || { plots: [] }))).slice(0, 3)
-      .map(d => ({ id: d.id, goal: d.goal[b] + Math.floor((lv - 1) / 10), n: 0, done: false }));
+    const list = order.slice(0, 3).map(d => ({ id: d.id, goal: d.goal[b] + (DAILY_GROWS.includes(d.id) ? Math.floor((lv - 1) / 10) : 0), n: 0, done: false }));
     life.daily = { day, list, perfect: false, shown: false };
     return life.daily;
   }
@@ -727,7 +736,7 @@
     const steps = stepsOf(life, d), E = rules(life).endless;
     if (life.dreamStep < steps.length) { const st = steps[life.dreamStep]; return { text: st[0], at: st[2], icon: st[3], i: life.dreamStep, of: steps.length }; }
     const got = life.stats.earned - life.dreamMark;
-    return { text: `Level ${life.dreamLv + 1}: earn ${Math.min(E, got)} of ${E}🪙`, icon: '⭐', at: 'townfarm', i: life.dreamStep, of: null, endless: true };
+    return { text: `Level ${life.dreamLv + 1}: earn ${Math.min(E, got)} of ${E}🪙`, icon: '⭐', at: 'jobs', i: life.dreamStep, of: null, endless: true };
   }
   // ctx = { plots } (your land in this town). Returns the steps finished just now. Each step is ⭐+2.
   function checkDream(life, ctx) {
@@ -776,8 +785,12 @@
     ['rit', 'hats', 'wonders', 'land', 'townSeen'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
     out.iou = Math.max(0, Math.round(+out.iou || 0));
     // old saves: no burst of level gifts, and no starter steps if they already play
-    out.levelClaimed = Math.max(l.levelClaimed || 1, starLevel(out.xp));
-    out.starter = (l.dream || (l.stats && l.stats.earned > 0)) ? Math.max(l.starter || 0, STARTER.length) : (l.starter || 0);
+    out.levelClaimed = typeof l.levelClaimed === 'number' ? l.levelClaimed : starLevel(out.xp);
+    const oldSave = typeof l.starter !== 'number';
+    out.starter = oldSave ? ((l.dream || (l.stats && l.stats.earned > 0)) ? STARTER.length : 0) : l.starter;
+    // an old little-kid save: move the dream onto the new little path (finished stays finished)
+    const D = DREAMS[out.dream];
+    if (oldSave && out.band === 1 && D && D.little) out.dreamStep = (l.dreamStep || 0) >= D.steps.length ? D.little.length : 0;
     out.channel = { ...f.channel, ...(l.channel || {}) };
     if (!Array.isArray(out.companies)) out.companies = [];
     if (!Array.isArray(out.log)) { out.log = []; out.logSeq = 0; }
@@ -787,7 +800,7 @@
   }
 
   const Life = { DAY, MIN, SUBJECTS, CERT_AT, JOBS, DESK_JOBS, DREAMS, FEATURED, FEATURED_BY_BAND, SHIFTS_PER_DAY, SAVE_RATE, LOAN_RATE, RENT, ENDLESS,
-    RULES, rules, taxOf, grantOf, seeded, stepsOf, kidBonus, dreamStar, previewBills, setBand, RITUALS, ritualState, ritualNext, doRitual,
+    RULES, rules, taxOf, grantOf, effRate, rentOf, landTaxOf, upkeepOf, seeded, stepsOf, kidBonus, dreamStar, previewBills, setBand, RITUALS, ritualState, ritualNext, doRitual,
     starLevel, starsFor, addStars, LEVEL_HATS, levelReward, claimLevels, STARTER, checkStarter, DAILY_POOL, DAILY_BY_ID, ensureDaily, dailyAdd, freshToday,
     VEHICLES, FARES, COMPANIES, MEMORIES, TRIPS, LATE_PLACES, note, company, companyDay, staffMax, upgradeCost, onlineCap, closeValue, sellVehicle, interestTomorrow, taxOn, makeVideo, remember, memCount,
     dayOf, dayFrac, hourOf, clock, hasCert, certCount, canTake, wageOf, startShift, workDone, quitShift, bank, loanLimit,

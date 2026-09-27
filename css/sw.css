@@ -330,3 +330,4 @@ button.sure { background: #ffe08a !important; }
 .b1 .keeper p, .b1 .receipt small, .b1 .led small, .b1 .budget small { display: none; }
 @media (max-width: 420px) { #starPill small { display: none; } #ritualStrip i { font-size: 15px; } }
 .budget b.move { color: var(--ink-soft); }
+#ages.nudge { animation: wiggle .4s ease 2; }

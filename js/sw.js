@@ -97,17 +97,22 @@
 
   const townKey = () => online() ? 'room:' + Net.code : 'solo';
   // land you bought in a friends' town is written down, so if the server ever resets that town you get your coins back
-  function landBook(id, info) {
-    if (!online()) return;
-    const k = townKey(), book = life.land[k] = life.land[k] || {};
+  function landBook(id, info, key = townKey()) {
+    if (!key.startsWith('room:')) return;
+    const book = life.land[key] = life.land[key] || {};
     if (info === null) delete book[id]; else book[id] = { ...(book[id] || {}), ...info };
   }
   function checkLandBook() {
     const book = life.land[townKey()]; if (!book || !town) return;
     Object.entries(book).forEach(([id, r]) => {
       const st = town.plots[id]; if (st && st.owner === me.uid) return;
-      const back = (r.cost || 0) + (r.buildCoins || 0);
-      if (back) Life.earn(life, back, null, '🔁', `Refund: land ${id} is gone`, 'The server started this friends\' town over, so your land and what you built on it are gone. Here are your coins back.');
+      if (r.selling) {   // you were selling it when the connection dropped: the sale went through
+        const half = Math.floor((r.cost || 0) / 2) + Math.floor((r.buildCoins || 0) / 2);
+        if (half) Life.earn(life, half, null, '🏡', `Sold land ${id} back to the town`, 'The connection dropped while you were selling, but the sale went through: half of what it cost.');
+      } else {
+        const back = (r.cost || 0) + (r.buildCoins || 0);
+        if (back) Life.earn(life, back, null, '🔁', `Refund: land ${id} is gone`, 'The server started this friends\' town over, so your land and what you built on it are gone. Here are your coins back.');
+      }
       if ((r.build === 'house' || r.build === 'villa') && life.home === townKey()) life.home = null;
       delete book[id];
     });
@@ -145,9 +150,9 @@
   const busy = () => !playing || sleeping || !$('sheet').hidden || !$('title').hidden || Care.locked || World.riding || (Talk.open && document.activeElement && document.activeElement.id === 'chatInput');
   const queue = [];
   // things to show once nothing covers the screen. first = true puts it at the front (money explanations go first).
-  function later(fn, first) { if ($('sheet').hidden && playing && !World.riding) fn(); else if (first) queue.unshift(fn); else queue.push(fn); }
+  function later(fn, first) { if ($('sheet').hidden && playing && !sleeping && !World.riding) fn(); else if (first) queue.unshift(fn); else queue.push(fn); }
   // keep going until something opens a sheet (toasts do not stop the line)
-  function flushQueue() { while ($('sheet').hidden && queue.length && !World.riding) queue.shift()(); releaseChips(); }
+  function flushQueue() { while ($('sheet').hidden && queue.length && !sleeping && !World.riding) queue.shift()(); releaseChips(); }
   function button(text, onClick, cls = 'choice', disabled = false) {
     const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.innerHTML = text; b.disabled = disabled;
     b.addEventListener('click', () => { Sound.blip(); onClick(b); });
@@ -359,7 +364,7 @@
     if (at === 'home') return { ...homeDoor(), h: 12 };
     if (at === 'ball') return { ...(World.ballAt ? World.ballAt() : Town.BALL), h: 5 };
     if (at === 'npc') { const k = nearest(World.keepers.filter(q => !life.today.hello[q.id]), p); return k ? { x: k.x, y: k.y, h: 13 } : null; }
-    if (at === 'stop') { if (World.busOn) { const s = nearest(Town.stopsOf(town), p); return { x: s.x, y: s.y, h: 10 }; } return K('station'); }
+    if (at === 'stop') { if (World.busOn) { const s = nearest(Town.stopsOf(town), p); return { x: s.x, y: s.y, h: 10 }; } return Town.stationsOf(town).length > 1 ? K('station') : hall(); }
     return null;
   }
 
@@ -455,7 +460,7 @@
     }));
     // the first four steps of a new life
     Life.checkStarter(life).forEach(st => { floatMe(`${st.icon} ✓ ⭐+1`, 'task'); Sound.chord(2, 'bell'); });
-    if ((life.starter || 0) >= Life.STARTER.length && !life.dream && !life.seen.pickedDream) { life.seen.pickedDream = 1; later(() => dreamPicker(true)); }
+    if ((life.starter || 0) >= Life.STARTER.length && !life.dream && !life.seen.pickedDream) { life.seen.pickedDream = 1; later(() => { if (!life.dream) dreamPicker(true); }); }
     if (done.length) touch();
   }
   let guide = null, mapMarks = [], wonder = null, sleeping = false;
@@ -490,11 +495,14 @@
   function nextThing() {
     if (!life) return null;
     const t = now(), lvl = life.band === 1;
+    if (life.owesSapling && noStumps()) life.owesSapling = 0;
     if (life.owesSapling) return { key: 'sap', icon: '🌱', text: 'Plant a sapling', at: 'stump' };
+    const g0 = life.dream && Life.dreamGoal(life);
+    if (g0 && g0.at === 'spot:stars' && Life.hourOf(t) >= 19.5 && !World.trip) return { key: 'dream:' + g0.i, icon: g0.icon, text: g0.text, at: g0.at };   // the stars only come out at night
     const r = Life.ritualNext(life, t);
     if (r && !World.trip) { const T = Life.RITUALS[r]; return { key: 'rit:' + r, icon: T.icon, text: T.name, at: T.at }; }
     if ((life.starter || 0) < Life.STARTER.length) { const st = Life.STARTER[life.starter || 0]; return { key: 'start:' + st.id, icon: st.icon, text: st.text, dots: st.of ? '●'.repeat(st.n(life)) + '○'.repeat(st.of - st.n(life)) : '', at: st.id === 'sell' && !Town.SELLABLE.some(g => life.bag[g]) ? 'townfarm' : st.at }; }
-    const dailyNext = () => { const d = life.daily; const c = d && d.day === life.day && d.list.find(x => !x.done); if (!c) return null; const D = Life.DAILY_BY_ID[c.id]; return D.at ? { key: 'daily:' + c.id, icon: D.icon, text: `${D.text} ${c.n}/${c.goal}`, dots: c.goal <= 5 ? '●'.repeat(c.n) + '○'.repeat(c.goal - c.n) : `${c.n}/${c.goal}`, at: D.at } : null; };
+    const dailyNext = () => { const d = life.daily; const c = d && d.day === life.day && (d.list.find(x => !x.done && Life.DAILY_BY_ID[x.id].at) || d.list.find(x => !x.done)); if (!c) return null; const D = Life.DAILY_BY_ID[c.id]; return D.at ? { key: 'daily:' + c.id, icon: D.icon, text: `${D.text} ${c.n}/${c.goal}`, dots: c.goal <= 5 ? '●'.repeat(c.n) + '○'.repeat(c.goal - c.n) : `${c.n}/${c.goal}`, at: D.at } : null; };
     if (!life.dream) return { key: 'dream', icon: '✨', text: 'Pick a dream', at: null };
     if (lvl) { const d = dailyNext(); if (d) return d; }
     const g = Life.dreamGoal(life);
@@ -536,7 +544,7 @@
     sheet('🏦 Bank', (body) => {
       body.insertAdjacentHTML('beforeend', head('bank', `Saved coins grow <b>+${Rr.saveRate}%</b> every morning.${Rr.loans ? ` Loans grow <b>+${Rr.loanRate}%</b>.` : ''}`) + money());
       if (msg) note(body, msg);
-      const doIt = (what, n, ok) => { const r = Life.bank(life, what, n, owned); if (!r.ok) return bankSheet(`⚠️ ${r.why}`); Sound.cash(); if (what === 'deposit') daily('save', n); if (what === 'repay') daily('repay', n); touch(); hud(); checkDream(); if (what === 'deposit') fact('interest'); if (what === 'borrow') fact('loan'); bankSheet(ok); };
+      const doIt = (what, n, ok) => { const before = { bank: life.bank, loan: life.loan }; const r = Life.bank(life, what, n, owned); if (!r.ok) return bankSheet(`⚠️ ${r.why}`); Sound.cash(); if (what === 'deposit') daily('save', life.bank - before.bank); if (what === 'repay') daily('repay', before.loan - life.loan); touch(); hud(); checkDream(); if (what === 'deposit') fact('interest'); if (what === 'borrow') fact('loan'); bankSheet(ok); };
       const it = Life.interestTomorrow(life);
       if (life.band === 1) {   // a piggy bank: put in, take out, watch it grow
         body.append(card(`<h3 class="piggy">🐷 ${coin(life.bank)} <small class="pos">☀️ +${it.save}</small></h3>`));
@@ -544,7 +552,7 @@
         return;
       }
       if (life.iou) body.append(card(`<h3>🧾 ${coin(life.iou)} <small>owed, no interest</small></h3>`), row(button('Pay', () => doIt('iou', Math.min(life.iou, life.coins), '✓ 🧾'), 'choice', !life.coins)));
-      body.append(card(`<h3>🐷 ${coin(life.bank)} <small class="pos">📈 +${it.save} tomorrow</small></h3>${life.bank > 0 && life.bank < 50 ? '<p class="small">2% of a small amount is less than 1 coin, so it grows in tiny pieces that add up.</p>' : ''}<p class="small">If your pocket cannot pay a bill, your savings pay it.</p>`));
+      body.append(card(`<h3>🐷 ${coin(life.bank)} <small class="pos">📈 +${it.save} tomorrow</small></h3>${life.bank > 0 && it.save < 1 ? `<p class="small">${Rr.saveRate}% of a small amount is less than 1 coin, so it grows in tiny pieces that add up.</p>` : ''}<p class="small">If your pocket cannot pay a bill, your savings pay it.</p>`));
       body.lastChild.append(row(
         button('+10', () => doIt('deposit', 10, '✓ 🐷 +10'), 'choice', life.coins < 10),
         button('+½', () => doIt('deposit', Math.floor(life.coins / 2), '✓ 🐷'), 'choice', life.coins < 2),
@@ -561,6 +569,24 @@
   }
 
   let selling = false, marketMsg = '';
+  // after the market paid (right away or late): items were already taken from the bag
+  function afterSell(g, n, res, shown) {
+    const each = res.each || [], sold = each.length || n, dropped = sold > 1 && each[each.length - 1] < each[0];
+    if (sold < n) Life.addItem(life, g, n - sold);   // the market buys up to 50 at a time
+    const lower = shown != null && res.coins < shown && !R().fairPrice;
+    const why = !lower ? '' : online() ? `Someone in this town sold ${G[g].name.toLowerCase()} a moment before you, so the price was lower (${shown} shown, ${res.coins} paid).` : `Prices slowly go back to normal, and it moved a little since the market opened (${shown} shown, ${res.coins} paid).`;
+    const sum = each.length > 8 ? `${each.slice(0, 3).join(' + ')} + … + ${each.slice(-2).join(' + ')}` : each.join(' + ');
+    const how = [sold > 1 ? `${sum} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', why, sold < n ? `The market buys up to ${Town.SELL_MAX} at a time. You still have ${n - sold}.` : ''].filter(Boolean).join(' ');
+    Life.earn(life, res.coins, 'soldCoins', G[g].icon, `Sold ${sold} ${G[g].name.toLowerCase()} at the market`, how); life.stats.sold += sold;
+    // little kids get at least the usual price: the gap is a separate bonus (shared prices stay real), up to a daily limit
+    if (R().fairPrice) {
+      const top = Math.max(0, Town.usual(g) * sold - res.coins);
+      if (top) { const got = Life.kidBonus(life, 'fair', top, '⚖️', 'Fair price bonus', `Kids get at least the usual price (${Town.usual(g)} each), up to ${R().caps.fair} extra coins a day.`); life.stats.soldCoins += got; }
+    }
+    daily('sell', sold);
+    Sound.cash(); World.burst(World.pos().x, World.pos().y, 'coins', 10, 6); touch(); hud(); checkDream(); fact('supply'); if (G[g].seed) fact('profit');
+    return how;
+  }
   function marketSheet(msg = '') {
     marketMsg = msg;
     sheet('🧺 Market', (body) => {
@@ -570,25 +596,17 @@
       const sell = async (g, n, shown) => {
         if ((life.bag[g] || 0) < n || !n || selling) return;
         selling = true;
+        Life.takeItem(life, g, n);   // held for the sale; back in the bag if the market says no
         const res = await act({ type: 'sell', g, n });
         selling = false;
-        if (!res.ok) return marketSheet(`⚠️ ${esc(res.msg)}`);
-        const each = res.each || [], sold = each.length || n, dropped = sold > 1 && each[each.length - 1] < each[0];
-        const lower = res.coins < shown && !R().fairPrice;
-        const why = !lower ? '' : online() ? `Someone in this town sold ${G[g].name.toLowerCase()} a moment before you, so the price was lower (${shown} shown, ${res.coins} paid).` : `Prices slowly go back to normal, and it moved a little since the market opened (${shown} shown, ${res.coins} paid).`;
-        const sum = each.length > 8 ? `${each.slice(0, 3).join(' + ')} + … + ${each.slice(-2).join(' + ')}` : each.join(' + ');
-        const how = [sold > 1 ? `${sum} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', why, sold < n ? `The market buys up to ${Town.SELL_MAX} at a time. You still have ${n - sold}.` : ''].filter(Boolean).join(' ');
-        Life.takeItem(life, g, sold); Life.earn(life, res.coins, 'soldCoins', G[g].icon, `Sold ${sold} ${G[g].name.toLowerCase()} at the market`, how); life.stats.sold += sold;
-        // little kids always get at least the usual price: the gap is a separate, capped bonus (shared prices stay real)
-        if (R().fairPrice) { const top = Math.max(0, Town.usual(g) * sold - res.coins); if (top && Life.kidBonus(life, 'fair', top, '⚖️', 'Fair price bonus', `Kids always get at least the usual price (${Town.usual(g)} each).`)) life.stats.soldCoins += top; }
-        daily('sell', sold);
-        Sound.cash(); World.burst(World.pos().x, World.pos().y, 'coins', 10, 6); touch(); hud(); checkDream(); fact('supply'); if (G[g].seed) fact('profit');
-        marketSheet(`✓ ${G[g].icon}×${sold} → +${coin(res.coins)}${how ? '<br><small>' + how + '</small>' : ''}`);
+        if (!res.ok) { if (!res.slow) Life.addItem(life, g, n); return marketSheet(`⚠️ ${esc(res.msg)}`); }
+        const how = afterSell(g, n, res, shown);
+        marketSheet(`✓ ${G[g].icon}×${(res.each || []).length || n} → +${coin(res.coins)}${how ? '<br><small>' + how + '</small>' : ''}`);
       };
       const have = Town.SELLABLE.filter(g => life.bag[g]);
       if (life.band === 1) {   // little kids: only what you have, and one big button that sells it all
         if (!have.length) { body.append(tiles(tile('🧺', '→ 🌾', '', () => { const w = placeFor('townfarm'); guide = w && { ...w, icon: '🧺' }; closeSheet(); }, { cls: 'big' }))); return; }
-        const fair = (g) => Math.max(Town.usual(g) * Math.min(Town.SELL_MAX, life.bag[g]), Town.sellPreview(town, g, life.bag[g]).reduce((a, b) => a + b, 0));
+        const fair = (g) => { const real = Town.sellPreview(town, g, life.bag[g]).reduce((a, b) => a + b, 0), gap = Math.max(0, Town.usual(g) * Math.min(Town.SELL_MAX, life.bag[g]) - real); return real + Math.min(gap, Math.max(0, R().caps.fair - (life.today.bonus.fair || 0))); };
         body.append(tiles(have.map(g => tile(G[g].icon, `×${life.bag[g]}`, `${fair(g)}🪙`, () => sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g))))));
         const total = have.reduce((a, g) => a + fair(g), 0);
         body.append(button(`✓ ${coin(total)}`, async () => { for (const g of have) if (life.bag[g]) await sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g)); }, 'big-btn small'));
@@ -629,7 +647,7 @@
           quiz(`${sub.icon} ${sub.name}`, classQuestions(s, life.band, Q.n), (score) => {
             if (score === null) return;
             life.stats.classes++; daily('class');
-            if (Q.retry) Life.addStars(life, score);   // little kids: ⭐ for every first-try right answer, and a class always counts
+            if (Q.retry && !got) Life.addStars(life, score);   // little kids: ⭐ for every first-try right answer (until the certificate), and a class always counts
             if (Q.retry || score >= Q.pass) {
               const before = Life.hasCert(life, s);
               life.school[s] = (life.school[s] || 0) + (lib ? 2 : 1); life.rep += 1;
@@ -647,7 +665,7 @@
   }
 
   function jobsSheet(msg = '') {
-    const kid = life.band === 1, rate = Math.round(town.taxRate * R().taxShare);
+    const kid = life.band === 1, rate = Life.effRate(life, town.taxRate);
     sheet('💼 Jobs', (body) => {
       body.insertAdjacentHTML('beforeend', head('jobs', kid ? 'Every task pays right away!' : `Finish every task in a shift to get paid. ${rate}% of each wage is income tax${life.band === 2 ? ' (kids pay half)' : ''}: it pays for the school, roads and parks.`));
       if (msg) note(body, msg);
@@ -655,7 +673,8 @@
         const j = Life.JOBS[life.shift.job];
         body.append(card(`<h3>${j.icon} ${j.name} ${'●'.repeat(life.shift.done)}${'○'.repeat(life.shift.need - life.shift.done)}</h3><p class="small">${j.how} → 🔶</p>`, 'next'));
         const s = life.shift, part = Math.floor(Life.wageOf(life, s.job) * s.done / s.need), keep = part - Life.taxOf(life, part, Math.min(s.rate ?? town.taxRate, town.taxRate));
-        body.lastChild.append(button(kid ? '✓' : `✕ Stop · ${'●'.repeat(s.done)}${'○'.repeat(s.need - s.done)} = ${coin(keep)}`, () => stopShift(), 'choice alt'));
+        if (kid) body.lastChild.append(row(button('👍', closeSheet, 'choice'), button('🛑', (el) => { if (sure(el, '✓ 🛑?')) stopShift(); }, 'choice alt')));
+        else body.lastChild.append(button(`✕ Stop · ${'●'.repeat(s.done)}${'○'.repeat(s.need - s.done)} = ${coin(keep)}`, () => stopShift(), 'choice alt'));
       }
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Today ${'●'.repeat(Math.min(life.shiftsToday, R().shifts))}${'○'.repeat(Math.max(0, R().shifts - life.shiftsToday))}</p>`);
       body.append(tiles(Object.entries(Life.JOBS).filter(([id]) => !kid || Life.canTake(life, id, town).ok).map(([id, j]) => {
@@ -764,14 +783,14 @@
       body.insertAdjacentHTML('beforeend', head('dealer', 'Faster = pricier. ⛽ = cost every day.') + money());
       if (msg) note(body, msg);
       body.append(tiles(Object.entries(Life.VEHICLES).map(([id, v]) => {
-        const own = life.vehicles[id], lock = v.needs && !life.badges[v.needs];
-        return tile(v.icon, own ? '✓' : coin(v.price), `⚡×${v.speed} · ${v.upkeep ? `⛽ −${v.upkeep}🪙 every day` : '⛽ free'}`, (el) => {
+        const own = life.vehicles[id], lock = v.needs && !life.badges[v.needs], up = Life.upkeepOf(life, id);
+        return tile(v.icon, own ? '✓' : coin(v.price), `⚡×${v.speed} · ${up ? `⛽ −${up}🪙 every day` : '⛽ free'}`, (el) => {
           if (own) return;
           if (lock) return dealerSheet('🔒 🎓✈️ (Airport)');
           if (life.coins < v.price) return dealerSheet(needCoins(v.price) + ' Save up, or borrow at the 🏦 bank.');
-          if (v.upkeep && !sure(el, `✓ Buy? −${v.upkeep}🪙 every day`)) return;
-          Life.spend(life, v.price, v.icon, `Bought a ${v.name.toLowerCase()}`, v.upkeep ? `It will also cost ${v.upkeep} every morning for fuel and repairs.` : 'Bikes need no fuel!'); life.vehicles[id] = Date.now(); touch(); hud(); Sound.cash(); World.burst(World.pos().x, World.pos().y, 'confetti', 30, 4);
-          if (v.upkeep) fact('upkeep');
+          if (up && !sure(el, `✓ Buy? −${up}🪙 every day`)) return;
+          Life.spend(life, v.price, v.icon, `Bought a ${v.name.toLowerCase()}`, up ? `It will also cost ${up} every morning for fuel and repairs.` : 'No fuel bills for you!'); life.vehicles[id] = Date.now(); touch(); hud(); Sound.cash(); World.burst(World.pos().x, World.pos().y, 'confetti', 30, 4);
+          if (up) fact('upkeep');
           checkDream(); dealerSheet(`🔑 ${v.icon}! → ${v.icon} button`);
         }, { on: !!own, disabled: !!lock && !own });
       })));
@@ -832,7 +851,6 @@
         tile('🚀', '🌙', life.badges.astronaut ? 'Go!' : '🔒', () => { if (!life.badges.astronaut) return spaceSheet('🔒 🧑‍🚀'); goTrip('moon', 'space'); }, { disabled: !life.badges.astronaut })));
     });
   }
-  let goalsToday = 0;
   function stadiumSheet() {
     sheet('⚽ Stadium', (body) => {
       body.insertAdjacentHTML('beforeend', head('stadium', 'Kick the ball into a goal: +3🪙 (5 a day).'));
@@ -847,9 +865,17 @@
       body.append(tiles(tile(P.icon, cost ? coin(cost) : 'Visit', type === 'arcade' ? 'right answer → win 5🪙' : '', () => {
         if (cost && life.coins < cost) return;
         if (cost) Life.spend(life, cost, P.icon, ({ cafe: 'Hot cocoa at the Cafe', arcade: 'Arcade game', hotel: 'A night at the Hotel' })[type] || P.name, 'Fun costs a little. You get a nice memory!');
-        life.xp += 1; memory(type); World.mood('love', 2); Sound.chord(4, 'kalimba');
+        if (!life.today.count['visit:' + type]) { life.today.count['visit:' + type] = 1; life.xp += 1; }
+        memory(type); World.mood('love', 2); Sound.chord(4, 'kalimba');
         if (type === 'museum') { const f = (typeof FACTS !== 'undefined') ? FACTS[Math.floor(Math.random() * FACTS.length)] : null; if (f) toast(`<span class="t-small">🦕 ${esc(f.title)}</span>${esc(f.text)}`, { life: 7 }); }
-        if (type === 'arcade') { closeSheet(); const kid = life.band === 1; quiz('🕹️', [kid ? makePictureMath(Math.random) : makeMathQuestion(Math.random, life.band * 2)], (s) => { if (s) { Life.earn(life, 5, null, '🏆', 'Arcade prize'); hud(); } else if (kid) { Life.earn(life, 2, null, '🕹️', 'Try prize', 'Nice try! Here are your coins back.'); hud(); } else toast('🕹️ So close! Right answers win the 5🪙 prize.'); }); return; }
+        if (type === 'arcade') { closeSheet(); const kid = life.band === 1; quiz('🕹️', [kid ? makePictureMath(Math.random) : makeMathQuestion(Math.random, life.band * 2)], (s) => {
+          if (s === null) return;
+          const why = `Arcade prizes are at most ${R().caps.arcade} coins a day.`;
+          if (s) { if (!Life.kidBonus(life, 'arcade', 5, '🏆', 'Arcade prize', why)) toast('🕹️ 🏆 ✓ (no more prizes today)'); }
+          else if (kid) { if (!Life.kidBonus(life, 'arcade', 2, '🕹️', 'Try prize', 'Nice try! Here are your coins back.')) toast('🕹️ ❤️'); }
+          else toast('🕹️ So close! Right answers win the 5🪙 prize.');
+          hud();
+        }); return; }
         if (cost) toast(`${P.icon} ❤️ −${coin(cost)}`);
         touch(); hud(); closeSheet();
       })));
@@ -859,7 +885,7 @@
   /* ---------------- business: companies, the Tech Hub, the studio ---------------- */
   function bizSheet(msg = '') {
     sheet('🏢 Companies', (body) => {
-      body.insertAdjacentHTML('beforeend', head('biz', 'Sales − costs = profit. If costs are bigger, it is a loss and it comes out of your pocket. Workers sell more but cost wages.') + money());
+      body.insertAdjacentHTML('beforeend', head('biz', `Sales − costs = profit. ${R().coLossZero ? 'On a slow day kids just earn nothing, never a loss.' : 'If costs are bigger, it is a loss and it comes out of your pocket.'} Workers sell more but cost wages.`) + money());
       if (msg) note(body, msg);
       life.companies.forEach(co => {
         const T = Life.COMPANIES[co.type];
@@ -1017,8 +1043,11 @@
   }
 
   /* ---------------- the forest and the town farm ---------------- */
+  // someone (the forester, a friend) may have planted every stump already: then nothing is owed
+  const noStumps = () => !Town.FOREST.some(x => Town.treeState(town, x.id, now()) === 'stump');
   async function chop(tr) {
     const left = Town.forestLeft(town);
+    if (life.owesSapling && noStumps()) life.owesSapling = 0;
     if (life.owesSapling) return toast('🌱 first! (cut one, plant one)');
     if (left <= 10) return toast(`🌲 Only ${left} trees left. Plant saplings 🌱 on stumps first${life.shift && life.shift.job === 'lumberjack' ? ' (that counts for your shift too)' : ''}.`, { life: 5 });
     const res = await act({ type: 'chop', tree: tr.id });
@@ -1033,6 +1062,9 @@
   async function replant(tr) {
     const res = await act({ type: 'replant', tree: tr.id });
     if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
+    replantDone(tr);
+  }
+  function replantDone(tr) {
     const owed = life.owesSapling; life.owesSapling = 0; life.stats.replanted++; life.rep += 1; daily('plant');
     Sound.plant(); World.burst(tr.x, tr.y, 'seeds', 12, 1); World.mood('love', 1.2);
     if (life.shift && life.shift.job === 'lumberjack') workStep();
@@ -1045,6 +1077,9 @@
   async function farmwork(i) {
     const res = await act({ type: 'farmwork', i });
     if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
+    farmDone(i);
+  }
+  function farmDone(i) {
     const s = Town.FARM_SPOTS[i], g = Town.CROPS[i % 4]; Sound.pop(); World.burst(s.x, s.y, 'leaves', 10, 2);
     life.stats.farmPicked = (life.stats.farmPicked || 0) + 1; daily('pick');
     const shifts = life.shiftsToday < R().shifts;
@@ -1054,7 +1089,7 @@
     if (keep) { life.today.picks = (life.today.picks || 0) + 1; Life.addItem(life, g); setTimeout(() => World.floatText(s.x, s.y, `+1 ${G[g].icon}`), 350); }
     if (onShift) { workStep(); touch(); hud(); checkDream(); return; }
     life.rep += 1;
-    if (life.band === 1) { if (Life.kidBonus(life, 'volunteer', 1, '🧺', 'Thanks for helping on the farm')) World.floatText(s.x + 30, s.y, '+1🪙', 'pay'); }
+    if (life.band === 1) { if (Life.kidBonus(life, 'volunteer', 1, '🧺', 'Thanks for helping on the farm')) World.floatText(s.x + 30, s.y, '+1🪙', 'pay'); else if (!keep) toast('🧺 ❤️ ✓ 🌙'); }
     else if (keep) toast(`🧺 +1 ${G[g].icon} (${life.today.picks}/${R().pickCap} today)${shifts ? ' · 💼🧑‍🌾 = 🪙' : ''}`, { life: 4 });
     else toast(`🧺 ❤️ Your share is used up for today.${shifts ? ' A Farmhand job 💼 pays for picking.' : ' Come back tomorrow.'}`, { life: 5 });
     if (!keep && shifts && life.band > 1) { const k = keeper('jobs'); if (k) guide = { x: k.x, y: k.y, h: 13, icon: '💼' }; }
@@ -1159,7 +1194,7 @@
     const r = Life.quitShift(life, town.taxRate); if (!r) return;
     if (r.tax + (r.grant || 0)) act({ type: 'tax', n: r.tax + (r.grant || 0) });
     touch(); hud();
-    jobsSheet(msg || (r.perTask ? '✓' : r.net ? `Shift stopped. You were paid for ${r.done} of ${r.need} tasks: +${coin(r.net)}.` : 'Shift stopped. No tasks were done yet, so there is no pay.'));
+    jobsSheet(msg || (r.perTask ? '🛑 ✓' : r.net ? `Shift stopped. You were paid for ${r.done} of ${r.need} tasks: +${coin(r.net)}.` : 'Shift stopped. No tasks were done yet, so there is no pay.'));
   }
   // the town changed (you joined friends, or the town grew): make sure your shift can still be finished
   function fixShift() {
@@ -1201,8 +1236,9 @@
   /* ---------------- a new day ---------------- */
   function dayTick() {
     const day = Life.dayOf(now());
+    if (sleeping && day > sleepDay && Life.hourOf(now()) < 12) wakeUp();
     if (life.day === day) return;
-    if (life.day !== null && day < life.day && life.day - day < 3) return;   // a clock a little behind (joining friends) is not a new day
+    if (life.day !== null && day < life.day && life.day - day < 240) return;   // a clock behind (joining friends) is not a new day
     // a new morning waits until you are not in a building or on a ride, so you can see what it does
     if (life.day !== null && (!$('sheet').hidden || World.riding || !playing)) return;
     if (!life.firstDay) life.firstDay = day;
@@ -1211,7 +1247,6 @@
     touch();
     syncDaily();
     if (!r) return;
-    goalsToday = 0;
     if (r.taxes) act({ type: 'tax', n: r.taxes });
     if (r.borrowed) fact('loan');
     later(() => morningSheet(r), true);
@@ -1272,6 +1307,7 @@
     const P = HOME.pool, p = World.pos(), a = Math.atan2((p.y - P.y) / P.ry, (p.x - P.x) / P.rx);
     World.place(P.x + Math.cos(a) * P.rx * 0.6, P.y + Math.sin(a) * P.ry * 0.6); Sound.splash();
   }
+  function boostTick() { if (World.setBoost) { const k = life.rit.swim === life.day ? 1.15 : 1; if (World.boost !== k) World.setBoost(k); } }
   function healthyDay() { later(() => { toast('<span class="t-small">❤️ Healthy Day</span>🌅 🌇 🛏️ ⭐+1', { big: true, life: 4 }); Sound.chord(6, 'bell'); }); }
   function poolSwim() {
     const p = World.pos(); if (!Town.inPool(p.x, p.y, 20)) return;
@@ -1281,7 +1317,7 @@
     memory('pool'); fact('dawn'); if (r.healthy) healthyDay();
     const n = R().poolCoins, P = HOME.pool;
     if (World.addPickups && n) World.addPickups(Array.from({ length: n }, (_, i) => ({ id: `pool:${life.day}:${i}`, x: P.x + Math.cos(i * 2.4 + 0.5) * P.rx * 0.55, y: P.y + Math.sin(i * 2.4 + 0.5) * P.ry * 0.55, kind: 'coin' })));
-    if (World.setBoost) World.setBoost(1.15);
+    boostTick();
     touch(); hud(); checkDream();
   }
   function sip() {
@@ -1292,12 +1328,12 @@
     memory('sip'); fact('drink'); if (r.healthy) healthyDay();
     touch(); hud(); checkDream();
   }
-  let dreamT = null, dreamCaught = 0, sleepFrom = 0;
+  let dreamT = null, dreamCaught = 0, sleepFrom = 0, sleepDay = 0;
   function goSleep() {
     if (sleeping) return;
     const r = Life.doRitual(life, 'sleep', now()); if (!r) return;   // the prize comes at tuck-in, so waking early loses nothing
     World.setVehicle(null);
-    sleeping = true; target = null; renderAction(); sleepFrom = Life.dayFrac(now());
+    sleeping = true; target = null; renderAction(); sleepFrom = Life.dayFrac(now()); sleepDay = Life.dayOf(now());
     floatMe(`🛏️ ⭐+1 🪙+${r.coins}`);
     memory('bed'); fact('sleep'); if (r.healthy) healthyDay();
     if (World.sleep) World.sleep(true); else World.mood('sleepy', 999);
@@ -1310,9 +1346,9 @@
     if (life.band === 3) {   // teens: tomorrow's budget, and a chance to save before bed
       const r = Life.previewBills(life, town, me.uid);
       if (r) {
-        const inc = r.lines.filter(l => l.n > 0 && l.night).reduce((a, l) => a + l.n, 0), out = r.lines.filter(l => l.n < 0).reduce((a, l) => a - l.n, 0);
+        const inc = r.lines.filter(l => l.n > 0 && l.night && l.acct === 'pocket').reduce((a, l) => a + l.n, 0), out = r.lines.filter(l => l.n < 0 && l.acct === 'pocket').reduce((a, l) => a - l.n, 0);
         const sgn = (n, c) => n ? `<b class="${c}">${c === 'pos' ? '+' : '−'}${coin(n)}</b>` : `<b>${coin(0)}</b>`;
-        plan.innerHTML = `<div class="budget"><div><span>💤 Comes in overnight</span>${sgn(inc, 'pos')}</div><div><span>🧾 Tomorrow's bills${life.rentFree ? ` <small>(rent free for ${life.rentFree} more day${life.rentFree === 1 ? '' : 's'})</small>` : ''}</span>${sgn(out, 'neg')}</div><div class="total"><span>👛 Tomorrow</span><b>${coin(Math.max(0, life.coins + inc - out))}</b></div></div>`;
+        plan.innerHTML = `<div class="budget"><div><span>💤 Comes in overnight</span>${sgn(inc, 'pos')}</div><div><span>🧾 Tomorrow's bills${life.rentFree ? ` <small>(rent free for ${life.rentFree} more day${life.rentFree === 1 ? '' : 's'})</small>` : ''}</span>${sgn(out, 'neg')}</div><div class="total"><span>👛 Tomorrow</span><b>${coin(r.coins)}</b></div></div>`;
         if (life.coins >= 10) plan.append(button('🐷 Save 10 before bed', (b) => { if (Life.bank(life, 'deposit', 10).ok) { daily('save', 10); b.disabled = true; b.textContent = '✓ 🐷 +10'; touch(); hud(); } }, 'choice'));
       }
     }
@@ -1350,7 +1386,7 @@
     sleeping = false; clearInterval(dreamT); $('dream').hidden = true; $('dreamStars').innerHTML = '';
     if (World.sleep) World.sleep(false); World.mood('happy', 1);
     Sound.rooster(); const p = World.pos(); World.burst(p.x, p.y, 'confetti', 16, 4);
-    startMusic(); touch(); hud();
+    startMusic(); touch(); hud(); setTimeout(flushQueue, 300);
   }
   $('wakeBtn').addEventListener('click', () => { Sound.blip(); wakeUp(); });
 
@@ -1396,12 +1432,13 @@
     got.forEach(g => later(() => { Sound.chord(7, 'bell'); World.celebrate(10); toast(`<span class="t-small">⭐ Level ${g.L}!</span>${g.hat ? `${HAT_ICON[g.hat] || '🎩'} New hat!` : `+${coin(g.coins)}`}`, { big: true, life: 4 }); }));
     if (got.some(g => g.hat)) World.setMe({ color: me.color, hat: life.hat });
   }
+  const liveStreak = () => life.lastPerfect === life.day || life.lastPerfect === life.prevPlayed ? life.streak || 0 : 0;
   function starSheet() {
     syncDaily();
     const lv = Life.starLevel(life.xp), lo = Life.starsFor(lv), hi = Life.starsFor(lv + 1), next = Life.levelReward(lv + 1, life.band), t = now();
     sheet(`⭐ Level ${lv}`, (body) => {
       body.insertAdjacentHTML('beforeend', `<div class="star-big"><b>⭐ ${life.xp}</b><div class="progress"><div style="width:${Math.round((life.xp - lo) / (hi - lo) * 100)}%"></div></div><span>Lv ${lv + 1}: ${next.hat ? `${HAT_ICON[next.hat]} new hat` : `+${coin(next.coins)}`} · ${hi - life.xp} ⭐ to go</span></div>`);
-      body.insertAdjacentHTML('beforeend', `<div class="ritual-row">${Object.entries(Life.RITUALS).map(([id, T]) => `<span class="${Life.ritualState(life, id, t)}">${T.icon}<small>${life.band === 1 ? '' : T.name}</small></span>`).join('')}<span>${life.band === 1 ? `🌟×${life.perfectDays || 0}` : `🔥 ${life.streak || 0}`}<small>${life.band === 1 ? '' : 'Perfect Days in a row'}</small></span></div>`);
+      body.insertAdjacentHTML('beforeend', `<div class="ritual-row">${Object.entries(Life.RITUALS).map(([id, T]) => `<span class="${Life.ritualState(life, id, t)}">${T.icon}<small>${life.band === 1 ? '' : T.name}</small></span>`).join('')}<span>${life.band === 1 ? `🌟×${life.perfectDays || 0}` : `🔥 ${liveStreak()}`}<small>${life.band === 1 ? '' : 'Perfect Days in a row'}</small></span></div>`);
       body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎯 Today</h4>'); body.append(challengeTiles());
       const hats = Object.keys(life.hats || {});
       if (hats.length) {
@@ -1501,13 +1538,14 @@
       list.append(r);
     };
     const home = Life.ownsHouse(town, me.uid) || life.home;
-    item(home ? '🏠' : '🏢', home ? 'Your own home' : 'Apartment', home ? 'No rent' : life.rentFree ? `Rent free for ${life.rentFree} more day${life.rentFree === 1 ? '' : 's'}, then −${Life.RENT}🪙 every day` : `Rent −${Life.RENT}🪙 every day`);
+    const rent = Life.rentOf(life);
+    item(home ? '🏠' : '🏢', home ? 'Your own home' : 'Apartment', home || !rent ? 'No rent' : life.rentFree ? `Rent free for ${life.rentFree} more day${life.rentFree === 1 ? '' : 's'}, then −${rent}🪙 every day` : `Rent −${rent}🪙 every day`);
     myPlots().forEach(p => {
       const running = life.companies.some(co => co.plot === p.id), back = Math.floor(p.plot.price / 2) + (p.build && Town.BUILD[p.build] ? Math.floor(Town.BUILD[p.build].coins / 2) : 0);
-      item(p.plot.kind === 'farm' ? '🌱' : ({ shop: '🏪', house: '🏠', villa: '🏡', company: '🏭' })[p.build] || '🏗️', `Land ${p.id}${p.build ? ' · ' + Town.BUILD[p.build].name : ''}`, `Land tax −${Town.TAX[p.plot.kind]}🪙 every day${running ? ' · close its company to sell' : ''}`,
+      item(p.plot.kind === 'farm' ? '🌱' : ({ shop: '🏪', house: '🏠', villa: '🏡', company: '🏭' })[p.build] || '🏗️', `Land ${p.id}${p.build ? ' · ' + Town.BUILD[p.build].name : ''}`, `${Life.landTaxOf(life, p.plot.kind) ? `Land tax −${Life.landTaxOf(life, p.plot.kind)}🪙 every day` : 'No land tax'}${running ? ' · close its company to sell' : ''}`,
         `Sell +${coin(back)}`, running ? null : () => sellLand(p));
     });
-    Object.keys(life.vehicles).forEach(v => { const V = Life.VEHICLES[v]; item(V.icon, V.name, V.upkeep ? `Fuel & repairs −${V.upkeep}🪙 every day` : 'No daily cost', `Sell +${coin(Math.floor(V.price / 2))}`, () => {
+    Object.keys(life.vehicles).forEach(v => { const V = Life.VEHICLES[v]; item(V.icon, V.name, Life.upkeepOf(life, v) ? `Fuel & repairs −${Life.upkeepOf(life, v)}🪙 every day` : 'No daily cost', `Sell +${coin(Math.floor(V.price / 2))}`, () => {
       if (World.vehicle === v) World.setVehicle(null);
       Life.sellVehicle(life, v); Sound.cash(); touch(); hud(); lifeSheet();
     }); });
@@ -1516,13 +1554,20 @@
     return c;
   }
   async function sellLand(p) {
+    const key = townKey();
+    landBook(p.id, { selling: true }, key);
     const res = await act({ type: 'sellPlot', id: p.id });
-    if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-    if (res.refund) Life.earn(life, res.refund, null, '🏡', `Sold land ${p.id} back to the town`, 'The town buys land back for half of what it cost (and half of what was built on it). No more land tax for it.');
+    if (!res.ok) { if (!res.slow && !res.lost) landBook(p.id, { selling: false }, key); return toast(`⚠️ ${esc(res.msg)}`); }
+    afterSellLand(p.id, res, key);
+    Sound.cash(); lifeSheet();
+  }
+  function afterSellLand(id, res, key) {
+    if (res.refund) Life.earn(life, res.refund, null, '🏡', `Sold land ${id} back to the town`, 'The town buys land back for half of what it cost (and half of what was built on it). No more land tax for it.');
     if (res.build === 'shop') Object.entries(life.shelf).forEach(([g, n]) => { if (n > 0) { Life.addItem(life, g, n); life.shelf[g] = 0; } });
-    if ((res.build === 'house' || res.build === 'villa') && life.home === townKey() && !Life.ownsHouse(town, me.uid)) life.home = null;
-    landBook(p.id, null);
-    Sound.cash(); touch(); hud(); lifeSheet();
+    // still a home? Look at the other land you own (the town copy here may not know about the sale yet)
+    if ((res.build === 'house' || res.build === 'villa') && life.home === key && !Life.ownedPlots(town, me.uid).some(q => q.id !== id && (q.build === 'house' || q.build === 'villa'))) life.home = null;
+    landBook(id, null, key);
+    touch(); hud();
   }
   // a second tap to agree, instead of a grown-up confirm box
   function sure(el, text) {
@@ -1661,16 +1706,32 @@
     hud(); Talk.refresh();
     if (!life.day || life.day !== Life.dayOf(now())) dayTick();
   });
-  Net.on('town', (m) => onTown(m.town));
+  Net.on('town', (m) => { if (online()) onTown(m.town); });
   // the town answered after we stopped waiting: still give the kid what they did
-  Net.on('late', ({ a, res }) => {
-    if (a.type === 'harvest' && res.items) { Object.entries(res.items).forEach(([g, n]) => Life.addItem(life, g, n)); life.stats.harvested++; toast(`✓ ${Object.entries(res.items).map(([g, n]) => `+${n} ${G[g].icon}`).join(' ')} (the town was slow)`); }
-    if (a.type === 'chop') { Life.addItem(life, 'log', 2); life.stats.chopped++; life.owesSapling = 1; toast('✓ +2 🪵 (the town was slow)'); }
-    if (a.type === 'sell' && res.coins) { const n = (res.each || []).length || a.n; Life.takeItem(life, a.g, n); Life.earn(life, res.coins, 'soldCoins', G[a.g].icon, `Sold ${n} ${G[a.g].name.toLowerCase()} at the market`, 'The town was slow to answer, but the sale went through.'); life.stats.sold += n; }
-    if (a.type === 'buyPlot') { Life.spend(life, res.cost, '🏡', `Bought land ${a.id}`, 'The town was slow to answer, but the land is yours.'); landBook(a.id, { cost: res.cost }); }
-    if (a.type === 'sellPlot' && res.refund) { Life.earn(life, res.refund, null, '🏡', `Sold land ${a.id} back to the town`); landBook(a.id, null); }
+  // pay a cost that the town already applied; if the pocket is short, the rest is owed with no interest
+  function charge(n, icon, why, how) {
+    if (Life.spend(life, n, icon, why, how)) return;
+    const have = life.coins, rest = n - have;
+    if (have) Life.spend(life, have, icon, why, how);
+    life.iou = (life.iou || 0) + rest;
+    Life.note(life, 'loan', rest, '🧾', `Still to pay: ${why}`, 'Your pocket was short, so the rest is paid back from your pocket tomorrow morning (no interest).');
+  }
+  Net.on('late', ({ a, res, key }) => {
+    const slow = ' (the town was slow)';
+    if (a.type === 'harvest' && res.items) { Object.entries(res.items).forEach(([g, n]) => Life.addItem(life, g, n)); life.stats.harvested++; toast(`✓ ${Object.entries(res.items).map(([g, n]) => `+${n} ${G[g].icon}`).join(' ')}${slow}`); }
+    if (a.type === 'chop') { Life.addItem(life, 'log', 2); life.stats.chopped++; life.owesSapling = 1; toast('✓ +2 🪵' + slow); }
+    if (a.type === 'sell' && res.coins) afterSell(a.g, a.n, res, null);   // the items were held when the sale was sent
+    if (a.type === 'buyPlot') { charge(res.cost, '🏡', `Bought land ${a.id}`, 'The town was slow to answer, but the land is yours.'); landBook(a.id, { cost: res.cost }, key); }
+    if (a.type === 'sellPlot') afterSellLand(a.id, res, key);
+    if (a.type === 'build') { const b = Town.BUILD[a.kind]; if (b) { Life.takeItem(life, 'log', Math.min(b.logs, life.bag.log || 0)); charge(b.coins, b.icon, `Built a ${b.name.toLowerCase()}`, `${b.logs} logs + ${b.coins} coins for the builders.`); landBook(a.id, { build: a.kind, buildCoins: b.coins }, key); life.stats.built++; if (a.kind === 'house' || a.kind === 'villa') life.home = key; toast(`✓ ${b.icon}${slow}`); } }
+    if (a.type === 'plant' && G[a.k]) charge(G[a.k].seed, G[a.k].icon, `${G[a.k].name} seeds`, 'The town was slow to answer, but your seeds are planted.');
+    if (a.type === 'farmwork') farmDone(a.i);
+    if (a.type === 'replant') { const tr = Town.FOREST.find(x => x.id === a.tree); if (tr) replantDone(tr); }
+    if (a.type === 'water') daily('water');
     touch(); hud();
   });
+  // the connection dropped while waiting: things held for a sale go back in the bag
+  Net.on('lost', ({ a }) => { if (a.type === 'sell' && G[a.g]) { Life.addItem(life, a.g, a.n); touch(); hud(); } });
   Net.on('arrived', (p) => { toast(`👋 ${esc(p.name)}!`); Sound.bell(); hud(); });
   Net.on('left', () => hud());
   Net.on('disconnected', ({ replaced }) => { toast(replaced ? '📱 ↔ 💻' : '📡 ✕ → 🏡'); goSolo(); Talk.refresh(); });
@@ -1733,7 +1794,7 @@
     if (online() && !World.trip) Net.state({ x: Math.round(pos.x), y: Math.round(pos.y), mood: sleeping ? 'sleepy' : st.mood, moving: st.moving, face: st.face, z: st.hop, title: Life.title(life), swimming: World.swimming, hat: life.hat || '' });
     if (sleeping) { const f = Life.dayFrac(t), done = Math.max(0, Math.min(1, (f - sleepFrom) / Math.max(0.01, 1 - sleepFrom))); $('nightFill').style.width = Math.round(done * 100) + '%'; }
     if ((hudT -= dt) <= 0) {
-      hudT = 0.5; hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t)); wonderTick(); buddies();
+      hudT = 0.5; hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t)); wonderTick(); buddies(); boostTick();
       const rain = Town.raining(t); if (rain && !rainWas) { fact('rain'); toast('🌧️ 🌱💧'); } rainWas = rain;
       const up = World.hillAt(World.pos().x, World.pos().y) > 2; if (up && !hillWas) fact('hill'); hillWas = up;
     }
@@ -1769,6 +1830,7 @@
       if (name.length < 2) { $('titleMsg').textContent = '✏️ Name?'; nameIn.focus(); return; }
       me.name = name;
       const fresh = !life;
+      if (fresh && !me.age) { $('titleMsg').textContent = '👤 Age?'; $('ages').classList.remove('nudge'); void $('ages').offsetWidth; $('ages').classList.add('nudge'); return; }
       if (fresh) { life = Life.fresh(me.band); if (me.age) me.ageAt = Date.now(); } else me.band = life.band;
       if (!solo) solo = Town.newTown(Date.now());
       $('title').hidden = true; $('hud').hidden = false; $('minimap').hidden = false;
@@ -1779,7 +1841,7 @@
       dayTick(); syncDaily(); birthdayCheck();
       save(); startMusic();
       if (fresh && life.band > 1) later(() => welcome());
-      else if (!life.dream && (life.starter || 0) >= Life.STARTER.length) later(() => dreamPicker(true));
+      else if (!life.dream && (life.starter || 0) >= Life.STARTER.length && life.seen.pickedDream) later(() => { if (!life.dream) dreamPicker(true); });
       if (withFriends) later(() => roomSheet());
       const fromLink = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (fromLink.length >= 3 && !withFriends) later(() => { roomSheet(); $('roomIn').value = fromLink; });
@@ -1835,7 +1897,7 @@
       onSwim: () => { Sound.splash(); if (life) { fact('swim'); poolSwim(); } },
       onGoal: () => {
         Sound.chord(6, 'bell'); World.mood('laugh', 2); memory('goal');
-        if (goalsToday < 5) { goalsToday++; Life.earn(life, 3, null, '⚽', `Goal prize (${goalsToday}/5 today)`); toast('⚽ GOAL!', { big: true }); } else toast('⚽ GOAL! (the 5 prizes for today are used up)', { big: true });
+        if (Life.kidBonus(life, 'goal', 3, '⚽', 'Goal prize', 'Up to 5 goal prizes a day.')) toast('⚽ GOAL!', { big: true }); else toast('⚽ GOAL! (the 5 prizes for today are used up)', { big: true });
         touch(); hud();
       },
       onFirework: () => Sound.pop(),
