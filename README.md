@@ -20,6 +20,30 @@ npm start
 
 The UI is pictures first. One big button does whatever is in front of you, and a yellow arrow (on the ground and at the screen edge) always points to your next step.
 
+### Rules that grow up with you
+
+The age picked for a new life sets its rules. After that, only a grown-up changes it (⋯ → 👤, behind a math question), and a real birthday can move a kid up.
+
+| | Ages 6–8 | Ages 9–12 | Ages 13–16 |
+|---|---|---|---|
+| Pay | every task pays at once | at the end of a shift | at the end of a shift |
+| Income tax | none (the Mayor pays it, so the town still grows) | half | full |
+| Rent, land tax, fuel | none | small | full |
+| Short on coins in the morning | never happens | savings pay, then an IOU with no interest | savings pay, then a bank loan with interest |
+| Market | at least the usual price | real prices | real prices |
+| Classes | picture questions, 2 big answers, retry until right | 3 questions | 3 questions, percent maths |
+| Shifts a day | 6 | 4 | 3 |
+
+Coins only go down with a reason you can see: a receipt appears by your coins, and tapping the coins shows the whole money history. For the youngest, coins only go down when they tap Buy.
+
+### Small Town Days (from Noodle Universe)
+
+- **🌅 Morning swim** in the Sunrise Pool by the Apartments, **🌇 a sunset sip** at the water tap, **🛏️ bedtime** at home. Each gives ⭐ and a few coins in its time window; the pool and tap work all day. All three make a Healthy Day. At bedtime you dream: catch stars and count them while the night passes. Older kids who slept work 10% better the next day, and teens see tomorrow's budget before bed.
+- **⭐ Stars and levels:** stars come from rituals, challenges, memories, classes and your dream. Levels never end and bring coins or a new hat your friends can see.
+- **🎯 Three challenges a day**, the same for friends in a room. All three is a 🌟 Perfect Day.
+- **✨ Wonders:** now and then everyone in the town sees coin rain, a rainbow with a pot of gold, or shooting stars to wish on.
+- **First steps:** a new life starts with swim → pick 3 at the Town Farm → sell → save, then picks a dream. Sparkle coins along the way teach "follow the arrow".
+
 - **Dreams (15):** Farmer, Builder, Shopkeeper, Mayor, Banker, Teacher, YouTuber, Digital Marketer, Online Seller, Coder, Chef, Entrepreneur, Explorer, Pilot, Astronaut. Six are shown first; the rest are one tap away. Each dream is a path of real steps, then endless levels. Your name and title float over your head, and over your friends' heads.
 - **Work (10 jobs):** Farmhand, Lumberjack, Mail Carrier, Park Ranger, Builder, Town Clerk, Bank Teller, Marketer, Coder, Tutor. Shifts end with a pay slip: wage, income tax, what you keep. Experience brings raises.
 - **School:** Money, Civics, Building, Math and Science classes for ages 6–8, 9–12 and 13–16. Certificates unlock jobs, companies, flight school and astronaut training.
@@ -97,7 +121,8 @@ Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Bu
 | `js/world3d.js` | The 3D town (three.js): buildings, farms, forest, projects, Squarefaces, name tags, day and night, walking |
 | `js/sw.js` | Small World game: HUD, places, jobs, school, bank, market, land, dreams, rooms |
 | `js/town.js` | Town rules shared by the browser and the server: land, crops, prices, forest, weather, taxes, votes, elections, growing districts |
-| `js/life.js` | Your life's rules: money, jobs and wages, certificates, bank, vehicles, companies, channel, memories, morning bills, dreams |
+| `js/life.js` | Your life's rules: the rulebook by age, money, jobs and wages, certificates, bank, vehicles, companies, channel, memories, morning bills, rituals, stars, daily challenges, dreams |
+| `test/life.test.js` | `npm test`: checks the rules, like "a 6-year-old's coins only go down when they tap Buy" |
 | `js/music.js` | Background music made with WebAudio |
 | `classic.html` | The classic 2D Noodle Universe |
 | `js/data.js` | Noodles, map layout, clues, riddles |

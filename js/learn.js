@@ -155,6 +155,13 @@ FACTS.push(
     text: 'When people work, pay taxes and build, a town can afford new roads, stations and districts. Everyone helps it grow.', tryit: 'Look east: a new district just opened!' },
 );
 
+FACTS.push(
+  { id: 'sleep', subject: 'nature', title: 'Sleep helps you grow', trigger: 'sleep',
+    text: 'While you sleep, your brain saves what you learned today and your body grows. Kids need about 10 hours of sleep.', tryit: 'Go to bed at night in Small Town.' },
+  { id: 'kidtax', subject: 'civics', title: 'The Mayor pays your tax', trigger: 'kidtax',
+    text: 'Grown-ups give a little of every wage to the town. That is called tax. Until you are 9, the Mayor pays it for you, so the town still grows!', tryit: 'Finish a job shift.' },
+);
+
 const FACT_BY_TRIGGER = {};
 FACTS.forEach(f => { (FACT_BY_TRIGGER[f.trigger] = FACT_BY_TRIGGER[f.trigger] || []).push(f); });
 
@@ -189,9 +196,9 @@ const QUIZ_BANK = [
 ];
 
 // Math questions are made fresh every time, with noodle-flavored stories, harder as you level up.
-function makeMathQuestion(rnd, level) {
+function makeMathQuestion(rnd, level, nOpts = 3) {
   const r = (a, b) => a + Math.floor(rnd() * (b - a + 1));
-  const kinds = level < 3 ? ['add', 'sub'] : level < 6 ? ['add', 'sub', 'mul'] : ['add', 'sub', 'mul', 'div', 'half'];
+  const kinds = level < 3 ? ['add', 'sub'] : level < 6 ? ['add', 'sub', 'mul'] : ['add', 'sub', 'mul', 'div', 'half', 'pct', 'pct'];
   const kind = kinds[Math.floor(rnd() * kinds.length)];
   let q, ans;
   if (kind === 'add') { const a = r(2, 9 + level * 3), b = r(2, 9 + level * 2); q = `You crunch ${a} bricks, then ${b} more. How many bricks in total?`; ans = a + b; }
@@ -199,11 +206,55 @@ function makeMathQuestion(rnd, level) {
   if (kind === 'mul') { const a = r(2, 5 + level), b = r(2, 6); q = `There are ${a} egg trees with ${b} eggs each. How many eggs?`; ans = a * b; }
   if (kind === 'div') { const b = r(2, 5), ans0 = r(2, 6 + level); q = `Grandma shares ${b * ans0} dumplings equally among ${b} friends. How many does each friend get?`; ans = ans0; }
   if (kind === 'half') { const a = r(2, 10 + level) * 2; q = `Half of the ${a} noodles are shiny. How many are shiny?`; ans = a / 2; }
+  if (kind === 'pct') { const p = [10, 20, 25, 50][r(0, 3)], base = p === 25 ? r(1, 8) * 4 : r(2, 12) * 10; q = `Income tax is ${p}%. What is ${p}% of a ${base}-coin wage?`; ans = base * p / 100; }
   const opts = new Set([ans]);
-  while (opts.size < 3) { const d = ans + (rnd() < 0.5 ? -1 : 1) * r(1, Math.max(2, Math.round(ans / 4))); if (d >= 0) opts.add(d); }
+  while (opts.size < nOpts) { const d = ans + (rnd() < 0.5 ? -1 : 1) * r(1, Math.max(2, Math.round(ans / 4))); if (d >= 0) opts.add(d); }
   const o = [...opts].sort(() => rnd() - 0.5).map(String);
-  return { s: 'math', q, o, a: o.indexOf(String(ans)), why: `The answer is ${ans}.` + (kind === 'mul' ? ' Multiplying is fast adding!' : kind === 'div' ? ' Sharing equally is dividing.' : '') };
+  return { s: 'math', q, o, a: o.indexOf(String(ans)), why: `The answer is ${ans}.` + (kind === 'mul' ? ' Multiplying is fast adding!' : kind === 'div' ? ' Sharing equally is dividing.' : kind === 'pct' ? ' Percent means "out of 100".' : '') };
 }
+// For 6-8 year olds: count pictures, two big answers, sums up to 10
+function makePictureMath(rnd) {
+  const r = (a, b) => a + Math.floor(rnd() * (b - a + 1)), E = ['🍎', '🥕', '🐟', '⭐', '🪙'][r(0, 4)];
+  const add = rnd() < 0.6, a = r(1, 5), b = add ? r(1, 5) : r(1, a);
+  const ans = add ? a + b : a - b, wrong = ans === 0 ? 1 : rnd() < 0.5 ? ans + 1 : ans - 1;
+  const o = rnd() < 0.5 ? [ans, wrong] : [wrong, ans];
+  return { s: 'math', q: '', pic: add ? `${E.repeat(a)} + ${E.repeat(b)}` : `${E.repeat(a)} − ${E.repeat(b)}`, o: o.map(String), a: o.indexOf(ans), why: `${a} ${add ? '+' : '−'} ${b} = ${ans}` };
+}
+// For 6-8 year olds: picture questions with two big answers
+const PIC_BANK = {
+  money: [
+    { pic: '🪙🪙🪙 − 🪙', o: ['🪙🪙', '🪙🪙🪙🪙'], a: 0, why: '3 − 1 = 2 coins.' },
+    { pic: '💼 → ?', o: ['🪙', '🍭'], a: 0, why: 'Work pays coins!' },
+    { pic: '🐷 + 🪙 → ?', o: ['🐷📈', '🐷💥'], a: 0, why: 'Saved coins grow in the bank.' },
+    { pic: '🌱🪙 → 🥕🪙🪙🪙', o: ['😀', '😢'], a: 0, why: 'Sell for more than it cost: that is profit!' },
+    { pic: '🧺 🥕 → ?', o: ['🪙', '🪨'], a: 0, why: 'The market buys your crops for coins.' },
+    { pic: '👛 🪙🪙 − 🍦 🪙', o: ['🪙', '🪙🪙🪙'], a: 0, why: '2 − 1 = 1 coin left.' },
+  ],
+  civics: [
+    { pic: '🏛️ 🪙 → ?', o: ['🏫 🛣️ 🌳', '🍬'], a: 0, why: 'Taxes build schools, roads and parks.' },
+    { pic: '🗳️ → ?', o: ['👑', '🍕'], a: 0, why: 'Votes choose the mayor.' },
+    { pic: '🚮 → ?', o: ['🗑️', '🌳'], a: 0, why: 'Litter goes in the bin.' },
+    { pic: '🚦🔴 → ?', o: ['🛑', '🏃'], a: 0, why: 'Red means stop.' },
+    { pic: '🤝 → ?', o: ['😊', '😠'], a: 0, why: 'Helping makes friends happy.' },
+    { pic: '🏥 → ?', o: ['🧑‍⚕️', '🧑‍🍳'], a: 0, why: 'Doctors work at the clinic.' },
+  ],
+  tools: [
+    { pic: '🔩 → ?', o: ['🔧', '🥄'], a: 0, why: 'A wrench turns bolts.' },
+    { pic: '🏠 ← ?', o: ['🪵', '🧊'], a: 0, why: 'Houses are built from wood.' },
+    { pic: '📌 → ?', o: ['🔨', '🍌'], a: 0, why: 'A hammer drives nails.' },
+    { pic: '🌳 → ?', o: ['🪓', '✏️'], a: 0, why: 'An axe chops trees.' },
+    { pic: '📏 → ?', o: ['📐', '🧸'], a: 0, why: 'Rulers measure things.' },
+    { pic: '🪵🪵🪵 + 🔨 → ?', o: ['🏠', '🚀'], a: 0, why: 'Wood and a hammer build a house.' },
+  ],
+  science: [
+    { pic: '🌱 + ☀️ + 💧', o: ['🌳', '🧊'], a: 0, why: 'Plants need sun and water to grow.' },
+    { pic: '🧊 + 🔥', o: ['💧', '🪨'], a: 0, why: 'Ice melts into water.' },
+    { pic: '🐟 → ?', o: ['💧', '🌵'], a: 0, why: 'Fish live in water.' },
+    { pic: '🌙 → ?', o: ['😴', '🏫'], a: 0, why: 'Night is for sleeping.' },
+    { pic: '🐛 → ?', o: ['🦋', '🐘'], a: 0, why: 'A caterpillar becomes a butterfly.' },
+    { pic: '☁️ → ?', o: ['🌧️', '🍩'], a: 0, why: 'Clouds bring rain.' },
+  ],
+};
 
 // Small World classes: questions for three age groups (b: 1 = 6-8, 2 = 9-12, 3 = 13-16)
 const CLASS_BANK = {
@@ -251,8 +302,14 @@ const CLASS_BANK = {
 // n questions for a class, fitted to the player's age group
 function classQuestions(subject, band, n = 3) {
   const shuffle = (a) => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(v => v[1]);
-  const mix = (q) => { const order = shuffle([0, 1, 2]); return { ...q, o: order.map(i => q.o[i]), a: order.indexOf(q.a) }; };
-  if (subject === 'math') return Array.from({ length: n }, () => makeMathQuestion(Math.random, band * 2 + Math.floor(Math.random() * 2)));
+  const mix = (q) => { const order = shuffle(q.o.map((_, i) => i)); return { ...q, o: order.map(i => q.o[i]), a: order.indexOf(q.a) }; };
+  // 6-8: pictures and two big answers
+  if (band === 1) {
+    if (subject === 'math') return Array.from({ length: n }, () => makePictureMath(Math.random));
+    const pics = PIC_BANK[subject] || PIC_BANK.science;
+    return shuffle(pics).slice(0, n).map(q => ({ s: subject, q: '', ...mix(q) }));
+  }
+  if (subject === 'math') return Array.from({ length: n }, () => makeMathQuestion(Math.random, band === 3 ? 6 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 2), band === 3 ? 4 : 3));
   if (subject === 'science') return shuffle(QUIZ_BANK).slice(0, n);
   const bank = CLASS_BANK[subject] || [];
   const fit = bank.filter(q => q.b === band), easier = bank.filter(q => q.b < band);

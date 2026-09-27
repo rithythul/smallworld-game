@@ -31,10 +31,11 @@
     <div class="hud-left">
       <div class="hud-row">
         <button class="pill coins" id="coinPill" type="button" title="Your coins: tap to see where they came from and went"><span class="coin"></span><span id="coinText">0</span><span id="oweText" hidden></span></button>
-        <div class="pill clock"><span id="clockIcon">☀️</span><span><span id="clockDay">Day 1 · </span><span id="clockText">6:00 AM</span></span></div>
+        <button class="pill stars" id="starPill" type="button" aria-label="Stars and levels"><span class="star-ring" id="starRing"><span>⭐</span></span><span id="starText">0</span><small id="lvText">Lv 1</small></button>
+        <div class="pill clock"><span id="clockIcon">☀️</span><span><span id="clockDay">Day 1 · </span><span id="clockText">6:00 AM</span></span><span id="ritualStrip" role="button" tabindex="0" aria-label="Today: swim, sip, sleep"><i data-r="swim">🌅</i><i data-r="sip">🌇</i><i data-r="sleep">🛏️</i></span></div>
       </div>
       <div id="receipts" aria-live="polite"></div>
-      <button class="pill goal" id="goal" type="button"><span class="goal-label">Dream</span><span id="goalText">Pick a dream</span></button>
+      <button class="pill goal" id="goal" type="button"><span class="goal-label" id="goalLabel">Dream</span><span id="goalText">Pick a dream</span></button>
       <button class="pill shift" id="shiftPill" type="button" hidden><span id="shiftText"></span></button>
       <button class="pill room" id="roomPill" type="button" hidden><span class="room-dot"></span><span id="roomText">ABCD</span></button>
     </div>
@@ -48,6 +49,7 @@
         <button type="button" id="dreamBtn">✨ Change my dream</button>
         <button type="button" id="helpBtn">❓ How it works</button>
         <button type="button" id="awayBtn">🍽️ Going to eat (pause)</button>
+        <button type="button" id="ageBtn">👤 Age (grown-ups)</button>
         <button type="button" id="grownBtn">🔒 Grown-up settings</button>
         <button type="button" id="musicBtn"><span id="musicIcon">🎵</span> Music</button>
         <button type="button" id="soundBtn"><span id="soundIcon">🔊</span> Sound</button>
@@ -63,6 +65,16 @@
   <div id="stick" hidden><div id="stickKnob"></div></div>
   <button id="action" type="button" hidden><span id="actionLabel"></span></button>
   <div id="emoteBar" hidden aria-label="Faces"></div>
+
+  <!-- bedtime: a little dream while the night passes -->
+  <div id="dream" hidden>
+    <canvas id="dreamArt" width="320" height="260"></canvas>
+    <div id="dreamStars"></div>
+    <b id="dreamCount"></b>
+    <div id="dreamPlan"></div>
+    <div id="nightBar" aria-label="Night until morning"><span>🌙</span><div class="progress thin"><div id="nightFill"></div></div><span>☀️</span></div>
+    <button class="big-btn" id="wakeBtn" type="button" aria-label="Wake up">☀️</button>
+  </div>
 
   <!-- sheets: every building, your life, the map -->
   <div id="sheet" hidden>

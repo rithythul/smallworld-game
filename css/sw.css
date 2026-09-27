@@ -261,3 +261,72 @@ body.sw #toasts { z-index: 9; }
 .thing .choice { padding: 6px 10px; font-size: 14px; }
 button.sure { background: #ffe08a !important; }
 .choice small { font-size: 11px; font-weight: 700; opacity: .8; }
+
+/* ---------- Small Town Days: stars, rituals, the dream, little-kid views ---------- */
+#starPill { cursor: pointer; font-family: var(--body); color: var(--ink); gap: 6px; padding: 2px 12px 0 4px; }
+#starPill small { font-size: 12px; font-weight: 800; color: var(--ink-soft); }
+.star-ring { --p: 0%; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(#ffd23f var(--p), #efe3c9 0); }
+.star-ring span { width: 22px; height: 22px; border-radius: 50%; background: var(--paper); display: grid; place-items: center; font-size: 14px; }
+#ritualStrip { display: inline-flex; gap: 2px; margin-left: 4px; cursor: pointer; pointer-events: auto; }
+#ritualStrip i { font-style: normal; font-size: 17px; position: relative; filter: grayscale(1); opacity: .55; transition: opacity .3s; }
+#ritualStrip i.open { filter: none; opacity: 1; animation: ritualPulse 1s ease-in-out infinite alternate; }
+#ritualStrip i.done { filter: none; opacity: 1; }
+#ritualStrip i.done::after { content: '✓'; position: absolute; right: -4px; bottom: -4px; font-size: 10px; font-weight: 900; color: #fff; background: #3e7d22; border-radius: 50%; width: 13px; height: 13px; line-height: 13px; text-align: center; }
+#ritualStrip i.past { opacity: .3; }
+@keyframes ritualPulse { from { transform: scale(1); } to { transform: scale(1.25); filter: drop-shadow(0 0 4px #ffd23f); } }
+#coinPill.spent { animation: coinSpent .6s ease; }
+@keyframes coinSpent { 0%, 100% { background: var(--paper); } 40% { background: #dcecff; } }
+.receipt.buy { background: #e6f3ff; color: #1c4f8a; }
+
+/* picture quizzes for little kids */
+.quiz-pic { font-size: 44px; line-height: 1.3; text-align: center; margin: 6px 0 14px; word-break: break-word; }
+.quiz-opts.pics { grid-template-columns: 1fr 1fr; }
+.quiz-opt.pic { text-align: center; font-size: 44px; min-height: 104px; }
+.quiz-opt.wiggle { animation: wiggle .4s ease; background: #fbd6cc; }
+.quiz-opt.glow { box-shadow: 0 0 0 4px #ffd23f, 0 3px 0 var(--ink); animation: ritualPulse .7s ease-in-out infinite alternate; }
+@keyframes wiggle { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+.b1 .quiz-why { font-size: 22px; text-align: center; }
+
+/* the morning card, challenges, the star sheet */
+.morning-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 4px 0 14px; }
+.morning-row span { font-size: 26px; font-weight: 800; background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 6px 12px 3px; }
+.tile.challenge b { font-size: 18px; }
+.budget .head { border-bottom: 0; padding-top: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+.star-big { text-align: center; margin-bottom: 12px; }
+.star-big b { display: block; font-family: var(--display); font-weight: 400; font-size: 44px; line-height: 1.1; }
+.star-big .progress { margin: 8px auto 6px; max-width: 360px; }
+.star-big span { font-weight: 800; color: var(--ink-soft); }
+.ritual-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ritual-row > span { display: flex; flex-direction: column; align-items: center; font-size: 30px; min-width: 64px; background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 6px 8px 4px; }
+.ritual-row > span small { font-size: 11px; font-weight: 800; color: var(--ink-soft); }
+.ritual-row > span.soon { opacity: .6; } .ritual-row > span.past { opacity: .35; } .ritual-row > span.done { background: #e3f4d3; } .ritual-row > span.open { background: #fff3b0; }
+.picture-sum { text-align: center; font-size: 22px; font-weight: 800; margin: 2px 0 10px; }
+.piggy { font-size: 30px; }
+.tabs.ages { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.tabs.ages .tab { min-width: 52px; font-size: 20px; }
+#ages { display: flex; flex-wrap: wrap; gap: 6px; }
+#ages .tab { min-width: 40px; font-size: 16px; padding-left: 8px; padding-right: 8px; }
+.float.zz { font-size: 26px; color: #d9d4ff; }
+
+/* bedtime: a little dream while the night passes */
+#dream { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px;
+  background: radial-gradient(circle at 50% 30%, #3a2f6b 0%, #1b1740 75%); color: #fff; overflow: hidden; }
+#dream[hidden] { display: none; }
+#dreamArt { width: min(320px, 80vw); height: auto; }
+#dreamStars { position: absolute; inset: 0; pointer-events: none; }
+.dream-star { position: absolute; pointer-events: auto; width: 72px; height: 72px; font-size: 44px; border: 0; background: none; cursor: pointer; animation: twinkle 1.2s ease-in-out infinite alternate; filter: drop-shadow(0 0 10px #ffe680); }
+@keyframes twinkle { from { transform: scale(.85) rotate(-8deg); } to { transform: scale(1.1) rotate(8deg); } }
+#dreamCount { position: absolute; top: 12%; left: 50%; translate: -50% 0; font-family: var(--display); font-weight: 400; font-size: 120px; line-height: 1; color: #ffe680; text-shadow: 0 4px 0 #1b1740; pointer-events: none; }
+#dreamCount.pop { animation: countPop .5s ease; }
+@keyframes countPop { 0% { transform: scale(.5); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+#dreamPlan { width: min(360px, 92vw); color: var(--ink); }
+#dreamPlan:empty { display: none; }
+#nightBar { display: flex; align-items: center; gap: 8px; width: min(360px, 86vw); font-size: 24px; }
+#nightBar .progress { flex: 1; margin: 0; }
+#nightFill { height: 100%; width: 0; background: linear-gradient(90deg, #7a6fd6, #ffd23f); transition: width .5s linear; }
+#wakeBtn { min-width: 96px; min-height: 64px; font-size: 32px; }
+
+/* band 1: pictures and numbers, as few words as possible */
+.b1 .keeper p, .b1 .receipt small, .b1 .led small, .b1 .budget small { display: none; }
+@media (max-width: 420px) { #starPill small { display: none; } #ritualStrip i { font-size: 15px; } }
+.budget b.move { color: var(--ink-soft); }

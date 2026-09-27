@@ -29,6 +29,19 @@
   const STATION = { id: 'station0', type: 'station', x: 3740, y: -20, w: 260 };
   const PROJECT_SPOTS = { fountain: { x: 4800, y: 1340 }, park: { x: 5100, y: 2230 }, library: { x: 5330, y: 2010 }, clinic: { x: 5000, y: 2000 }, busTown: { x: 3740, y: 1700 }, busVillage: { x: 560, y: 680 } };
 
+  // home life, right next to where everyone wakes up: the Sunrise Pool (morning swim), a water tap (sunset sip),
+  // the Duck Pond for fishing, a ball to kick, and a few nature spots in the old town
+  const HOME = { pool: { x: 4000, y: 2420, rx: 150, ry: 85 }, tap: { x: 3790, y: 2310 } };
+  const POND = { x: 3590, y: 2060, rx: 110, ry: 70 };
+  const BALL = { x: 3690, y: 2440 };
+  const OLD_SPOTS = [
+    { id: 'old-fish', type: 'fish', x: 3590, y: 2150 },
+    { id: 'old-photo', type: 'photo', x: 4620, y: 470 },
+    { id: 'old-stars', type: 'stars', x: 4546, y: 1450 },
+    { id: 'old-berry', type: 'berry', x: 5090, y: 470 },
+  ];
+  const inPool = (x, y, pad = 0) => { const u = (x - HOME.pool.x) / (HOME.pool.rx + pad), v = (y - HOME.pool.y) / (HOME.pool.ry + pad); return u * u + v * v < 1; };
+
   // land for sale: farms east of the market, building lots in the west and south
   const PLOTS = [];
   [950, 1160, 1370, 1930, 2140, 2350].forEach((y, r) => [5560, 5790].forEach((x, c) => PLOTS.push({ id: `F${r * 2 + c + 1}`, kind: 'farm', x, y, w: 200, h: 165, price: 70 + (r % 3) * 10 + c * 10 })));
@@ -105,6 +118,19 @@
   const hasPlace = (town, type) => districtsOf(town).some(d => d.landmarks.some(l => l.type === type));
   const stopsOf = (town) => [{ id: 'stop0', name: 'Small Town', x: PROJECT_SPOTS.busTown.x, y: PROJECT_SPOTS.busTown.y }, ...districtsOf(town).map(d => ({ id: 'stop' + d.k, name: d.name, x: d.stop.x, y: d.stop.y }))];
   const stationsOf = (town) => [{ id: 'station0', name: 'Small Town', x: STATION.x, y: STATION.y }, ...districtsOf(town).map(d => ({ id: d.station.id, name: d.name, x: d.station.x, y: d.station.y }))];
+  const spotsOf = (town) => OLD_SPOTS.concat(districtsOf(town).flatMap(d => d.spots));
+  // wonders: rare shared moments. The same time gives the same wonder for everyone in a room.
+  const WONDER_WIN = 8 * MIN, WONDER_LEN = 45 * 1000;
+  const POTS = [{ x: 4560, y: 1760 }, { x: 5040, y: 1760 }, { x: 4800, y: 2200 }, { x: 5100, y: 760 }];
+  function wonderAt(now) {
+    const w = Math.floor(now / WONDER_WIN), r = rng(w * 7919 + 101);
+    if (r() > 0.55) return null;
+    const start = w * WONDER_WIN + r() * (WONDER_WIN - WONDER_LEN);
+    if (now < start || now >= start + WONDER_LEN) return null;
+    const hour = 6 + ((start % (6 * MIN)) / (6 * MIN)) * 17, pick = r();
+    const type = hour >= 19.5 ? 'stars' : pick < 0.5 ? 'rain' : 'rainbow';
+    return { id: w, type, start, end: start + WONDER_LEN, pot: POTS[Math.floor(r() * POTS.length)] };
+  }
   const worldRight = (town) => DX0 + ((town && town.districts) || 0) * DW;
   function grow(town, n, now) {
     town.growth = (town.growth || 0) + n;
@@ -376,7 +402,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
-    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
+    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, HOME, POND, BALL, OLD_SPOTS, inPool, spotsOf, wonderAt, POTS, rng, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -5,7 +5,8 @@
   "description": "Small World: a little 3D town where kids learn how the real world works",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/life.test.js"
   },
   "engines": {
     "node": ">=18"

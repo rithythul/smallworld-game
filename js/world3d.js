@@ -144,6 +144,21 @@ const GEO = {
     s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
     return new THREE.ShapeGeometry(s, 6).rotateX(-Math.PI / 2);
   }),
+  // a flat oval ring standing up from y=0 to h (the tiled edge around the pool); the hole is rx x rz, the ring w wide
+  ering: (rx, rz, w, h) => prep(`e${rx},${rz},${w},${h}`, () => {
+    const s = new THREE.Shape(), hole = new THREE.Path();
+    s.absellipse(0, 0, rx + w, rz + w, 0, Math.PI * 2, false); hole.absellipse(0, 0, rx, rz, 0, Math.PI * 2, true); s.holes.push(hole);
+    return new THREE.ExtrudeGeometry(s, { depth: h - 0.2, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.12, bevelSegments: 2, curveSegments: 48 }).rotateX(-Math.PI / 2).translate(0, 0.1, 0);
+  }),
+  // one slice of a striped umbrella (8 of them make the whole canopy)
+  wedge: (r, h, i) => prep(`w${r},${h},${i}`, () => new THREE.ConeGeometry(r, h, 3, 1, false, i * Math.PI / 4, Math.PI / 4)),
+  // a chunky five-point star, standing up and facing +z
+  star: (ro, ri, d) => prep(`st${ro},${ri},${d}`, () => {
+    const s = new THREE.Shape();
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + Math.PI / 2, r = i % 2 ? ri : ro; s[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
+    return new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 1 }).translate(0, 0, -d / 2);
+  }),
+  lily: (r) => prep(`ly${r}`, () => new THREE.CircleGeometry(r, 14, 0.4, Math.PI * 2 - 0.8).rotateX(-Math.PI / 2)),   // a pad with a notch
 };
 
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
@@ -327,6 +342,15 @@ function freeSpot(gx, gy, pad) {
   const PS = T.PROJECT_SPOTS; if (Math.hypot(gx - PS.park.x, gy - PS.park.y) < 170 + pad) return false;
   for (const k of ['library', 'clinic']) if (Math.abs(gx - PS[k].x) < 110 + pad && gy > PS[k].y - 130 - pad && gy < PS[k].y + 60 + pad) return false;
   if (Math.hypot(gx - 3740, gy - 1760) < 150 + pad) return false;   // bus stop + welcome sign
+  return homeClear(gx, gy, pad);
+}
+// the pool, the tap, the Duck Pond, the ball and the nature spots keep their space (no tree grows in the pool)
+const HOME_KEEP = [[T.HOME.tap.x, T.HOME.tap.y, 50], [4215, 2420, 75], [4170, 2330, 40], [T.BALL.x, T.BALL.y, 60], ...T.OLD_SPOTS.map(s => [s.x + 30, s.y, 55])];
+function homeClear(gx, gy, pad) {
+  if (T.inPool(gx, gy, 50 + pad)) return false;
+  const P = T.POND, u = (gx - P.x) / (P.rx + 45 + pad), v = (gy - P.y) / (P.ry + 45 + pad);
+  if (u * u + v * v < 1) return false;
+  for (const [x, y, r] of HOME_KEEP) if (Math.hypot(gx - x, gy - y) < r + pad) return false;
   return true;
 }
 
@@ -1061,6 +1085,8 @@ function drawScreen(ctx, mood, t) {
 }
 const ANIMATED_MOODS = new Set(['laugh', 'love', 'think', 'crunch', 'sad', 'silly', 'thirsty']);
 
+const HATS = ['flower', 'beanie', 'propeller', 'chef', 'crown', 'bowl'];   // every kind hat() can draw
+const hatOf = (h) => HATS.includes(h) ? h : null;
 function hat(B, kind, color) {
   const y = 7.75;
   switch (kind) {
@@ -1199,6 +1225,8 @@ blobs.frustumCulled = false; blobs.count = 0;
 scene.add(blobs);
 // ground height under a point (farm soil, lots, plaza and roads are raised a little above the grass)
 function groundAt(x, z) {
+  const dk = deckAt(x, z); if (dk) return dk.y;
+  for (const p of PADS) { const u = (x - p.x) / p.rx, v = (z - p.z) / p.rz; if (u * u + v * v < 1) return p.y; }
   const inside = (gx, gy, gw, gh, pad = 0) => x > wx(gx) + pad && x < wx(gx + gw) - pad && z > wz(gy) + pad && z < wz(gy + gh) - pad;
   const F = T.TOWN_FARM; if (inside(F.x, F.y, F.w, F.h)) return 0.4;
   for (const p of T.PLOTS) if (inside(p.x, p.y, p.w, p.h, 0.3)) return p.kind === 'farm' ? 0.34 : 0.22;
@@ -1236,13 +1264,16 @@ function addSeeThrough(sf) {
 /* ------------------------------------------------------------------ the land: hills you can climb, water you can swim in */
 // The same rules move you, balls and falling trees: gravity pulls down, hills slow you going up, water holds you up.
 const HILLS = [];    // {x, z, h, s}: smooth round hills, in world units
-const WATERS = [];   // {x, z, rx, rz}: lakes and seas
+const WATERS = [];   // {x, z, rx, rz, y?}: lakes, seas and the pool (y = the water surface, 0.07 if not given)
+const DECKS = [];    // {x0, z0, x1, z1, y}: planks over the water that you walk on instead of swimming
+const PADS = [];     // {x, z, rx, rz, y}: raised ovals you walk over, like the pool's tiled edge
 function hillH(x, z) {
   let h = 0;
   for (const q of HILLS) { const dx = x - q.x, dz = z - q.z, d2 = dx * dx + dz * dz; if (d2 < 9 * q.s * q.s) h += q.h * Math.exp(-d2 / (2 * q.s * q.s)); }
   return h;
 }
-function waterAt(x, z) { for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return w; } return null; }
+function deckAt(x, z) { for (const d of DECKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return d; return null; }
+function waterAt(x, z) { for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return deckAt(x, z) ? null : w; } return null; }
 const slopeAt = (x, z) => ({ gx: (hillH(x + 0.5, z) - hillH(x - 0.5, z)), gz: (hillH(x, z + 0.5) - hillH(x, z - 0.5)) });
 const GRAV = 42;                 // world units / s², the pull that brings every hop back down
 let gravity = GRAV;              // one sixth of it on the Moon
@@ -1386,7 +1417,7 @@ function campfire(B, x, z) {
   [[-2.4, 0], [2.4, 0.4]].forEach(([dx, dz]) => { B.add(GEO.cyl(0.6, 0.6, 1, 8), M(x + dx, 0.5, z + dz), COL.wood, { ol: 0.05 }); addCircleSolid(x + dx, z + dz, 0.7); });
 }
 function tripod(B, x, z) {
-  [0, 2.1, 4.2].forEach(a => B.add(GEO.cyl(0.08, 0.1, 3, 4), M(x + Math.sin(a) * 0.5, 1.4, z + Math.cos(a) * 0.5, a, 0.2), INKC, { ol: 0 }));
+  [0, 2.1, 4.2].forEach(a => B.add(GEO.cyl(0.08, 0.1, 3, 4), M(x + Math.sin(a) * 0.5, 1.4, z + Math.cos(a) * 0.5, a, -0.2), INKC, { ol: 0 }));   // feet out
   B.add(GEO.rbox(1.4, 0.9, 0.8, 0.2, 1), M(x, 3, z), '#1f1a2e', { ol: 0.05 }); B.add(GEO.cyl(0.3, 0.3, 0.5, 10), M(x, 3, z + 0.55, 0, Math.PI / 2), '#8fdcf2', { ol: 0 });
   addCircleSolid(x, z, 0.6);
 }
@@ -1460,6 +1491,150 @@ function buildNature(B, D, trees) {
     }
   }
   sign(B, cx - 6, 3.4, cz + 30, `🌲 ${D.natureName}`, { post: true, th: 1.5 });
+}
+
+/* ------------------------------------------------------------------ home life: the Sunrise Pool, the tap, the Duck Pond */
+// Right next to where everyone wakes up. The pool and the pond are WATERS, so the swim rules (splash, hooks.onSwim) just work.
+const POOL_Y = 0.24;   // the pool's water sits a little under its tiled edge
+const home = { pool: null, pond: null, duck: null, ducks: [] };
+function telescope(B, x, z, y = 0) {
+  // three legs leaning in, and a tube pointing up at the sky, tipped sideways so the camera sees it side-on
+  const tilt = -0.8, ux = -Math.sin(tilt), uy = Math.cos(tilt), y0 = y + 2.8;   // (ux, uy): the tube's axis
+  [0, 2.1, 4.2].forEach(a => B.add(GEO.cyl(0.08, 0.1, 2.6, 4), M(x + Math.sin(a) * 0.55, y + 1.25, z + Math.cos(a) * 0.55, a, -0.28), INKC, { ol: 0 }));
+  B.add(GEO.cyl(0.5, 0.34, 2.8, 12), M(x, y0, z, 0, 0, tilt), COL.blue, { ol: 0.05 });
+  B.add(GEO.cyl(0.58, 0.58, 0.3, 12), M(x + ux * 1.2, y0 + uy * 1.2, z, 0, 0, tilt), COL.yellow, { ol: 0.04 });
+  B.add(GEO.cyl(0.15, 0.15, 0.5, 8), M(x - ux * 1.6, y0 - uy * 1.6, z, 0, 0, tilt), INKC, { ol: 0 });
+  B.add(GEO.sph(0.3, 8, 6), M(x, y0 - 0.25, z), INKC, { ol: 0 });   // the joint on top of the legs
+  addCircleSolid(x, z, 0.8);
+}
+function lounger(B, x, z, ry, color) {
+  // the feet end is local +z, the backrest rises at -z
+  const r = new THREE.Matrix4().makeRotationY(ry), at = (dx, dz) => new THREE.Vector3(dx, 0, dz).applyMatrix4(r);
+  const put = (e, dx, y, dz, c, rx = 0, ol = 0.06) => { const p = at(dx, dz); B.add(e, M(x + p.x, y, z + p.z, ry, rx), c, { ol }); };
+  [[-0.85, 1.9], [0.85, 1.9], [-0.85, -0.9], [0.85, -0.9]].forEach(([dx, dz]) => put(GEO.box(0.22, 0.8, 0.22), dx, 0.4, dz, INKC, 0, 0));
+  put(GEO.rbox(2.2, 0.3, 3.4, 0.12, 1), 0, 0.9, 0.5, COL.paper);
+  put(GEO.rbox(1.9, 0.22, 3.1, 0.1, 1), 0, 1.12, 0.5, color, 0, 0.04);
+  put(GEO.rbox(2.2, 0.3, 2.0, 0.12, 1), 0, 1.65, -1.85, COL.paper, 0.8);
+  put(GEO.rbox(1.9, 0.22, 1.8, 0.1, 1), 0, 1.8, -1.69, color, 0.8, 0.04);
+  const c = [[-1.1, -2.9], [1.1, -2.9], [-1.1, 2.2], [1.1, 2.2]].map(([dx, dz]) => at(dx, dz)), xs = c.map(p => p.x), zs = c.map(p => p.z);
+  addBoxSolid(x + Math.min(...xs), z + Math.min(...zs), x + Math.max(...xs), z + Math.max(...zs));
+}
+function umbrella(B, x, z, a = '#ff8fb1', b = COL.paper) {
+  B.add(GEO.cyl(0.12, 0.12, 4.6, 6), M(x, 2.3, z), INKC, { ol: 0 });
+  for (let i = 0; i < 8; i++) B.add(GEO.wedge(3.7, 1.3, i), M(x, 4.95, z), i % 2 ? b : a, { ol: 0.05 });
+  B.add(GEO.ico(0.26, 0), M(x, 5.65, z), a, { ol: 0.03 });
+  addCircleSolid(x, z, 0.45);
+}
+function buildPool() {
+  const P = T.HOME.pool, x = wx(P.x), z = wz(P.y), rx = P.rx * S, rz = P.ry * S;
+  home.pool = { x, z, rx, rz };
+  WATERS.push({ x, z, rx, rz, y: POOL_Y });
+  PADS.push({ x, z, rx: rx + 1.9, rz: rz + 1.9, y: 0.5 });
+  // the tiled edge (with grout lines), then the water: a darker band under the edge, a pale ring of light, a few glints
+  W.add(GEO.ering(rx, rz, 1.7, 0.5), M(x, 0, z), COL.shell, { ol: 0.08 });
+  for (let i = 0; i < 30; i++) {
+    const a = i / 30 * Math.PI * 2, nx = Math.cos(a) / (rx + 0.85), nz = Math.sin(a) / (rz + 0.85);
+    W.add(GEO.box(1.5, 0.03, 0.08), M(x + Math.cos(a) * (rx + 0.85), 0.5, z + Math.sin(a) * (rz + 0.85), Math.atan2(-nz, nx)), '#e6dcc6', { ol: 0 });
+  }
+  W.add(GEO.disc(1, 48), M(x, POOL_Y, z, 0, 0, 0, rx + 0.1, 1, rz + 0.1), '#7fd0ea', { ol: 0 });
+  W.add(GEO.ring(0.88, 1.0, 48), M(x, POOL_Y + 0.01, z, 0, 0, 0, rx, 1, rz), '#6cc3e2', { ol: 0 });
+  W.add(GEO.ring(0.56, 0.6, 48), M(x, POOL_Y + 0.02, z, 0, 0, 0, rx, 1, rz), '#bfefff', { ol: 0 });
+  [[-6, -2.5, 0.2], [3.5, 3, -0.3], [7, -3.5, 0.1]].forEach(([dx, dz, a]) => W.add(GEO.box(1.6, 0.02, 0.22), M(x + dx, POOL_Y + 0.03, z + dz, a), '#bfefff', { ol: 0 }));
+  // a metal ladder on the north side: rails in the water, over the edge, down to the tiles
+  const lx = x + 4, lz = z - rz * Math.sqrt(1 - (4 / rx) ** 2), metal = '#cfd8e3';
+  [-0.55, 0.55].forEach(dx => {
+    W.add(GEO.cyl(0.11, 0.11, 1.9, 6), M(lx + dx, 1.15, lz + 0.45), metal, { ol: 0.04 });
+    W.add(GEO.cyl(0.11, 0.11, 1.3, 6), M(lx + dx, 2.1, lz - 0.2, 0, Math.PI / 2), metal, { ol: 0.04 });
+    W.add(GEO.cyl(0.11, 0.11, 1.6, 6), M(lx + dx, 1.3, lz - 0.85), metal, { ol: 0.04 });
+  });
+  [0.75, 1.4].forEach(y => W.add(GEO.box(1.1, 0.12, 0.4), M(lx, y, lz + 0.5), metal, { ol: 0.03 }));
+  addCircleSolid(lx, lz + 0.2, 0.7);
+  // two loungers under a striped umbrella on the east side, feet towards the water
+  const ux = x + rx + 4.8;
+  lounger(W, ux, z - 2.7, -Math.PI / 2, '#ff8fb1'); lounger(W, ux, z + 2.7, -Math.PI / 2, '#8fdcf2');
+  umbrella(W, ux + 2.2, z);
+  sign(W, wx(4170), 3.4, wz(2330), '🏊 🌅', { post: true, th: 1.5 });
+  // a rubber duck bobbing around (moved in frame())
+  const rd = new Builder();
+  rd.add(GEO.sph(0.9, 10, 8), M(0, 0.45, 0, 0, 0, 0, 1.25, 0.75, 1), COL.yellow, { ol: 0.07 });
+  rd.add(GEO.cone(0.35, 0.7, 5), M(-1.1, 0.85, 0, 0, 0, 0.9), COL.yellow, { ol: 0.05 });
+  rd.add(GEO.sph(0.6, 10, 8), M(0.6, 1.3, 0), COL.yellow, { ol: 0.06 });
+  rd.add(GEO.cone(0.26, 0.55, 6), M(1.25, 1.2, 0, 0, 0, -Math.PI / 2), '#ff9f43', { ol: 0.04 });
+  [0.3, -0.3].forEach(s => rd.add(GEO.sph(0.09, 6, 4), M(0.95, 1.45, s), INKC, { ol: 0 }));
+  home.duck = new THREE.Group(); home.duck.add(rd.mesh({ cast: false })); scene.add(home.duck);
+}
+function buildTap() {
+  const x = wx(T.HOME.tap.x), z = wz(T.HOME.tap.y), stone = '#cfc6d8', metal = '#9aa3b5';
+  W.add(GEO.rbox(2.8, 0.3, 3.6, 0.12, 1), M(x, 0.15, z + 0.3), '#d9cbb0', { ol: 0.07 });
+  W.add(GEO.rbox(1.1, 3.4, 1.1, 0.25, 1), M(x, 1.9, z - 0.6), stone, { ol: 0.08, ao: 0.18 });
+  W.add(GEO.rbox(1.45, 0.35, 1.45, 0.12, 1), M(x, 3.65, z - 0.6), '#bdb2cc', { ol: 0.06 });
+  W.add(GEO.cyl(0.16, 0.16, 0.95, 8), M(x, 3.0, z + 0.3, 0, Math.PI / 2), metal, { ol: 0.04 });   // spout
+  W.add(GEO.cyl(0.16, 0.16, 0.4, 8), M(x, 2.85, z + 0.7), metal, { ol: 0.04 });
+  W.add(GEO.cyl(0.3, 0.3, 0.14, 10), M(x, 3.22, z + 0.1), COL.blue, { ol: 0.03 });                // the knob
+  // a little basin, and the water running into it
+  W.add(GEO.cyl(1.05, 0.8, 0.8, 16), M(x, 0.7, z + 0.85), '#e9e2d0', { ol: 0.07, ao: 0.15 });
+  W.add(GEO.torus(0.92, 0.14, 16), M(x, 1.1, z + 0.85), COL.shell, { ol: 0.04 });
+  W.add(GEO.disc(0.85, 16), M(x, 1.06, z + 0.85), '#8fdcf2', { ol: 0 });
+  [[2.55, 0.74, 0.15], [2.2, 0.8, 0.14], [1.85, 0.84, 0.13], [1.5, 0.86, 0.12]].forEach(([y, dz, r]) => W.add(GEO.ico(r, 0), M(x, y, z + dz, 0, 0, 0, 1, 1.4, 1), '#8fdcf2', { ol: 0.02 }));
+  addCircleSolid(x, z + 0.2, 1.5);
+}
+function buildPond() {
+  const Q = T.POND, x = wx(Q.x), z = wz(Q.y), rx = Q.rx * S, rz = Q.ry * S;
+  home.pond = { x, z, rx, rz };
+  WATERS.push({ x, z, rx, rz, y: 0.07 });
+  W.add(GEO.disc(1, 40), M(x, 0.04, z, 0, 0, 0, rx + 2.4, 1, rz + 2.2), '#e9d9b0', { ol: 0 });
+  W.add(GEO.disc(1, 40), M(x, 0.07, z, 0, 0, 0, rx, 1, rz), '#7fd0ea', { ol: 0 });
+  W.add(GEO.ring(0.7, 0.74, 40), M(x, 0.09, z, 0, 0, 0, rx, 1, rz), '#bfefff', { ol: 0 });
+  // lily pads (two with a flower)
+  [[-6, -2.4, 0.3], [4.6, -3.3, 2.1], [-4.4, 3.1, 4], [6.6, 1.4, 1]].forEach(([dx, dz, a], i) => {
+    W.add(GEO.lily(0.95), M(x + dx, 0.11, z + dz, a), '#8cc45e', { ol: 0 });
+    if (i % 2 === 0) W.add(GEO.ico(0.26, 0), M(x + dx + 0.2, 0.28, z + dz + 0.1), '#ff8fb1', { ol: 0.03 });
+  });
+  // reeds along the far shore
+  [3.5, 4.1, 5.4].forEach((a, k) => {
+    const rx2 = x + Math.cos(a) * (rx + 0.6), rz2 = z + Math.sin(a) * (rz + 0.6);
+    for (let i = 0; i < 3; i++) {
+      const ox = (i - 1) * 0.45, h = 2 + ((i + k) % 3) * 0.35;
+      W.add(GEO.cyl(0.06, 0.08, h, 4), M(rx2 + ox, h / 2, rz2 + (i % 2) * 0.3), '#6fb84a', { ol: 0 });
+      W.add(GEO.capsule(0.16, 0.45), M(rx2 + ox, h - 0.1, rz2 + (i % 2) * 0.3), COL.woodDark, { ol: 0.03 });
+    }
+  });
+  [[-rx - 1.6, 1.5], [rx + 1.2, -2.2]].forEach(([dx, dz]) => { W.add(GEO.ico(0.8, 0), M(x + dx, 0.35, z + dz), '#cfc6d8', { ol: 0.06 }); addCircleSolid(x + dx, z + dz, 0.9); });
+  // a little wooden dock from the fishing spot on the south shore out over the water (you stand on it, not swim)
+  const f = T.OLD_SPOTS.find(s => s.type === 'fish') || { x: Q.x, y: Q.y + Q.ry + 20 }, fx = wx(f.x);
+  const d0 = wz(f.y) + 1, d1 = z + rz - 3.5, dc = (d0 + d1) / 2;
+  W.add(GEO.box(2.6, 0.3, d0 - d1), M(fx, 0.5, dc), COL.wood, { ol: 0.06 });
+  for (let k = d1 + 0.7; k < d0 - 0.3; k += 1.1) W.add(GEO.box(2.62, 0.04, 0.08), M(fx, 0.66, k), COL.woodDark, { ol: 0 });
+  [[-1.2, d1 + 0.3], [1.2, d1 + 0.3], [-1.2, dc + 0.4], [1.2, dc + 0.4]].forEach(([dx, dz]) => W.add(GEO.cyl(0.2, 0.2, 1.4, 6), M(fx + dx, 0.35, dz), COL.woodDark, { ol: 0.04 }));
+  DECKS.push({ x0: fx - 1.35, z0: d1, x1: fx + 1.35, z1: d0, y: 0.65 });
+  // a duck and her duckling paddle around (moved in frame())
+  [1, 0.55].forEach(k => { const d = duck.clone(); d.scale.setScalar(k); d.visible = true; scene.add(d); home.ducks.push(d); });
+}
+function buildHome() {
+  buildPool(); buildTap(); buildPond();
+  // the old town's nature spots: a camera on a tripod, a telescope, a berry bush
+  T.OLD_SPOTS.forEach(s => {
+    const x = wx(s.x), z = wz(s.y);
+    if (s.type === 'photo') tripod(W, x + 3, z);          // beside the spot, so you still see it while you stand there
+    if (s.type === 'stars') telescope(W, x + 3, z);
+    if (s.type === 'berry') berryBush(W, x + 3.4, z);
+  });
+  addBall(T.BALL.x, T.BALL.y, 'soccer');
+}
+function updateHome(t) {
+  const p = home.pool, q = home.pond;
+  if (p && home.duck) {
+    // the rubber duck drifts round the pool, bobbing, facing the way it goes
+    const a = t * 0.18, dx = -Math.sin(a) * p.rx * 0.5, dz = Math.cos(a) * p.rz * 0.45;
+    home.duck.position.set(p.x + Math.cos(a) * p.rx * 0.5, POOL_Y - 0.15 + Math.sin(t * 2.2) * 0.07, p.z + Math.sin(a) * p.rz * 0.45);
+    home.duck.rotation.set(Math.sin(t * 1.7) * 0.06, Math.atan2(-dz, dx), Math.sin(t * 2.2) * 0.08);
+  }
+  if (q) home.ducks.forEach((d, i) => {
+    // mother in front, duckling a little behind on the same loop
+    const a = -t * 0.3 + i * 0.45, dx = Math.sin(a) * q.rx, dz = -Math.cos(a) * q.rz;
+    d.position.set(q.x + Math.cos(a) * q.rx * 0.55, 0.02 + Math.sin(t * 2 + i) * 0.05, q.z + Math.sin(a) * q.rz * 0.5);
+    d.rotation.y = Math.atan2(-dz, dx);
+  });
 }
 
 /* ------------------------------------------------------------------ building a new district */
@@ -1802,7 +1977,8 @@ function updateGuide(t) {
   const a = Math.atan2(dx, dz);
   arrowMesh.visible = d > 9;
   const r = 5 + Math.sin(t * 5) * 0.4;
-  arrowMesh.position.set(player.x + Math.sin(a) * r, groundAt(player.x, player.z) + hillH(player.x, player.z) + 0.25 + (player.sf ? player.sf.y : 0), player.z + Math.cos(a) * r);
+  const ax = player.x + Math.sin(a) * r, az = player.z + Math.cos(a) * r;
+  arrowMesh.position.set(ax, Math.max(groundAt(player.x, player.z), groundAt(ax, az)) + hillH(player.x, player.z) + 0.25 + (player.sf ? player.sf.y : 0), az);
   arrowMesh.rotation.y = a + Math.PI;
   if (!guideEl) return;
   const sc = toScreen(tx, guideTarget.h || 10, tz), W = innerWidth, H = innerHeight, m = 46;
@@ -1836,7 +2012,7 @@ function stepRain(dt, on) {
 }
 
 /* ------------------------------------------------------------------ build everything */
-const player = { x: wx(4040), z: wz(2230), vx: 0, vz: 0, sf: null, color: COL.teal };
+const player = { x: wx(4040), z: wz(2230), vx: 0, vz: 0, sf: null, color: COL.teal, hat: null };
 const npcs = [], others = new Map(), keepers = [];
 let bus = null;
 function buildAll() {
@@ -1846,6 +2022,7 @@ function buildAll() {
   buildTownFarm();
   buildForestStatic();
   buildDecor();
+  buildHome();
   buildRail(W, SLAB.x0, SLAB.x1);
   buildLandmark(W, T.STATION);
   W.meshes().forEach(m => { m.matrixAutoUpdate = false; m.children.forEach(c => { c.matrixAutoUpdate = false; }); scene.add(m); });
@@ -1855,7 +2032,7 @@ function buildAll() {
   TEXT.repaintWhenFontArrives();
 
   // the player + the townsfolk
-  player.sf = makeSquareface({ color: player.color, antenna: COL.roof, seed: 3 });
+  player.sf = makeSquareface({ color: player.color, antenna: COL.roof, hatKind: player.hat, seed: 3 });
   addSeeThrough(player.sf);
   T.BUILDINGS.forEach(addKeeper);
   addKeeper(T.STATION);
@@ -1923,9 +2100,10 @@ function syncOthers(dt, t) {
     if (o.x === null || o.x === undefined) continue;
     seen.add(o.id);
     let r = others.get(o.id);
-    if (!r || r.color !== o.color) {
+    const h = hatOf(o.h);
+    if (!r || r.color !== o.color || r.hat !== h) {
       if (r) r.sf.remove();
-      r = { sf: makeSquareface({ color: o.color, antenna: o.color, seed: 50 + o.id * 7 }), color: o.color, x: wx(o.x), z: wz(o.y) };
+      r = { sf: makeSquareface({ color: o.color, antenna: o.color, hatKind: h, seed: 50 + o.id * 7 }), color: o.color, hat: h, x: r ? r.x : wx(o.x), z: r ? r.z : wz(o.y) };
       others.set(o.id, r);
     }
     const tx = wx(o.tx ?? o.x), tz = wz(o.ty ?? o.y), px = r.x, pz = r.z;
@@ -1972,10 +2150,11 @@ function showTag(key, sf, name, sub, o = {}) {
 function updateTags() {
   tags.forEach(t => { t.used = false; });
   const info = hooks.tagInfo ? hooks.tagInfo() : {};
-  if (player.sf) showTag('me', player.sf, info.me ? info.me.name : '', info.me && info.me.sub, { color: player.color, talking: info.me && info.me.talking });
+  const zzz = (on, sub) => on ? `💤 ${sub || ''}`.trim() : sub;   // a sleeper's tag says so
+  if (player.sf) showTag('me', player.sf, info.me ? info.me.name : '', zzz(sleeping, info.me && info.me.sub), { color: player.color, talking: info.me && info.me.talking });
   others.forEach((r, id) => {
     const o = r.data || {}, i = (info.others && info.others(id)) || {};
-    showTag(id, r.sf, o.name || '', o.ti || '', { color: r.color, talking: i.talking });
+    showTag(id, r.sf, o.name || '', zzz(o.mood === 'sleepy', o.ti || ''), { color: r.color, talking: i.talking });
   });
   keepers.forEach(k => {
     const d = Math.hypot(k.sf.root.position.x - player.x, k.sf.root.position.z - player.z);
@@ -1989,9 +2168,9 @@ function say(key, text, secs = 5) {
   t.say = text; t.sayUntil = performance.now() + secs * 1000;
 }
 const floats = [];
-function floatText(gx, gy, text, cls = '') {
+function floatText(gx, gy, text, cls = '', h = 9) {
   const el = document.createElement('div'); el.className = 'float ' + cls; el.textContent = text; tagBox.appendChild(el);
-  floats.push({ el, x: wx(gx), z: wz(gy), y: 9, t: 0 });
+  floats.push({ el, x: wx(gx), z: wz(gy), y: h, t: 0 });
 }
 function updateFloats(dt) {
   for (let i = floats.length - 1; i >= 0; i--) {
@@ -2019,6 +2198,7 @@ function buildEffects() {
   lampGlow = new THREE.InstancedMesh(new THREE.SphereGeometry(1.6, 12, 8), new THREE.MeshBasicMaterial({ color: '#ffe9a3', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }), LAMPS.length);
   LAMPS.forEach(([gx, gy], i) => lampGlow.setMatrixAt(i, new THREE.Matrix4().makeTranslation(wx(gx), 7.4, wz(gy))));
   lampGlow.visible = false; scene.add(lampGlow);
+  buildPickKit();
 }
 function burst(gx, gy, kind = 'coins', n = 14, h = 3) {
   const cols = P_COLORS[kind] || P_COLORS.confetti, x = wx(gx), z = wz(gy);
@@ -2057,6 +2237,79 @@ function updateEffects(dt, t) {
 }
 const _m4 = new THREE.Matrix4();
 
+/* ------------------------------------------------------------------ pickups: coins, stars and pots of gold */
+// sw.js decides what lies where (and what it is worth); the world shows them bobbing and says when you walk into one.
+// One InstancedMesh (+ outline) per kind. An id you collected never comes back, so a pickup can only fire once.
+const PICK_MAX = 40, PICK_R = 2.5;
+const pickKit = {}, picks = [], picked = new Set();   // picks: {id, kind, x, z, y, water, ph, born}
+function buildPickKit() {
+  const coin = new Builder(), star = new Builder(), pot = new Builder();
+  coin.add(GEO.cyl(1, 1, 0.3, 20), M(0, 0, 0, 0, Math.PI / 2), COL.yellow, { ol: 0.07 });
+  coin.add(GEO.cyl(0.66, 0.66, 0.36, 20), M(0, 0, 0, 0, Math.PI / 2), COL.gold, { ol: 0 });
+  star.add(GEO.star(1.25, 0.55, 0.36), M(0, 0, 0), COL.yellow, { ol: 0.07 });
+  // a round black pot, heaped with gold
+  pot.add(GEO.sph(1.3, 14, 10), M(0, 0, 0, 0, 0, 0, 1, 0.85, 1), '#4a3d5c', { ol: 0.08, ao: 0.2 });
+  pot.add(GEO.torus(0.95, 0.2, 20), M(0, 0.86, 0), '#5d4f70', { ol: 0.05 });
+  pot.add(GEO.sph(0.9, 12, 6, true), M(0, 0.8, 0, 0, 0, 0, 1, 0.6, 1), COL.yellow, { ol: 0.05 });
+  [[0.35, 0.2, 0.4], [-0.4, -0.25, -0.5], [0, 0.45, 0.2]].forEach(([dx, dz, a], i) => pot.add(GEO.cyl(0.3, 0.3, 0.1, 10), M(dx, 1.25 + i * 0.06, dz, a, 0.5), COL.gold, { ol: 0.03 }));
+  Object.entries({ coin, star, pot }).forEach(([k, b]) => {
+    const { main, line } = b.geometries(), mesh = new THREE.InstancedMesh(main, toonMat, PICK_MAX), out = new THREE.InstancedMesh(line, outlineMat, PICK_MAX);
+    [mesh, out].forEach(m => { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); });
+    mesh.castShadow = true;
+    pickKit[k] = { mesh, out };
+  });
+}
+// is there a wall, tree or post at this point (world units)?
+function solidAt(x, z, r) {
+  const hit = s => s.type === 'circle' ? Math.hypot(x - s.x, z - s.z) < s.r + r : x > s.x0 - r && x < s.x1 + r && z > s.z0 - r && z < s.z1 + r;
+  if (solids.some(hit)) return true;
+  for (const d of dyn.values()) if (d.solids.some(hit)) return true;
+  return false;
+}
+function addPickups(list) {
+  for (const it of list || []) {
+    if (!it || it.id === undefined || !pickKit[it.kind] || picked.has(String(it.id))) continue;
+    const id = String(it.id), old = picks.findIndex(p => p.id === id);
+    if (old >= 0) picks.splice(old, 1);
+    if (picks.filter(p => p.kind === it.kind).length >= PICK_MAX) continue;
+    // inside a tree or a wall? nudge it towards the player a few times, else leave it out
+    let x = wx(it.x), z = wz(it.y);
+    for (let k = 0; k < 3 && solidAt(x, z, 0.8); k++) { const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
+    if (solidAt(x, z, 0.8)) continue;
+    // on water it floats at the surface, on land it hovers
+    const w = waterAt(x, z), pot = it.kind === 'pot';
+    const y = w ? (w.y ?? 0.07) + (pot ? 0.45 : 0.75) : groundAt(x, z) + hillH(x, z) + (pot ? 1.15 : 2);
+    picks.push({ id, kind: it.kind, x, z, y, water: !!w, ph: (hash(id) % 628) / 100, born: now });
+  }
+}
+function clearPickups(prefix = '', forget = false) {
+  for (let i = picks.length - 1; i >= 0; i--) if (picks[i].id.startsWith(prefix)) picks.splice(i, 1);
+  if (forget) [...picked].forEach(id => { if (id.startsWith(prefix)) picked.delete(id); });
+}
+function takePickup(p) {
+  picked.add(p.id);
+  burst(gxOf(p.x), gyOf(p.z), p.kind === 'star' ? 'confetti' : 'coins', p.kind === 'pot' ? 30 : 12, p.y);
+  if (hooks.onPickup) try { hooks.onPickup(p.id, p.kind); } catch (e) { console.error(e); }
+}
+function updatePickups(t) {
+  if (!pickKit.coin) return;
+  const n = { coin: 0, star: 0, pot: 0 }, canTake = !rideNow && player.sf && player.sf.root.visible && player.sf.y < 6 && flyH < 2;
+  for (let i = picks.length - 1; i >= 0; i--) {
+    const p = picks[i];
+    if (canTake && Math.hypot(p.x - player.x, p.z - player.z) < PICK_R) { picks.splice(i, 1); takePickup(p); continue; }
+    const K = pickKit[p.kind], k = n[p.kind]++;
+    const pop = Math.min(1, (now - p.born) / 0.35), s = pop * (2 - pop);   // pops in when it appears
+    const bob = p.water ? Math.sin(t * 2 + p.ph) * 0.1 : Math.sin(t * 2.6 + p.ph) * 0.3;
+    const spin = p.kind === 'pot' ? t * 0.8 : t * (p.kind === 'coin' ? 2.4 : 1.8);
+    _m4.compose(_p.set(p.x, p.y + bob, p.z), _q.setFromEuler(_e.set(p.water ? Math.sin(t * 1.6 + p.ph) * 0.12 : 0, spin + p.ph, 0)), _s.setScalar(Math.max(0.01, s)));
+    K.mesh.setMatrixAt(k, _m4); K.out.setMatrixAt(k, _m4);
+  }
+  Object.entries(pickKit).forEach(([kind, K]) => {
+    K.mesh.count = K.out.count = n[kind]; K.mesh.visible = K.out.visible = n[kind] > 0;
+    K.mesh.instanceMatrix.needsUpdate = K.out.instanceMatrix.needsUpdate = true;
+  });
+}
+
 /* ------------------------------------------------------------------ time of day */
 const SKY = { day: new THREE.Color('#cdeefc'), dusk: new THREE.Color('#ffd6b8'), night: new THREE.Color('#4a4f86') };
 const FOG = { day: new THREE.Color('#dcefe6'), dusk: new THREE.Color('#f6d9c2'), night: new THREE.Color('#545a8e') };
@@ -2077,6 +2330,83 @@ function setDay(frac) {
   sun.color.copy(_c2.set('#fff1d6').lerp(new THREE.Color(h > 17 ? '#ffb27a' : '#fff1d6'), h > 17 ? Math.min(1, (h - 17) / 2) * (1 - nightK) : 0).lerp(new THREE.Color('#9fa6ff'), nightK));
   hemi.color.set('#fff6e8').lerp(new THREE.Color('#aab0ff'), nightK * 0.6);
   if (lampGlow) { lampGlow.visible = lightsOn && nightK > 0.05; lampGlow.material.opacity = 0.55 * nightK; }
+}
+
+/* ------------------------------------------------------------------ wonders: a rainbow, shooting stars */
+// A rainbow: 7 glowing half-rings standing over a spot, with a puff of cloud at each foot. It grows up out of the
+// ground when it appears and sinks back when it goes. No fog on it, so you can see it from across town.
+const RAINBOW = ['#ff6b6b', '#ff9f43', '#ffd23f', '#8cd05a', '#5bc0f8', '#5b7cfa', '#b98cff'];
+let rainbowG = null, rainbowOn = false, rainbowK = 0;
+function makeRainbow() {
+  const B = new Builder();
+  RAINBOW.forEach((c, i) => B.add(prep(`rb${i}`, () => new THREE.TorusGeometry(12 - i * 0.95, 0.5, 8, 56, Math.PI)), M(0, 0, 0), c, { ol: 0 }));
+  const arch = new THREE.Mesh(B.geometries().main, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, fog: false, toneMapped: false }));
+  arch.position.y = -0.4;
+  const C = new Builder();
+  [-9.2, 9.2].forEach(cx => [[0, 0.3, 2.2], [1.9, -0.2, 1.6], [-1.9, -0.3, 1.5], [0.6, 1.6, 1.4]].forEach(([dx, dy, r]) => C.add(GEO.ico(r, 1), M(cx + dx, 1 + dy, 0.4), '#ffffff', { ol: 0.1 })));
+  const clouds = C.mesh({ cast: false });
+  const g = new THREE.Group(); g.add(arch, clouds); g.userData = { arch, clouds };
+  return g;
+}
+function setRainbow(on, gx, gy) {
+  rainbowOn = !!on;
+  if (!on) return;
+  if (!rainbowG) { rainbowG = makeRainbow(); scene.add(rainbowG); }
+  if (gx !== undefined && gy !== undefined) rainbowG.position.set(wx(gx), 0, wz(gy));
+}
+function stepRainbow(dt) {
+  if (!rainbowG) return;
+  rainbowK = Math.max(0, Math.min(1, rainbowK + (rainbowOn ? dt : -dt) / 1.6));
+  if (!rainbowOn && rainbowK === 0) { scene.remove(rainbowG); disposeGroup(rainbowG); rainbowG = null; return; }
+  const e = rainbowK * rainbowK * (3 - 2 * rainbowK), { arch, clouds } = rainbowG.userData;
+  arch.scale.set(1, Math.max(0.01, e), 1); arch.material.opacity = 0.8 * e;
+  clouds.scale.setScalar(Math.max(0.01, Math.min(1, e * 1.4)));
+}
+
+// Shooting stars: a few bright streaks at night. The camera looks down at the town (there is no sky in view), so
+// they fly across the top of the screen, in a group that rides along with the camera.
+const SHOOT_N = 5;
+let shootOn = false, shootG = null, nextShoot = 0;
+const shoots = [];
+function makeShoots() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 32;
+  const c = cv.getContext('2d'), g = c.createLinearGradient(0, 0, 256, 0);
+  g.addColorStop(0, 'rgba(255,246,214,0)'); g.addColorStop(0.8, 'rgba(255,246,214,0.8)'); g.addColorStop(1, '#ffffff');
+  c.fillStyle = g; c.beginPath(); c.moveTo(0, 16); c.lineTo(238, 7); c.arc(238, 16, 9, -Math.PI / 2, Math.PI / 2); c.closePath(); c.fill();
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  shootG = new THREE.Group(); scene.add(shootG);
+  const geo = new THREE.PlaneGeometry(1, 1);
+  for (let i = 0; i < SHOOT_N; i++) {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false }));
+    m.visible = false; m.frustumCulled = false; m.renderOrder = 6; shootG.add(m);
+    shoots.push({ m, t: 1, life: 1, vx: 0, vy: 0, len: 10 });
+  }
+}
+function spawnShoot() {
+  const s = shoots.find(q => q.t >= q.life); if (!s) return;
+  const D = 60, hh = D * Math.tan(camera.fov * Math.PI / 360), hw = hh * camera.aspect;
+  // start in the top half of the view and cross part of it, dipping a little
+  const dir = Math.random() < 0.5 ? -1 : 1, ang = 0.12 + Math.random() * 0.25, sp = 30 + Math.random() * 15;
+  s.m.position.set(-dir * hw * (0.2 + Math.random() * 0.7), hh * (0.5 + Math.random() * 0.4), -D);
+  s.vx = dir * Math.cos(ang) * sp; s.vy = -Math.sin(ang) * sp; s.len = 9 + Math.random() * 5;
+  s.m.rotation.z = Math.atan2(s.vy, s.vx); s.m.scale.set(0.1, 0.7, 1);
+  s.t = 0; s.life = 0.7 + Math.random() * 0.3; s.m.visible = true;
+}
+function setShootingStars(on) {
+  shootOn = !!on;
+  if (on && !shootG) makeShoots();
+  if (!on) shoots.forEach(s => { s.t = s.life; s.m.visible = false; });
+}
+function stepShoots(dt, t) {
+  if (!shootG) return;
+  shootG.position.copy(camera.position); shootG.quaternion.copy(camera.quaternion);
+  if (shootOn && nightK > 0.2 && t > nextShoot) { nextShoot = t + 0.7 + Math.random() * 1.1; spawnShoot(); if (Math.random() < 0.3) spawnShoot(); }
+  for (const s of shoots) {
+    if (s.t >= s.life) { s.m.visible = false; continue; }
+    s.t += dt; const k = Math.min(1, s.t / s.life);
+    s.m.position.x += s.vx * dt; s.m.position.y += s.vy * dt;
+    s.m.scale.x = s.len * Math.min(1, k * 3); s.m.material.opacity = Math.sin(Math.PI * k);
+  }
 }
 
 /* ------------------------------------------------------------------ input */
@@ -2125,7 +2455,7 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(0.6,
 
 let now = 0;
 function jump() {
-  const sf = player.sf; if (!sf || sf.y > 0.05) return;
+  const sf = player.sf; if (!sf || sf.y > 0.05 || sleeping) return;
   sf.yv = 15; sf.moodOverride = 'wow'; sf.moodUntil = now + 0.7;
   if (hooks.onHop) hooks.onHop();
 }
@@ -2165,6 +2495,7 @@ function collide(p) {
 }
 
 let flyH = 0, swimming = false;
+let boost = 1;   // sw.js speeds up (or slows down) walking and swimming; wheels and wings keep their own speed
 function updatePlayer(dt, frozen) {
   const sf = player.sf;
   if (rideNow) { sf.root.position.x = player.x; sf.root.position.z = player.z; return; }
@@ -2183,7 +2514,7 @@ function updatePlayer(dt, frozen) {
   const hillK = vehicleKind === 'plane' && flyH > 2 ? 1 : Math.max(0.45, Math.min(1.35, 1 - up * 0.9));
   const wtr = !vehicleKind || vehicleKind !== 'plane' ? waterAt(player.x, player.z) : null;
   swimming = !!wtr && flyH < 1;
-  const max = SPEED * V.max * hillK * (swimming ? 0.55 : 1);
+  const max = SPEED * V.max * hillK * (swimming ? 0.55 : 1) * (vehicleKind ? 1 : boost);
   if (!vehicleKind) {
     const k = 1 - Math.exp(-dt * (swimming ? 4 : 12));
     player.vx += (ix * max - player.vx) * k; player.vz += (iz * max - player.vz) * k;
@@ -2207,6 +2538,33 @@ function updatePlayer(dt, frozen) {
   if (swimming && sp > 3 && Math.random() < dt * 6) burst(gxOf(player.x), gyOf(player.z), 'water', 3, 0.5);
   if (swimming !== updatePlayer.was) { updatePlayer.was = swimming; if (swimming) { burst(gxOf(player.x), gyOf(player.z), 'water', 18, 1); hooks.onSwim && hooks.onSwim(true); } }
   sf.root.position.x = player.x; sf.root.position.z = player.z;
+}
+
+// Sleeping: a sleepy face that stays, little z's rising from your head, and no walking until you wake up
+let sleeping = false, zzAt = 0, zzN = 0;
+function setSleep(on) {
+  on = !!on;
+  if (on === sleeping) return;
+  sleeping = on;
+  const sf = player.sf;
+  if (on) { player.vx = player.vz = 0; zzAt = now + 0.4; if (sf) { sf.moodOverride = 'sleepy'; sf.moodUntil = Infinity; } return; }
+  if (sf) { sf.moodOverride = null; sf.moodUntil = 0; if (sf.y < 0.05) sf.yv = 9; }   // awake: a little hop
+}
+function stepSleep() {
+  const sf = player.sf;
+  if (!sleeping || !sf) return;
+  if (now >= sf.moodUntil) { sf.moodOverride = 'sleepy'; sf.moodUntil = Infinity; }   // back to sleepy after any other face
+  if (now > zzAt) { zzAt = now + 1.2; zzN++; floatText(gxOf(player.x) + 32, gyOf(player.z), zzN % 2 ? 'z' : 'Zz', 'zz', 7.5); }   // beside the head, clear of the name tag
+}
+// a new Squareface for you (new colour or hat), carrying on exactly where the old one was
+function rebuildMe() {
+  const old = player.sf, keep = { y: old.y, yv: old.yv, face: old.face, targetFace: old.targetFace, ground: old.ground }, shown = old.root.visible;
+  old.remove();
+  const sf = player.sf = makeSquareface({ color: player.color, antenna: COL.roof, hatKind: player.hat, seed: 3 });
+  Object.assign(sf, keep); sf.root.visible = shown; addSeeThrough(sf);
+  sf.root.position.set(player.x, 0, player.z);
+  if (vehicleKind) setVehicle(vehicleKind);
+  if (sleeping) { sf.moodOverride = 'sleepy'; sf.moodUntil = Infinity; }
 }
 
 function updateNpcs(dt, t) {
@@ -2263,7 +2621,7 @@ let frames = 0, fpsT = 0, fpsStart = performance.now(), lowFor = 0, last = perfo
 function frame() {
   const tNow = performance.now(), dt = Math.min(0.1, (tNow - last) / 1000); last = tNow; now += dt;
   const t = now, busy = hooks.busy();
-  updatePlayer(dt, busy);
+  updatePlayer(dt, busy || sleeping);
   updateNpcs(dt, t);
   player.sf.update(dt, t);
   syncOthers(dt, t);
@@ -2308,6 +2666,7 @@ function frame() {
     bus.position.set(x0 + pos * span, 0, wz(1760) + (ph < 1 ? 2.2 : -2.2));
     bus.rotation.y = ph < 1 ? 0 : Math.PI;
   }
+  updateHome(t); updatePickups(t); stepSleep(); stepRainbow(dt); stepShoots(dt, t);
   updateEffects(dt, t);
   stepBalls(dt); stepFalling(dt); stepRide(dt); updateGuide(t);
   stepRain(dt, !!(hooks.raining && hooks.raining()) && !onTrip);
@@ -2344,12 +2703,13 @@ window.World = {
     renderer.setAnimationLoop(frame);
   },
   setTown(town) { updateTown(town); },
-  setMe({ color }) {
-    if (!player.sf || color === player.color) { player.color = color || player.color; return; }
-    player.color = color; const y = player.sf.y;
-    player.sf.remove(); player.sf = makeSquareface({ color, antenna: COL.roof, seed: 3 }); player.sf.y = y; addSeeThrough(player.sf);
-    player.sf.root.position.set(player.x, 0, player.z);
+  // hat: one of World.hats, or '' / null for none; leave it out to keep the current one
+  setMe({ color, hat } = {}) {
+    const c = color || player.color, h = hat === undefined ? player.hat : hatOf(hat), changed = c !== player.color || h !== player.hat;
+    player.color = c; player.hat = h;
+    if (player.sf && changed) rebuildMe();
   },
+  hats: HATS,
   pos: () => ({ x: gxOf(player.x), y: gyOf(player.z) }),
   place(gx, gy) { player.x = wx(gx); player.z = wz(gy); player.vx = player.vz = 0; collide(player); camTarget.set(player.x, 0, player.z); if (player.sf) player.sf.root.position.set(player.x, 0, player.z); },
   state() { const sf = player.sf; return { moving: Math.hypot(player.vx, player.vz) > 1, face: sf ? Math.atan2(Math.sin(sf.face), Math.cos(sf.face)) / Math.PI : 0, hop: sf ? Math.round(sf.y * 10) : 0, mood: sf && now < sf.moodUntil ? sf.moodOverride : 'happy' }; },
@@ -2373,6 +2733,17 @@ window.World = {
   get vehicle() { return vehicleKind; },
   get flying() { return flyH > 2; },
   get swimming() { return swimming; },
+  setBoost(k) { boost = Math.max(0.2, Math.min(3, +k || 1)); },
+  get boost() { return boost; },
+  sleep(on) { setSleep(on); },
+  get sleeping() { return sleeping; },
+  // pickups: [{id, x, y, kind: 'coin'|'star'|'pot'}] in game px; hooks.onPickup(id, kind) fires once when you walk into one
+  addPickups(list) { addPickups(list); },
+  clearPickups(prefix, forget) { clearPickups(prefix, forget); },
+  pickups: () => picks.map(p => ({ id: p.id, kind: p.kind, x: gxOf(p.x), y: gyOf(p.z) })),
+  // wonders
+  rainbow(on, gx, gy) { setRainbow(on, gx, gy); },
+  shootingStars(on) { setShootingStars(on); },
   guide(t) { guideTarget = t || null; },
   hillAt: (gx, gy) => hillH(wx(gx), wz(gy)),
   goTrip(id) {

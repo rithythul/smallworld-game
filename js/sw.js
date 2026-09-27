@@ -9,6 +9,8 @@
   const G = Town.GOODS;
   const coin = (n) => `${n}🪙`;
   const BAND_NAMES = { 1: '6–8', 2: '9–12', 3: '13–16' };
+  const bandOfAge = (age) => age <= 8 ? 1 : age <= 12 ? 2 : 3;
+  const R = () => Life.rules(life);   // the money and quiz rules for this kid's age
   // what each keeper says when you walk up: short
   const HELLO = {
     hall: 'Vote! Taxes build the town.', bank: 'Save coins. They grow!', market: 'I buy crops, fish and logs.',
@@ -140,7 +142,7 @@
   $('sheetClose').addEventListener('click', () => { Sound.blip(); closeSheet(); });
   $('sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet(); });
-  const busy = () => !playing || !$('sheet').hidden || !$('title').hidden || Care.locked || World.riding || (Talk.open && document.activeElement && document.activeElement.id === 'chatInput');
+  const busy = () => !playing || sleeping || !$('sheet').hidden || !$('title').hidden || Care.locked || World.riding || (Talk.open && document.activeElement && document.activeElement.id === 'chatInput');
   const queue = [];
   // things to show once nothing covers the screen. first = true puts it at the front (money explanations go first).
   function later(fn, first) { if ($('sheet').hidden && playing && !World.riding) fn(); else if (first) queue.unshift(fn); else queue.push(fn); }
@@ -162,21 +164,31 @@
   }
   const tiles = (...kids) => { const d = document.createElement('div'); d.className = 'tiles'; kids.flat().forEach(k => k && d.append(k)); return d; };
   const note = (body, html) => body.insertAdjacentHTML('beforeend', `<p class="sw-msg">${html}</p>`);
-  function quiz(title, questions, onDone) {
+  // retry: a wrong tap wiggles and the right answer glows; the question ends when the right one is tapped.
+  // score counts answers right on the first try.
+  function quiz(title, questions, onDone, { retry = false } = {}) {
     let i = 0, score = 0;
     if (typeof Music !== 'undefined') Music.duck(true);
     const show = () => sheet(title, (body) => {
       const q = questions[i], sub = SUBJECTS[q.s] || { icon: '❓', name: '' };
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${sub.icon} ${'●'.repeat(i + 1)}${'○'.repeat(questions.length - i - 1)}</p><h3 class="quiz-q">${esc(q.q)}</h3>`);
-      const box = document.createElement('div'); box.className = 'quiz-opts';
+      let missed = false;
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${sub.icon} ${'●'.repeat(i + 1)}${'○'.repeat(questions.length - i - 1)}</p>${q.pic ? `<div class="quiz-pic">${esc(q.pic)}</div>` : ''}${q.q ? `<h3 class="quiz-q">${esc(q.q)}</h3>` : ''}`);
+      const box = document.createElement('div'); box.className = 'quiz-opts' + (q.pic ? ' pics' : '');
+      const next = () => body.appendChild(button(i < questions.length - 1 ? '→' : '✓', () => { i++; if (i < questions.length) show(); else { sheetOnClose = null; closeSheet(); if (typeof Music !== 'undefined') Music.duck(false); onDone(score); } }, 'big-btn small'));
       q.o.forEach((opt, k) => {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'quiz-opt'; b.textContent = opt;
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'quiz-opt' + (q.pic ? ' pic' : ''); b.textContent = opt;
         b.addEventListener('click', () => {
-          const right = k === q.a; if (right) score++;
+          const right = k === q.a;
+          if (retry && !right) {
+            missed = true; Sound.wrong(); b.classList.remove('wiggle'); void b.offsetWidth; b.classList.add('wiggle');
+            box.children[q.a].classList.add('glow'); return;
+          }
+          if (right && !missed) score++;
           right ? Sound.discover() : Sound.wrong();
           box.querySelectorAll('button').forEach((x, j) => { x.disabled = true; if (j === q.a) x.classList.add('right'); else if (j === k) x.classList.add('wrong'); });
+          if (retry && right && !missed) floatMe('⭐+1', 'task');
           body.insertAdjacentHTML('beforeend', `<p class="quiz-why ${right ? 'ok' : ''}">${right ? '✓ ' : '💡 '}${esc(q.why)}</p>`);
-          body.appendChild(button(i < questions.length - 1 ? '→' : '✓', () => { i++; if (i < questions.length) show(); else { sheetOnClose = null; closeSheet(); if (typeof Music !== 'undefined') Music.duck(false); onDone(score); } }, 'big-btn small'));
+          next();
         });
         box.appendChild(b);
       });
@@ -185,8 +197,10 @@
     show();
   }
   // science and life snacks: a short fact the first time something happens
+  const KID_FACTS = ['dawn', 'drink', 'sleep', 'kidtax'];
   function fact(trigger) {
     if (!life) return;
+    if (life.band === 1 && !KID_FACTS.includes(trigger)) return;   // saved for when they are older
     const list = (typeof FACT_BY_TRIGGER !== 'undefined' && FACT_BY_TRIGGER[trigger]) || [];
     const f = list.find(x => !life.seen['f:' + x.id]); if (!f) return;
     life.seen['f:' + f.id] = 1; touch();
@@ -196,7 +210,13 @@
   const facts = [];
   function nextFact() {
     const f = facts[0]; if (!f) return;
-    later(() => { toast(`<span class="t-small">💡 ${esc(f.title)}</span>${esc(f.text)}`, { life: 6 }); setTimeout(() => { facts.shift(); nextFact(); }, 7000); });
+    later(() => { toast(life.band === 1 ? `💡 ${esc(f.title)}` : `<span class="t-small">💡 ${esc(f.title)}</span>${esc(f.text)}`, { life: life.band === 1 ? 3 : 6 }); setTimeout(() => { facts.shift(); nextFact(); }, life.band === 1 ? 3500 : 7000); });
+  }
+  let floatAt = 0, floatN = 0;
+  function floatMe(text, cls = 'pay') {
+    const p = World.pos(), t = performance.now();
+    floatN = t - floatAt < 900 ? floatN + 1 : 0; floatAt = t;
+    World.floatText(p.x, p.y - floatN * 34, text, cls);
   }
   function memory(id) {
     if (!Life.remember(life, id)) return;
@@ -238,11 +258,13 @@
       const net = sum(e => e.acct === 'pocket' && !e.move), sav = sum(e => e.acct === 'bank' && e.n < 0), owed = sum(e => e.acct === 'loan');
       chip(`☀️ Morning bills & income: <b class="${net < 0 ? 'neg' : 'pos'}">${sign(net)}🪙</b>${sav ? ` · 🐷 paid ${-sav}` : ''}${owed > 0 ? ` · <b class="neg">you owe ${owed} more</b>` : ''}<small>Tap to see why</small>`, net < 0 || owed > 0 ? 'neg' : '');
     }
+    if (life.band === 1) fresh.filter(e => e.acct === 'pocket' && e.n < 0 && !e.buy && !e.move).forEach(e => console.error('[band1] unflagged drop', e));
     show.filter(e => !(morning.length > 2 && e.morning)).slice(-5).forEach(e => chip(
+      e.buy ? `🛍️ ${e.icon} ${life.band === 1 ? '✓' : `${esc(e.why)} <b>${Math.abs(e.n)}🪙</b>`}` :
       e.move && e.acct === 'pocket' ? `${e.icon} ${esc(e.why)} <b>${Math.abs(e.n)}🪙</b><small>${e.n < 0 ? 'Still yours, just in another place.' : ''}</small>`
         : `<b class="${good(e) ? 'pos' : 'neg'}">${amt(e)}</b> ${e.icon} ${esc(e.why)}${e.acct === 'bank' ? ` <em>${ACCT.bank}</em>` : ''}${!good(e) && e.how ? `<small>${esc(e.how)}</small>` : ''}`,
-      e.move && e.acct === 'pocket' ? 'move' : good(e) ? '' : 'neg'));
-    if (delta) { const pill = $('coinPill'); pill.classList.remove('up', 'down'); void pill.offsetWidth; pill.classList.add(delta < 0 ? 'down' : 'up'); }
+      e.buy ? 'buy' : e.move && e.acct === 'pocket' ? 'move' : good(e) ? '' : 'neg'));
+    if (delta) { const pill = $('coinPill'), chose = show.every(e => e.n > 0 || e.buy || e.move); pill.classList.remove('up', 'down', 'spent'); void pill.offsetWidth; pill.classList.add(delta > 0 ? 'up' : chose ? 'spent' : 'down'); }
   }
   // chips wait while a sheet covers them, then fade after a few seconds
   const held = [];
@@ -275,11 +297,24 @@
     const day = Life.dayOf(t) - (life.firstDay || Life.dayOf(t)) + 1;
     set('clockIcon', icon); set('clockDay', `Day ${day} · `); set('clockText', Life.clock(t));
     set('coinText', String(life.coins));
-    set('oweText', life.loan ? `💸${life.loan}` : ''); $('oweText').hidden = !life.loan;
+    const owe = life.loan + (life.iou || 0);
+    set('oweText', owe ? `💸${owe}` : ''); $('oweText').hidden = !owe;
     receipts();
+    [1, 2, 3].forEach(b => document.body.classList.toggle('b' + b, life.band === b));
+    const lv = Life.starLevel(life.xp), lo = Life.starsFor(lv), hi = Life.starsFor(lv + 1);
+    set('starText', String(life.xp)); set('lvText', `Lv ${lv}`);
+    $('starRing').style.setProperty('--p', Math.round((life.xp - lo) / (hi - lo) * 100) + '%');
+    Object.keys(Life.RITUALS).forEach(id => {
+      const el = document.querySelector(`#ritualStrip [data-r="${id}"]`), st = Life.ritualState(life, id, t);
+      if (el.dataset.s !== st) { el.dataset.s = st; el.className = st; }
+      if (st === 'open' && !life.today.bell[id] && playing) { life.today.bell[id] = 1; Sound.bell(); }
+    });
+    levelTick();
     set('bagText', String(Life.bagCount(life)));
-    const g = Life.dreamGoal(life), where = g && placeFor(g.at);
-    set('goalText', g ? `${where && where.grow ? '🏙️ ' : ''}${g.icon} ${g.text}` : '✨ Pick a dream');
+    const g = nextThing(), where = g && placeFor(g.at);
+    set('goalText', g ? `${where && where.grow ? '🏙️ ' : ''}${g.icon} ${life.band === 1 && g.dots ? g.dots : g.text}` : '✨ Pick a dream');
+    const kind = g ? g.key.split(':')[0] : 'dream';
+    set('goalLabel', life.band === 1 ? '➤' : ({ rit: 'Now', sap: 'Now', start: 'Start', daily: 'Today', dream: 'Dream', free: 'Explore' })[kind] || 'Dream');
     const sh = life.shift ? Life.JOBS[life.shift.job] : null;
     $('shiftPill').hidden = !sh;
     if (sh) set('shiftText', `${sh.icon} ${'●'.repeat(life.shift.done)}${'○'.repeat(life.shift.need - life.shift.done)}`);
@@ -299,7 +334,9 @@
   const myPlots = () => Life.ownedPlots(town, me.uid);
   const insidePlot = (p, q, pad = 20) => q.x > p.x - pad && q.x < p.x + p.w + pad && q.y > p.y - pad && q.y < p.y + p.h + pad + 25;
   const nearest = (list, p) => list.slice().sort((a, b) => dist(p, a) - dist(p, b))[0];
-  const spotsNow = () => World.trip ? World.tripSpots(World.trip) : Town.districtsOf(town).flatMap(d => d.spots);
+  const spotsNow = () => World.trip ? World.tripSpots(World.trip) : Town.spotsOf(town);
+  const HOME = Town.HOME;
+  const homeDoor = () => { const h = myPlots().find(p => p.build === 'house' || p.build === 'villa'); if (h) return { ...plotCenter(h.plot), own: true }; const k = keeper('rent'); return k ? { x: k.x, y: k.y + 20 } : { x: 4040, y: 2230 }; };
   // Where should the guide arrow point for this goal? Places not built yet point to the Town Hall: help the town grow!
   function placeFor(at) {
     if (!at || !town) return null;
@@ -308,13 +345,20 @@
     const K = (type) => { const k = nearest(World.keepers.filter(q => q.type === type), p); return k ? { x: k.x, y: k.y, h: 13 } : null; };
     if (['jobs', 'bank', 'market', 'school', 'hall', 'rent'].includes(at)) return K(at);
     if (['tech', 'biz', 'studio', 'dealer', 'airport', 'harbor', 'space', 'station'].includes(at)) return K(at) || hall();
-    if (at === 'tree' || at === 'stump') { const tr = nearest(Town.FOREST.filter(x => Town.treeState(town, x.id, t) === at), p); return tr ? { x: tr.x, y: tr.y, h: at === 'tree' ? 12 : 5 } : null; }
+    if (at === 'tree' || at === 'stump') { const tr = nearest(Town.FOREST.filter(x => Town.treeState(town, x.id, t) === at), p) || (at === 'stump' && nearest(Town.FOREST.filter(x => Town.treeState(town, x.id, t) === 'tree'), p)); return tr ? { x: tr.x, y: tr.y, h: at === 'tree' ? 12 : 5 } : null; }
+    if (at === 'market' && !Town.SELLABLE.some(g => life.bag[g])) return placeFor('townfarm');   // nothing to sell yet: go and pick something first
     if (at === 'farmland' || at === 'lot') { const f = nearest(Town.allPlots(town).filter(pl => pl.kind === (at === 'lot' ? 'lot' : 'farm') && !(town.plots[pl.id] && town.plots[pl.id].owner)).map(pl => ({ ...plotCenter(pl), id: pl.id })), p); return f ? { ...f, h: 8 } : null; }
     if (at === 'myfarm' || at === 'mylot') { const m = myPlots().find(q => q.plot.kind === (at === 'mylot' ? 'lot' : 'farm')); return m ? { ...plotCenter(m.plot), h: 9 } : placeFor(at === 'mylot' ? 'lot' : 'farmland'); }
     if (at === 'nature' || at.startsWith('spot:')) {
-      const type = at.split(':')[1], list = Town.districtsOf(town).flatMap(d => d.spots).filter(s => !type || s.type === type);
+      const type = at.split(':')[1], list = Town.spotsOf(town).filter(s => !type || s.type === type);
       const s = nearest(list, p); return s ? { x: s.x, y: s.y, h: 8 } : hall();
     }
+    if (at === 'townfarm') { const ready = Town.FARM_SPOTS.filter((s, i) => t - (town.farm[i] || 0) >= Town.FARM_REGROW); const s = nearest(ready.length ? ready : Town.FARM_SPOTS, p); return { x: s.x, y: s.y, h: 7 }; }
+    if (at === 'pool') return { x: HOME.pool.x, y: HOME.pool.y - HOME.pool.ry + 30, h: 6 };
+    if (at === 'tap') return town.built.includes('fountain') && dist(p, Town.PROJECT_SPOTS.fountain) < dist(p, HOME.tap) ? { ...Town.PROJECT_SPOTS.fountain, h: 8 } : { ...HOME.tap, h: 8 };
+    if (at === 'home') return { ...homeDoor(), h: 12 };
+    if (at === 'ball') return { ...(World.ballAt ? World.ballAt() : Town.BALL), h: 5 };
+    if (at === 'npc') { const k = nearest(World.keepers.filter(q => !life.today.hello[q.id]), p); return k ? { x: k.x, y: k.y, h: 13 } : null; }
     if (at === 'stop') { if (World.busOn) { const s = nearest(Town.stopsOf(town), p); return { x: s.x, y: s.y, h: 10 }; } return K('station'); }
     return null;
   }
@@ -339,6 +383,12 @@
     });
     if (job === 'mail') sh.targets.forEach(id => { const b = places().find(q => q.id === id); if (!b) return; const q = { x: b.x, y: b.y - 5 }, d = dist(p, q); if (d < 70) add({ key: 'mail:' + id, label: 'Deliver', icon: '✉️', cls: 'work', run: () => deliver(id) }, d, 40); });
     if (job === 'builder') sh.targets.forEach(id => { const pl = Town.plotById(id); if (!pl) return; const d = dist(p, plotCenter(pl)); if (d < 90) add({ key: 'frame:' + id, label: 'Hammer', icon: '🔨', cls: 'work', run: () => hammer(id) }, d, 40); });
+    // home life: hop in the pool, drink at the tap, go to bed
+    if (!World.swimming && Town.inPool(p.x, p.y, 80)) add({ key: 'pool', label: 'Swim', icon: '🏊', cls: 'work', run: () => hopInPool() }, 30);
+    const tap = town.built.includes('fountain') && dist(p, Town.PROJECT_SPOTS.fountain) < 190 ? Town.PROJECT_SPOTS.fountain : HOME.tap;
+    { const d = dist(p, tap); if (d < (tap === HOME.tap ? 60 : 190)) add({ key: 'tap', label: 'Drink', icon: '💧', cls: 'water', run: () => sip() }, d, 10); }
+    if (Life.ritualState(life, 'sleep', t) === 'open') { const h = homeDoor(), d = dist(p, h); if (d < (h.own ? 110 : 80)) add({ key: 'bed', label: 'Sleep', icon: '🛏️', cls: 'buy', run: () => goSleep() }, d, 30); }
+    if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 0, 50);
     // bus stops
     if (World.busOn) Town.stopsOf(town).forEach(s => { const d = dist(p, s); if (d < 70) add({ key: 'bus:' + s.id, label: `Ride · ${coin(Life.FARES.bus)}`, icon: '🚌', cls: 'buy', run: () => stopSheet(s) }, d); });
     // land
@@ -396,16 +446,19 @@
 
   /* ---------------- dreams and the guide ---------------- */
   function checkDream() {
-    if (!life || !life.dream || !town) return;
-    const done = Life.checkDream(life, { plots: myPlots() });
+    if (!life || !town) return;
+    const done = life.dream ? Life.checkDream(life, { plots: myPlots() }) : [];
     done.forEach(text => later(() => {
       Sound.chord(4, 'bell'); World.burst(World.pos().x, World.pos().y, 'confetti', 30, 6); World.mood('love', 2);
       const g = Life.dreamGoal(life);
-      toast(`<span class="t-small">⭐ ${esc(Life.title(life))}</span>✓ ${esc(text)}${g ? `<br>→ ${g.icon} ${esc(g.text)}` : ''}`, { big: true, life: 4 });
+      toast(`<span class="t-small">${esc(Life.title(life))} · ⭐+2</span>✓ ${esc(text)}${g ? `<br>→ ${g.icon} ${esc(g.text)}` : ''}`, { big: true, life: 4 });
     }));
+    // the first four steps of a new life
+    Life.checkStarter(life).forEach(st => { floatMe(`${st.icon} ✓ ⭐+1`, 'task'); Sound.chord(2, 'bell'); });
+    if ((life.starter || 0) >= Life.STARTER.length && !life.dream && !life.seen.pickedDream) { life.seen.pickedDream = 1; later(() => dreamPicker(true)); }
     if (done.length) touch();
   }
-  let guide = null, mapMarks = [];
+  let guide = null, mapMarks = [], wonder = null, sleeping = false;
   function markers() {
     const list = [], sh = life.shift, t = now();
     let arrow = null;
@@ -427,15 +480,47 @@
       }
       if (list.length) arrow = { ...nearest(list, World.pos()), icon: Life.JOBS[job].icon };
     } else if (guide) { list.push({ x: guide.x, y: guide.y, h: guide.h || 12 }); arrow = { ...guide, icon: guide.icon || '📍' }; }
-    else if (life.owesSapling) { const w = placeFor('stump'); if (w) { list.push(w); arrow = { ...w, icon: '🌱' }; } }
-    else { const g = Life.dreamGoal(life), w = g && placeFor(g.at); if (w) { list.push(w); arrow = { ...w, icon: w.grow ? '🏙️' : g.icon }; } }
+    else { const g = nextThing(), w = g && placeFor(g.at); if (w) { list.push(w); arrow = { ...w, icon: w.grow ? '🏙️' : g.icon, key: g.key }; } }
     World.markers(list); World.guide(arrow);
     mapMarks = list;
+    trail(arrow);
+  }
+  // The one obvious next thing, in this order: a sapling you owe, a ritual that is open now, the first four steps,
+  // (little kids: a challenge), your dream, (older kids: a challenge), then a nature spot to discover.
+  function nextThing() {
+    if (!life) return null;
+    const t = now(), lvl = life.band === 1;
+    if (life.owesSapling) return { key: 'sap', icon: '🌱', text: 'Plant a sapling', at: 'stump' };
+    const r = Life.ritualNext(life, t);
+    if (r && !World.trip) { const T = Life.RITUALS[r]; return { key: 'rit:' + r, icon: T.icon, text: T.name, at: T.at }; }
+    if ((life.starter || 0) < Life.STARTER.length) { const st = Life.STARTER[life.starter || 0]; return { key: 'start:' + st.id, icon: st.icon, text: st.text, dots: st.of ? '●'.repeat(st.n(life)) + '○'.repeat(st.of - st.n(life)) : '', at: st.id === 'sell' && !Town.SELLABLE.some(g => life.bag[g]) ? 'townfarm' : st.at }; }
+    const dailyNext = () => { const d = life.daily; const c = d && d.day === life.day && d.list.find(x => !x.done); if (!c) return null; const D = Life.DAILY_BY_ID[c.id]; return D.at ? { key: 'daily:' + c.id, icon: D.icon, text: `${D.text} ${c.n}/${c.goal}`, dots: c.goal <= 5 ? '●'.repeat(c.n) + '○'.repeat(c.goal - c.n) : `${c.n}/${c.goal}`, at: D.at } : null; };
+    if (!life.dream) return { key: 'dream', icon: '✨', text: 'Pick a dream', at: null };
+    if (lvl) { const d = dailyNext(); if (d) return d; }
+    const g = Life.dreamGoal(life);
+    const night = Life.hourOf(t) >= 19.5;
+    if (g && !(g.at === 'spot:stars' && !night)) return { key: 'dream:' + g.i, icon: g.icon, text: g.text, dots: g.of ? '●'.repeat(g.i) + '○'.repeat(g.of - g.i) : '', at: g.at };
+    const d = dailyNext(); if (d) return d;
+    if (g) return { key: 'dream:' + g.i, icon: g.icon, text: g.text + (g.at === 'spot:stars' ? ' 🌙' : ''), dots: g.at === 'spot:stars' ? '🔭🌙' : '', at: g.at === 'spot:stars' ? null : g.at };
+    const s = Town.OLD_SPOTS.find(q => !life.seen['s:' + q.id]);
+    return s ? { key: 'free:' + s.id, icon: SPOT[s.type].icon, text: SPOT[s.type].label, at: 'spot:' + s.type } : null;
+  }
+  // sparkle coins along the way to the next thing: kids learn "follow the arrow" by walking
+  let trailKey = null;
+  function trail(arrow) {
+    if (!World.addPickups || World.trip) return;
+    const key = arrow ? `${arrow.key || ''}:${Math.round(arrow.x / 50)}:${Math.round(arrow.y / 50)}` : null;
+    if (key === trailKey) return;
+    trailKey = key; World.clearPickups('trail');
+    const cap = R().caps.trail, used = life.today.bonus.trail || 0, p = World.pos();
+    if (!arrow || cap - used <= 0 || dist(p, arrow) < 300) return;
+    World.addPickups([0.25, 0.5, 0.75].slice(0, cap - used).map((f, i) => ({ id: `trail:${Date.now()}:${i}`, x: p.x + (arrow.x - p.x) * f, y: p.y + (arrow.y - p.y) * f, kind: 'coin' })));
   }
 
   /* ---------------- the places ---------------- */
   function openPlace(type, id) {
     Sound.pop(); World.npcMood(id, 'love', 1.5);
+    if (!life.today.hello[id]) { life.today.hello[id] = 1; daily('hello'); }
     const fn = ({ bank: bankSheet, market: marketSheet, school: schoolSheet, jobs: jobsSheet, hall: hallSheet, rent: rentSheet, station: stationSheet,
       tech: techSheet, biz: bizSheet, studio: studioSheet, dealer: dealerSheet, airport: airportSheet, harbor: harborSheet, space: spaceSheet, stadium: stadiumSheet })[type];
     if (fn) fn(); else funSheet(type);
@@ -447,18 +532,26 @@
 
   function bankSheet(msg = '') {
     const owned = myPlots().length, lim = Life.loanLimit(life, owned);
+    const Rr = R();
     sheet('🏦 Bank', (body) => {
-      body.insertAdjacentHTML('beforeend', head('bank', 'Saved coins grow <b>+2%</b> every morning. Loans grow <b>+5%</b>.') + money());
+      body.insertAdjacentHTML('beforeend', head('bank', `Saved coins grow <b>+${Rr.saveRate}%</b> every morning.${Rr.loans ? ` Loans grow <b>+${Rr.loanRate}%</b>.` : ''}`) + money());
       if (msg) note(body, msg);
-      const doIt = (what, n, ok) => { const r = Life.bank(life, what, n, owned); if (!r.ok) return bankSheet(`⚠️ ${r.why}`); Sound.cash(); touch(); hud(); checkDream(); if (what === 'deposit') fact('interest'); if (what === 'borrow') fact('loan'); bankSheet(ok); };
+      const doIt = (what, n, ok) => { const r = Life.bank(life, what, n, owned); if (!r.ok) return bankSheet(`⚠️ ${r.why}`); Sound.cash(); if (what === 'deposit') daily('save', n); if (what === 'repay') daily('repay', n); touch(); hud(); checkDream(); if (what === 'deposit') fact('interest'); if (what === 'borrow') fact('loan'); bankSheet(ok); };
       const it = Life.interestTomorrow(life);
+      if (life.band === 1) {   // a piggy bank: put in, take out, watch it grow
+        body.append(card(`<h3 class="piggy">🐷 ${coin(life.bank)} <small class="pos">☀️ +${it.save}</small></h3>`));
+        body.lastChild.append(row(button('+5', () => doIt('deposit', 5, '✓ 🐷'), 'choice', life.coins < 5), button('+10', () => doIt('deposit', 10, '✓ 🐷'), 'choice', life.coins < 10), button('👛 ←', () => doIt('withdraw', life.bank, '✓ 👛'), 'choice alt', !life.bank)));
+        return;
+      }
+      if (life.iou) body.append(card(`<h3>🧾 ${coin(life.iou)} <small>owed, no interest</small></h3>`), row(button('Pay', () => doIt('iou', Math.min(life.iou, life.coins), '✓ 🧾'), 'choice', !life.coins)));
       body.append(card(`<h3>🐷 ${coin(life.bank)} <small class="pos">📈 +${it.save} tomorrow</small></h3>${life.bank > 0 && life.bank < 50 ? '<p class="small">2% of a small amount is less than 1 coin, so it grows in tiny pieces that add up.</p>' : ''}<p class="small">If your pocket cannot pay a bill, your savings pay it.</p>`));
       body.lastChild.append(row(
         button('+10', () => doIt('deposit', 10, '✓ 🐷 +10'), 'choice', life.coins < 10),
         button('+½', () => doIt('deposit', Math.floor(life.coins / 2), '✓ 🐷'), 'choice', life.coins < 2),
         button('−10', () => doIt('withdraw', 10, '✓ 👛 +10'), 'choice alt', life.bank < 10),
         button('−all', () => doIt('withdraw', life.bank, '✓ 👛'), 'choice alt', !life.bank)));
-      body.append(card(`<h3>💸 ${coin(life.loan)} <small class="neg">📉 +${it.loan} tomorrow</small></h3><p class="small">Borrowed coins grow ${Life.LOAN_RATE}% every morning until you pay them back. Max ${coin(lim)}</p>`));
+      if (!Rr.loans && !life.loan) return;
+      body.append(card(`<h3>💸 ${coin(life.loan)} <small class="neg">📉 +${it.loan} tomorrow</small></h3><p class="small">Borrowed coins grow ${Rr.loanRate}% every morning until you pay them back. Max ${coin(lim)}</p>`));
       body.lastChild.append(row(
         button('+20', () => doIt('borrow', 20, '✓ 💸 +20'), 'choice alt', life.loan + 20 > lim),
         button('+50', () => doIt('borrow', 50, '✓ 💸 +50'), 'choice alt', life.loan + 50 > lim),
@@ -481,15 +574,26 @@
         selling = false;
         if (!res.ok) return marketSheet(`⚠️ ${esc(res.msg)}`);
         const each = res.each || [], sold = each.length || n, dropped = sold > 1 && each[each.length - 1] < each[0];
-        const lower = res.coins < shown;
+        const lower = res.coins < shown && !R().fairPrice;
         const why = !lower ? '' : online() ? `Someone in this town sold ${G[g].name.toLowerCase()} a moment before you, so the price was lower (${shown} shown, ${res.coins} paid).` : `Prices slowly go back to normal, and it moved a little since the market opened (${shown} shown, ${res.coins} paid).`;
         const sum = each.length > 8 ? `${each.slice(0, 3).join(' + ')} + … + ${each.slice(-2).join(' + ')}` : each.join(' + ');
         const how = [sold > 1 ? `${sum} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', why, sold < n ? `The market buys up to ${Town.SELL_MAX} at a time. You still have ${n - sold}.` : ''].filter(Boolean).join(' ');
         Life.takeItem(life, g, sold); Life.earn(life, res.coins, 'soldCoins', G[g].icon, `Sold ${sold} ${G[g].name.toLowerCase()} at the market`, how); life.stats.sold += sold;
+        // little kids always get at least the usual price: the gap is a separate, capped bonus (shared prices stay real)
+        if (R().fairPrice) { const top = Math.max(0, Town.usual(g) * sold - res.coins); if (top && Life.kidBonus(life, 'fair', top, '⚖️', 'Fair price bonus', `Kids always get at least the usual price (${Town.usual(g)} each).`)) life.stats.soldCoins += top; }
+        daily('sell', sold);
         Sound.cash(); World.burst(World.pos().x, World.pos().y, 'coins', 10, 6); touch(); hud(); checkDream(); fact('supply'); if (G[g].seed) fact('profit');
         marketSheet(`✓ ${G[g].icon}×${sold} → +${coin(res.coins)}${how ? '<br><small>' + how + '</small>' : ''}`);
       };
       const have = Town.SELLABLE.filter(g => life.bag[g]);
+      if (life.band === 1) {   // little kids: only what you have, and one big button that sells it all
+        if (!have.length) { body.append(tiles(tile('🧺', '→ 🌾', '', () => { const w = placeFor('townfarm'); guide = w && { ...w, icon: '🧺' }; closeSheet(); }, { cls: 'big' }))); return; }
+        const fair = (g) => Math.max(Town.usual(g) * Math.min(Town.SELL_MAX, life.bag[g]), Town.sellPreview(town, g, life.bag[g]).reduce((a, b) => a + b, 0));
+        body.append(tiles(have.map(g => tile(G[g].icon, `×${life.bag[g]}`, `${fair(g)}🪙`, () => sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g))))));
+        const total = have.reduce((a, g) => a + fair(g), 0);
+        body.append(button(`✓ ${coin(total)}`, async () => { for (const g of have) if (life.bag[g]) await sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g)); }, 'big-btn small'));
+        return;
+      }
       body.append(tiles(Town.SELLABLE.map(g => {
         const n = life.bag[g] || 0, tr = Town.trend(town, g), p = Town.price(town, g);
         const all = n > 1 ? Town.sellPreview(town, g, n).reduce((a, b) => a + b, 0) : 0;
@@ -521,46 +625,50 @@
       body.append(tiles(Object.entries(Life.SUBJECTS).map(([s, sub]) => {
         const n = life.school[s] || 0, got = Life.hasCert(life, s);
         return tile(sub.icon, sub.name, got ? '🎓' : '●'.repeat(Math.min(n, Life.CERT_AT)) + '○'.repeat(Math.max(0, Life.CERT_AT - n)), () => {
-          quiz(`${sub.icon} ${sub.name}`, classQuestions(s, life.band, 3), (score) => {
+          const Q = R().quiz;
+          quiz(`${sub.icon} ${sub.name}`, classQuestions(s, life.band, Q.n), (score) => {
             if (score === null) return;
-            life.stats.classes++;
-            if (score >= 2) {
+            life.stats.classes++; daily('class');
+            if (Q.retry) Life.addStars(life, score);   // little kids: ⭐ for every first-try right answer, and a class always counts
+            if (Q.retry || score >= Q.pass) {
               const before = Life.hasCert(life, s);
               life.school[s] = (life.school[s] || 0) + (lib ? 2 : 1); life.rep += 1;
               const cert = !before && Life.hasCert(life, s);
+              if (!Q.retry) Life.addStars(life, 1);
+              if (cert) Life.addStars(life, 3);
               Sound.chord(cert ? 6 : 3, 'bell'); touch(); checkDream(); hud();
-              schoolSheet(cert ? `🎓 ${sub.cert}!` : `✓ ${score}/3`);
-            } else { touch(); schoolSheet(`${score}/3 · 🔁`); }
-          });
+              schoolSheet(cert ? `🎓 ${sub.cert}! ⭐+3` : Q.retry ? `✓ ⭐+${score}` : `✓ ${score}/${Q.n}`);
+            } else { touch(); schoolSheet(`${score}/${Q.n} · 🔁`); }
+          }, { retry: Q.retry });
         }, { on: got });
       })));
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">👤 ${BAND_NAMES[life.band]} <button type="button" class="link-btn" id="bandBtn">↻</button></p>`);
-      body.querySelector('#bandBtn').addEventListener('click', () => { life.band = life.band % 3 + 1; me.band = life.band; touch(); schoolSheet(`👤 ${BAND_NAMES[life.band]}`); });
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">👤 ${BAND_NAMES[life.band]}</p>`);
     });
   }
 
   function jobsSheet(msg = '') {
+    const kid = life.band === 1, rate = Math.round(town.taxRate * R().taxShare);
     sheet('💼 Jobs', (body) => {
-      body.insertAdjacentHTML('beforeend', head('jobs', `Finish every task in a shift to get paid. ${town.taxRate}% of each wage is income tax: it pays for the school, roads and parks.`));
+      body.insertAdjacentHTML('beforeend', head('jobs', kid ? 'Every task pays right away!' : `Finish every task in a shift to get paid. ${rate}% of each wage is income tax${life.band === 2 ? ' (kids pay half)' : ''}: it pays for the school, roads and parks.`));
       if (msg) note(body, msg);
       if (life.shift) {
         const j = Life.JOBS[life.shift.job];
         body.append(card(`<h3>${j.icon} ${j.name} ${'●'.repeat(life.shift.done)}${'○'.repeat(life.shift.need - life.shift.done)}</h3><p class="small">${j.how} → 🔶</p>`, 'next'));
-        const s = life.shift, part = Math.floor(Life.wageOf(life, s.job) * s.done / s.need), keep = part - Life.taxOn(part, Math.min(s.rate ?? town.taxRate, town.taxRate));
-        body.lastChild.append(button(`✕ Stop · ${'●'.repeat(s.done)}${'○'.repeat(s.need - s.done)} = ${coin(keep)}`, () => stopShift(), 'choice alt'));
+        const s = life.shift, part = Math.floor(Life.wageOf(life, s.job) * s.done / s.need), keep = part - Life.taxOf(life, part, Math.min(s.rate ?? town.taxRate, town.taxRate));
+        body.lastChild.append(button(kid ? '✓' : `✕ Stop · ${'●'.repeat(s.done)}${'○'.repeat(s.need - s.done)} = ${coin(keep)}`, () => stopShift(), 'choice alt'));
       }
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Today ${'●'.repeat(life.shiftsToday)}${'○'.repeat(Math.max(0, Life.SHIFTS_PER_DAY - life.shiftsToday))}</p>`);
-      body.append(tiles(Object.entries(Life.JOBS).map(([id, j]) => {
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Today ${'●'.repeat(Math.min(life.shiftsToday, R().shifts))}${'○'.repeat(Math.max(0, R().shifts - life.shiftsToday))}</p>`);
+      body.append(tiles(Object.entries(Life.JOBS).filter(([id]) => !kid || Life.canTake(life, id, town).ok).map(([id, j]) => {
         const can = Life.canTake(life, id, town);
-        const w = Life.wageOf(life, id), tx = Life.taxOn(w, town.taxRate);
-        return tile(j.icon, j.name, can.ok ? `${coin(w)} − ${tx} tax = <b class="keep">${coin(w - tx)}</b>` : '🔒 ' + can.why, () => startShift(id), { disabled: !can.ok || !!life.shift, on: life.shift && life.shift.job === id });
+        const w = Life.wageOf(life, id), tx = Life.taxOf(life, w, town.taxRate);
+        return tile(j.icon, kid ? coin(w) : j.name, kid ? '' : can.ok ? (tx ? `${coin(w)} − ${tx} tax = <b class="keep">${coin(w - tx)}</b>` : `<b class="keep">${coin(w)}</b> no tax`) : '🔒 ' + can.why, () => startShift(id), { disabled: !can.ok || !!life.shift, on: life.shift && life.shift.job === id });
       })));
     });
   }
   function dreamSteps() {
     const d = Life.DREAMS[life.dream];
-    return d.steps.map(([text, , , icon], i) => `<div class="lesson ${i < life.dreamStep ? 'done' : i === life.dreamStep ? 'next' : 'locked'}"><span class="mark">${i < life.dreamStep ? '✓' : icon}</span><span>${esc(text)}</span></div>`).join('')
-      + (life.dreamStep >= d.steps.length ? `<div class="lesson next"><span class="mark">∞</span><span>${esc(Life.dreamGoal(life).text)}</span></div>` : '');
+    return Life.stepsOf(life, d).map(([text, , , icon], i) => `<div class="lesson ${i < life.dreamStep ? 'done' : i === life.dreamStep ? 'next' : 'locked'}"><span class="mark">${i < life.dreamStep ? '✓' : icon}</span><span>${esc(text)}</span></div>`).join('')
+      + (life.dreamStep >= Life.stepsOf(life, d).length ? `<div class="lesson next"><span class="mark">∞</span><span>${esc(Life.dreamGoal(life).text)}</span></div>` : '');
   }
 
   function hallSheet(msg = '') {
@@ -580,7 +688,7 @@
           const res = await act({ type: 'vote', project: p.id });
           if (!res.ok) return hallSheet(`⚠️ ${esc(res.msg)}`);
           if (!life.seen['vote:' + town.built.length]) { life.seen['vote:' + town.built.length] = 1; life.rep += 1; }
-          life.stats.votes++; Sound.bell(); touch(); checkDream(); fact('vote'); hallSheet(`✓ ${p.icon}${isMayor ? ' ×3' : ''}`);
+          life.stats.votes++; daily('vote'); Sound.bell(); touch(); checkDream(); fact('vote'); hallSheet(`✓ ${p.icon}${isMayor ? ' ×3' : ''}`);
         }, { on: myVote === p.id });
         tl.insertAdjacentHTML('beforeend', `<div class="progress thin"><div style="width:${pct}%"></div></div>`);
         return tl;
@@ -602,7 +710,7 @@
           life.stats.ran++; touch(); checkDream(); hallSheet('✓ 📣');
         }, 'choice alt', !can), can ? null : Object.assign(document.createElement('span'), { className: 'small lock', textContent: '🔒 🎓🏛️' })));
       }
-      ec.insertAdjacentHTML('beforeend', `<p class="small">⭐ ${life.rep}</p>`);
+      ec.insertAdjacentHTML('beforeend', `<p class="small">🤝 ${life.rep} helper points</p>`);
       if (isMayor) ec.append(row(...[5, 10, 15, 20].map(r => button(`${town.taxRate === r ? '✓ ' : ''}${r}%`, async () => { const res = await act({ type: 'setTax', rate: r }); hallSheet(res.ok ? `✓ ${r}%` : `⚠️ ${esc(res.msg)}`); }, town.taxRate === r ? 'choice' : 'choice alt'))));
       body.append(ec);
       if (town.news.length) body.append(card(`<h3>📰</h3>${town.news.slice(0, 5).map(n => `<p class="small">${esc(n)}</p>`).join('')}`));
@@ -612,7 +720,8 @@
   function rentSheet() {
     const house = Life.ownsHouse(town, me.uid);
     sheet('🏢 Apartments', (body) => {
-      body.insertAdjacentHTML('beforeend', head('rent', house ? '🏠 You own a home. No rent!' : `Rent ${coin(Life.RENT)}/day${life.rentFree ? ` · 🎁 ${life.rentFree} free days` : ''}. Own a house → ${coin(Town.TAX.lot)}/day tax.`));
+      const rent = R().rent;
+      body.insertAdjacentHTML('beforeend', head('rent', house || life.home ? '🏠 You own a home. No rent!' : !rent ? '🏢 ❤️ Home. Kids live here for free!' : `Rent ${coin(rent)}/day${life.rentFree ? ` · 🎁 ${life.rentFree} free days` : ''}. Own a house → no rent.`));
       const free = Town.allPlots(town).filter(pl => !(town.plots[pl.id] && town.plots[pl.id].owner));
       body.append(tiles(free.slice(0, 12).map(pl => tile(pl.kind === 'farm' ? '🌱' : '🏗️', coin(pl.price), pl.id, () => { guide = { ...plotCenter(pl), h: 8, id: pl.id, icon: '🏡' }; closeSheet(); }))));
       fact('rent');
@@ -740,7 +849,7 @@
         if (cost) Life.spend(life, cost, P.icon, ({ cafe: 'Hot cocoa at the Cafe', arcade: 'Arcade game', hotel: 'A night at the Hotel' })[type] || P.name, 'Fun costs a little. You get a nice memory!');
         life.xp += 1; memory(type); World.mood('love', 2); Sound.chord(4, 'kalimba');
         if (type === 'museum') { const f = (typeof FACTS !== 'undefined') ? FACTS[Math.floor(Math.random() * FACTS.length)] : null; if (f) toast(`<span class="t-small">🦕 ${esc(f.title)}</span>${esc(f.text)}`, { life: 7 }); }
-        if (type === 'arcade') { closeSheet(); quiz('🕹️', [makeMathQuestion(Math.random, life.band * 2)], (s) => { if (s) { Life.earn(life, 5, null, '🏆', 'Arcade prize'); hud(); } else toast('🕹️ So close! Right answers win the 5🪙 prize.'); }); return; }
+        if (type === 'arcade') { closeSheet(); const kid = life.band === 1; quiz('🕹️', [kid ? makePictureMath(Math.random) : makeMathQuestion(Math.random, life.band * 2)], (s) => { if (s) { Life.earn(life, 5, null, '🏆', 'Arcade prize'); hud(); } else if (kid) { Life.earn(life, 2, null, '🕹️', 'Try prize', 'Nice try! Here are your coins back.'); hud(); } else toast('🕹️ So close! Right answers win the 5🪙 prize.'); }); return; }
         if (cost) toast(`${P.icon} ❤️ −${coin(cost)}`);
         touch(); hud(); closeSheet();
       })));
@@ -822,15 +931,19 @@
 
   /* ---------------- land, farming, building ---------------- */
   function buyLand(pl) {
+    const cap = R().maxPlots;
+    if (cap && myPlots().length >= cap) return toast(`${'🏡'.repeat(cap)} ✓`);
+    const tax = R().landTax === 'full' ? Town.TAX[pl.kind] : R().landTax ? R().landTax[pl.kind] || 0 : 0;
     sheet(`${pl.kind === 'farm' ? '🌱' : '🏗️'} ${pl.id}`, (body) => {
-      body.insertAdjacentHTML('beforeend', `<div class="wallet"><span>🏷️ <b>${coin(pl.price)}</b></span><span>🏛️ <b>−${coin(Town.TAX[pl.kind])} every day</b></span></div>${money()}`);
+      body.insertAdjacentHTML('beforeend', `<div class="wallet"><span>🏷️ <b>${coin(pl.price)}</b></span>${tax ? `<span>🏛️ <b>−${coin(tax)} every day</b></span>` : ''}</div>${money()}`);
+      if (life.coins >= pl.price) body.insertAdjacentHTML('beforeend', `<p class="picture-sum">👛 ${life.coins} − ${pl.price} = ${life.coins - pl.price} ✓</p>`);
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${pl.kind === 'farm' ? '🌱 → 💧 → 🌾 → 🧺 🪙' : '🔨 🏠 🏡 🏪 🏭'}</p>`);
       if (life.coins < pl.price) note(body, `−${coin(pl.price - life.coins)} · 💼 or 🏦`);
       body.append(row(button(`Buy ${coin(pl.price)}`, async () => {
         if (life.coins < pl.price) return;
         const res = await act({ type: 'buyPlot', id: pl.id });
         if (!res.ok) { closeSheet(); return toast(`⚠️ ${esc(res.msg)}`); }
-        Life.spend(life, res.cost, pl.kind === 'farm' ? '🌱' : '🏗️', `Bought land ${pl.id}`, `Land costs a little tax every day: ${Town.TAX[pl.kind]}🪙.`); landBook(pl.id, { cost: res.cost }); Sound.chord(2, 'bell'); World.burst(pl.x + pl.w / 2, pl.y + pl.h / 2, 'confetti', 30, 4);
+        Life.spend(life, res.cost, pl.kind === 'farm' ? '🌱' : '🏗️', `Bought land ${pl.id}`, tax ? `Land costs a little tax every day: ${tax}🪙.` : 'It is yours!'); landBook(pl.id, { cost: res.cost }); Sound.chord(2, 'bell'); World.burst(pl.x + pl.w / 2, pl.y + pl.h / 2, 'confetti', 30, 4);
         if (guide && guide.id === pl.id) guide = null;
         touch(); hud(); closeSheet(); checkDream(); fact('land');
         toast(`<span class="t-small">🏡 Yours!</span>${pl.kind === 'farm' ? '🌱 → 💧' : '🔨'}`, { big: true });
@@ -856,7 +969,7 @@
   async function water(id, i) {
     const res = await act({ type: 'water', id, i });
     if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-    Sound.water(); const s = Town.soilSpot(Town.plotById(id), i); World.burst(s.x, s.y, 'water', 14, 4); World.mood('love', 1);
+    Sound.water(); const s = Town.soilSpot(Town.plotById(id), i); World.burst(s.x, s.y, 'water', 14, 4); World.mood('love', 1); daily('water');
   }
   async function harvest(id, i) {
     const res = await act({ type: 'harvest', id, i, bonus: Math.random() < 0.25 });
@@ -920,26 +1033,31 @@
   async function replant(tr) {
     const res = await act({ type: 'replant', tree: tr.id });
     if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-    const owed = life.owesSapling; life.owesSapling = 0; life.stats.replanted++; life.rep += 1;
+    const owed = life.owesSapling; life.owesSapling = 0; life.stats.replanted++; life.rep += 1; daily('plant');
     Sound.plant(); World.burst(tr.x, tr.y, 'seeds', 12, 1); World.mood('love', 1.2);
     if (life.shift && life.shift.job === 'lumberjack') workStep();
-    else if (!owed) { Life.earn(life, 1, null, '🌱', 'Thank you for planting a tree'); World.floatText(tr.x, tr.y, '+1🪙'); }
+    else if (!owed) { Life.earn(life, R().plantThanks, null, '🌱', 'Thank you for planting a tree'); World.floatText(tr.x, tr.y, `+${R().plantThanks}🪙`); }
     else toast('🌱 ❤️ You planted a tree for the one you cut.');
     touch(); hud(); checkDream();
   }
-  // helping on the Town Farm without the job: you keep a small share of what you pick (5 a day)
-  const HELP_SHARE = 5;
+  // Picking at the Town Farm. Little kids are hired on their first pick (no Jobs sheet) and keep every crop.
+  // Without the job you keep a share of what you pick (10 / 6 / 4 a day by age).
   async function farmwork(i) {
     const res = await act({ type: 'farmwork', i });
     if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-    const s = Town.FARM_SPOTS[i]; Sound.pop(); World.burst(s.x, s.y, 'leaves', 10, 2);
-    if (life.shift && life.shift.job === 'farmhand') return workStep();
-    const d = Life.dayOf(now()); if (!life.helped || life.helped.day !== d) life.helped = { day: d, n: 0 };
-    if (life.helped.n < HELP_SHARE) {
-      life.helped.n++; life.rep += 1;
-      const g = Town.CROPS[i % 4]; Life.addItem(life, g); World.floatText(s.x, s.y, `+1 ${G[g].icon}`);
-      toast(`🧺 Thanks for helping! Keep this ${G[g].icon} (${life.helped.n}/${HELP_SHARE} today).${life.shiftsToday < Life.SHIFTS_PER_DAY ? ' A Farmhand job 💼 also pays coins.' : ''}`, { life: 4 });
-    } else toast(`🧺 Thanks! Your helper share is used up for today (${HELP_SHARE}/${HELP_SHARE}).${life.shiftsToday < Life.SHIFTS_PER_DAY ? ' Take a Farmhand job 💼 to get paid for picking.' : ' Come back tomorrow.'}`, { life: 5 });
+    const s = Town.FARM_SPOTS[i], g = Town.CROPS[i % 4]; Sound.pop(); World.burst(s.x, s.y, 'leaves', 10, 2);
+    life.stats.farmPicked = (life.stats.farmPicked || 0) + 1; daily('pick');
+    const shifts = life.shiftsToday < R().shifts;
+    if (life.band === 1 && !life.shift && shifts && Life.startShift(life, 'farmhand', [], town).ok) World.floatText(s.x, s.y - 40, '🧑‍🌾', 'task');
+    const onShift = life.shift && life.shift.job === 'farmhand';
+    const keep = (life.band === 1 || !onShift) && (life.today.picks || 0) < R().pickCap;
+    if (keep) { life.today.picks = (life.today.picks || 0) + 1; Life.addItem(life, g); setTimeout(() => World.floatText(s.x, s.y, `+1 ${G[g].icon}`), 350); }
+    if (onShift) { workStep(); touch(); hud(); checkDream(); return; }
+    life.rep += 1;
+    if (life.band === 1) { if (Life.kidBonus(life, 'volunteer', 1, '🧺', 'Thanks for helping on the farm')) World.floatText(s.x + 30, s.y, '+1🪙', 'pay'); }
+    else if (keep) toast(`🧺 +1 ${G[g].icon} (${life.today.picks}/${R().pickCap} today)${shifts ? ' · 💼🧑‍🌾 = 🪙' : ''}`, { life: 4 });
+    else toast(`🧺 ❤️ Your share is used up for today.${shifts ? ' A Farmhand job 💼 pays for picking.' : ' Come back tomorrow.'}`, { life: 5 });
+    if (!keep && shifts && life.band > 1) { const k = keeper('jobs'); if (k) guide = { x: k.x, y: k.y, h: 13, icon: '💼' }; }
     touch(); hud(); checkDream();
   }
 
@@ -972,7 +1090,7 @@
         fishing = true; World.mood('think', 2); toast('🎣 . . .');
         setTimeout(() => {
           fishing = false;
-          if (!life.memories.fish || Math.random() < 0.75) { item('fish'); Sound.splash(); World.burst(s.x, s.y, 'water', 16, 2); memory('fish'); World.mood('wow', 1.5); }
+          if (!life.memories.fish || Math.random() >= R().fishMiss) { item('fish'); Sound.splash(); World.burst(s.x, s.y, 'water', 16, 2); memory('fish'); World.mood('wow', 1.5); daily('fish'); }
           else { toast('🎣 The fish got away! Try again in a moment.'); Sound.wrong(); life.spotAt[s.id] = t - 80000; return; }
           finish();
         }, 1400); return;
@@ -1015,23 +1133,33 @@
     const pay = Life.workDone(life, town.taxRate, target);
     if (!pay) return;
     const p = World.pos();
-    if (!pay.done) { Sound.coin(); World.floatText(p.x, p.y, `${life.shift.done}/${life.shift.need}`, 'task'); touch(); hud(); return; }
-    if (pay.tax) act({ type: 'tax', n: pay.tax });
+    if (pay.step) { Sound.coin(); floatMe(`+${pay.step}🪙`); }
+    if (!pay.done) { if (!pay.step) { Sound.coin(); World.floatText(p.x, p.y, `${life.shift.done}/${life.shift.need}`, 'task'); } touch(); hud(); return; }
+    if (pay.tax + (pay.grant || 0)) act({ type: 'tax', n: pay.tax + (pay.grant || 0) });
+    daily('shift');
+    const j = Life.JOBS[pay.job];
+    if (pay.perTask) {   // band 1: already paid for every task. A coin shower, no pay slip.
+      Sound.cash(); World.burst(p.x, p.y, 'coins', 22, 6); World.mood('laugh', 2);
+      toast(`<span class="t-small">${j.icon} ✓</span>💵 +${coin(pay.gross)}`, { big: true, life: 3 });
+      touch(); hud(); checkDream(); fact('kidtax');
+      return;
+    }
     Sound.cash(); World.burst(p.x, p.y, 'coins', 22, 6); World.mood('laugh', 2); World.floatText(p.x, p.y, `+${pay.gross}🪙`, 'pay');
     if (pay.tax) setTimeout(() => World.floatText(p.x + 30, p.y, `−${pay.tax} 🏛️`, 'tax'), 700);
     touch(); hud(); checkDream(); fact('tax');
-    const j = Life.JOBS[pay.job];
+    // where the tax goes: the project the town is saving for
+    const top = Town.projectChoices(town)[0], pct = top ? Math.min(100, Math.round(town.treasury / top.cost * 100)) : 0;
     later(() => sheet('💵 Payday!', (body) => {
-      body.insertAdjacentHTML('beforeend', `<div class="budget"><div><span>${j.icon} Wage for your ${j.name} shift</span><b class="pos">+${coin(pay.gross)}</b></div><div><span>🏛️ Income tax ${pay.rate}%<small>Goes to the town: it pays for the school, roads and parks.</small></span><b class="neg">−${coin(pay.tax)}</b></div><div class="total"><span>👛 You keep</span><b>${coin(pay.net)}</b></div></div>
-        ${pay.raise ? `<p class="sheet-sub">🎉 Experience pays! Next ${j.name} shift: ${coin(pay.next)}</p>` : ''}`);
+      body.insertAdjacentHTML('beforeend', `<div class="budget"><div><span>${j.icon} Wage for your ${j.name} shift</span><b class="pos">+${coin(pay.gross)}</b></div>${pay.rested ? `<div><span>😴 Well rested +10%<small>You slept in your bed last night.</small></span><b class="pos">+${coin(pay.rested)}</b></div>` : ''}<div><span>🏛️ Income tax ${pay.rate}%<small>${life.band === 2 ? 'Kids pay half the tax. ' : ''}${pay.rate}% of ${pay.gross} is ${Math.round(pay.gross * pay.rate) / 100}${pay.tax ? '' : ', rounded down to 0'}. Tax goes to the town: it pays for the school, roads and parks.</small></span><b class="${pay.tax ? 'neg' : ''}">${pay.tax ? '−' + coin(pay.tax) : coin(0)}</b></div><div class="total"><span>👛 You keep</span><b>${coin(pay.net)}</b></div></div>
+        ${top ? `<p class="sheet-sub">🏛️ → ${top.icon} ${esc(top.name)} ${pct}%</p>` : ''}${pay.raise ? `<p class="sheet-sub">🎉 Experience pays! Next ${j.name} shift: ${coin(pay.next)}</p>` : ''}`);
       body.append(button('👍', closeSheet, 'big-btn small'));
     }), true);
   }
   function stopShift(msg) {
     const r = Life.quitShift(life, town.taxRate); if (!r) return;
-    if (r.tax) act({ type: 'tax', n: r.tax });
+    if (r.tax + (r.grant || 0)) act({ type: 'tax', n: r.tax + (r.grant || 0) });
     touch(); hud();
-    jobsSheet(msg || (r.net ? `Shift stopped. You were paid for ${r.done} of ${r.need} tasks: +${coin(r.net)}.` : 'Shift stopped. No tasks were done yet, so there is no pay.'));
+    jobsSheet(msg || (r.perTask ? '✓' : r.net ? `Shift stopped. You were paid for ${r.done} of ${r.need} tasks: +${coin(r.net)}.` : 'Shift stopped. No tasks were done yet, so there is no pay.'));
   }
   // the town changed (you joined friends, or the town grew): make sure your shift can still be finished
   function fixShift() {
@@ -1063,21 +1191,25 @@
   function deskTask(kid) {
     const s = life.shift; if (!s) return;
     const subj = Life.DESK_JOBS[s.job], subject = subj === 'any' ? ['money', 'civics', 'tools', 'math', 'science'][Math.floor(Math.random() * 5)] : subj;
+    const retry = R().quiz.retry;
     quiz(`${Life.JOBS[s.job].icon}`, classQuestions(subject, life.band, 1), (score) => {
       if (score === null) return;
-      if (score >= 1) { World.say('npc:' + kid, '👍', 2); workStep(); } else toast('💼 Not quite, so that task does not count yet (no pay is lost). Try the next customer!', { life: 4 });
-    });
+      if (score >= 1 || retry) { World.say('npc:' + kid, '👍', 2); workStep(); } else toast('💼 Not quite, so that task does not count yet (no pay is lost). Try the next customer!', { life: 4 });
+    }, { retry });
   }
 
   /* ---------------- a new day ---------------- */
   function dayTick() {
     const day = Life.dayOf(now());
     if (life.day === day) return;
+    if (life.day !== null && day < life.day && life.day - day < 3) return;   // a clock a little behind (joining friends) is not a new day
     // a new morning waits until you are not in a building or on a ride, so you can see what it does
     if (life.day !== null && (!$('sheet').hidden || World.riding || !playing)) return;
     if (!life.firstDay) life.firstDay = day;
+    if (sleeping) wakeUp();
     const r = Life.newDay(life, town, me.uid, day);
     touch();
+    syncDaily();
     if (!r) return;
     goalsToday = 0;
     if (r.taxes) act({ type: 'tax', n: r.taxes });
@@ -1085,46 +1217,258 @@
     later(() => morningSheet(r), true);
     hud(); checkDream();
   }
+  // today's three challenges exist and count what you already did today
+  function syncDaily() { if (!life || life.day === null || !town) return; Life.ensureDaily(life, life.day, { plots: myPlots() }); const r = Life.dailyAdd(life, '_', 0); if (r.done.length) hud(); }
+  const challengeTiles = () => tiles((life.daily ? life.daily.list : []).map(c => { const D = Life.DAILY_BY_ID[c.id]; return tile(D.icon, c.done ? '✓' : `${c.n}/${c.goal}`, life.band === 1 ? '' : esc(D.text), () => { const w = placeFor(D.at); if (w) guide = { ...w, icon: D.icon }; closeSheet(); }, { on: c.done, cls: 'challenge' }); }));
+  function daily(id, n = 1) {
+    if (!life) return;
+    const r = Life.dailyAdd(life, id, n);
+    r.done.forEach(c => { const D = Life.DAILY_BY_ID[c.id]; floatMe(`${D.icon} ✓ ⭐+1`, 'task'); Sound.chord(3, 'bell'); });
+    if (r.perfect) later(() => { World.celebrate(20); Sound.chord(8, 'bell'); memory('perfect'); toast(`<span class="t-small">🌟 Perfect Day!</span>⭐+2 · +${coin(R().perfect)} · ${life.band === 1 ? `🌟×${life.perfectDays}` : `🔥 ${life.streak}`}`, { big: true, life: 5 }); });
+    if (r.done.length || r.perfect) { touch(); hud(); }
+    checkDream();
+  }
+  function todaySheet() {
+    syncDaily(); if (life.daily) life.daily.shown = true;
+    sheet('🎯 Today', (body) => {
+      body.append(challengeTiles());
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">🎯 ⭐+1 · 🪙+${R().daily} · 🌟 = 3 ✓ → +${coin(R().perfect)}</p>`);
+      body.append(button('✓', closeSheet, 'big-btn small'));
+    });
+  }
   function morningSheet(r) {
+    if (life.daily) life.daily.shown = true;
+    if (r.band === 1) {   // little kids: only good news, then today's challenges
+      return sheet('☀️', (body) => {
+        const plus = r.lines.filter(l => l.n > 0);
+        body.insertAdjacentHTML('beforeend', `<div class="morning-row">${life.rit.sleep === r.day - 1 ? '<span>🛏️ ✓</span>' : ''}${plus.map(l => `<span>${l.icon} +${l.n}</span>`).join('')}${life.perfectDays ? `<span>🌟×${life.perfectDays}</span>` : ''}</div>`);
+        body.append(challengeTiles());
+        body.append(button('☀️', closeSheet, 'big-btn small'));
+      });
+    }
     sheet(`☀️ Day ${r.day - life.firstDay + 1}`, (body) => {
       const b = document.createElement('div'); b.className = 'budget';
+      const night = r.lines.filter(l => l.night), rest = r.lines.filter(l => !l.night);
+      r = { ...r, lines: night.concat(rest) };
       const cell = (l) => l.n > 0 ? '+' + coin(l.n) : l.n < 0 ? '−' + coin(-l.n) : (l.note ? esc(l.note) : '·');
       b.innerHTML = `<div class="start"><span>👛 In your pocket last night</span><b>${coin(r.before.coins)}</b></div>`
-        + r.lines.map(l => `<div><span>${l.icon || ''} ${esc(l.label)}${l.acct === 'bank' ? ' <em>🐷 savings</em>' : ''}${l.how ? `<small>${esc(l.how)}</small>` : ''}</span><b class="${l.acct === 'loan' ? 'neg' : l.n < 0 ? 'neg' : l.n > 0 ? 'pos' : ''}">${cell(l)}</b></div>`).join('')
+        + r.lines.map((l, i) => `${i === 0 && l.night ? '<div class="head"><span>💤 While you slept</span></div>' : ''}${i === night.length && night.length && rest.length ? '<div class="head"><span>🧾 Bills</span></div>' : ''}<div><span>${l.icon || ''} ${esc(l.label)}${l.acct === 'bank' ? ' <em>🐷 savings</em>' : ''}${l.how ? `<small>${esc(l.how)}</small>` : ''}</span><b class="${l.acct === 'loan' ? 'neg' : l.move ? 'move' : l.n < 0 ? 'neg' : l.n > 0 ? 'pos' : ''}">${cell(l)}</b></div>`).join('')
         + `<div class="total"><span>👛 In your pocket this morning</span><b>${coin(r.coins)}</b></div>`;
       body.append(b);
-      const acc = [r.bank !== r.before.bank ? `🐷 Savings ${r.before.bank} → <b>${r.bank}</b>` : '', r.loan !== r.before.loan ? `💸 You owe ${r.before.loan} → <b>${r.loan}</b>` : ''].filter(Boolean);
+      const acc = [r.bank !== r.before.bank ? `🐷 Savings ${r.before.bank} → <b>${r.bank}</b>` : '', r.loan !== r.before.loan ? `💸 You owe ${r.before.loan} → <b>${r.loan}</b>` : '', r.iou !== r.before.iou ? `🧾 You owe ${r.before.iou} → <b>${r.iou}</b> (no interest)` : ''].filter(Boolean);
       if (acc.length) note(body, acc.join(' · '));
       if (r.borrowed) note(body, `💸 The bank lent you ${coin(r.borrowed)} to pay. Pay it back at the bank: loans grow a little every morning.`);
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Yesterday you earned ${coin(r.yesterday.earned)} and spent ${coin(r.yesterday.spent)}. <button type="button" class="link-btn" id="histBtn">👛 Money history</button></p>`);
       body.querySelector('#histBtn').addEventListener('click', () => moneySheet());
+      body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎯 Today</h4>');
+      body.append(challengeTiles());
       body.append(button('☀️', closeSheet, 'big-btn small'));
     });
+  }
+
+  /* ---------------- a day like in Noodle Universe: swim at sunrise, a sip at sunset, bed at night ---------------- */
+  const HAT_ICON = { flower: '🌼', beanie: '🧢', propeller: '🚁', chef: '👨‍🍳', crown: '👑', bowl: '🎩' };
+  function hopInPool() {
+    const P = HOME.pool, p = World.pos(), a = Math.atan2((p.y - P.y) / P.ry, (p.x - P.x) / P.rx);
+    World.place(P.x + Math.cos(a) * P.rx * 0.6, P.y + Math.sin(a) * P.ry * 0.6); Sound.splash();
+  }
+  function healthyDay() { later(() => { toast('<span class="t-small">❤️ Healthy Day</span>🌅 🌇 🛏️ ⭐+1', { big: true, life: 4 }); Sound.chord(6, 'bell'); }); }
+  function poolSwim() {
+    const p = World.pos(); if (!Town.inPool(p.x, p.y, 20)) return;
+    const r = Life.doRitual(life, 'swim', now());
+    if (!r) { World.mood('laugh', 1.5); return; }
+    floatMe(`🌅 ⭐+1 🪙+${r.coins}`); Sound.chord(5, 'bell'); World.mood('wow', 2);
+    memory('pool'); fact('dawn'); if (r.healthy) healthyDay();
+    const n = R().poolCoins, P = HOME.pool;
+    if (World.addPickups && n) World.addPickups(Array.from({ length: n }, (_, i) => ({ id: `pool:${life.day}:${i}`, x: P.x + Math.cos(i * 2.4 + 0.5) * P.rx * 0.55, y: P.y + Math.sin(i * 2.4 + 0.5) * P.ry * 0.55, kind: 'coin' })));
+    if (World.setBoost) World.setBoost(1.15);
+    touch(); hud(); checkDream();
+  }
+  function sip() {
+    const p = World.pos(); Sound.gulp(); World.mood('thirsty', 1); setTimeout(() => World.mood('love', 1.5), 1000); World.burst(p.x, p.y, 'water', 10, 3);
+    const r = Life.doRitual(life, 'sip', now());
+    if (!r) { World.floatText(p.x, p.y, '💧❤️', 'task'); return; }
+    floatMe(`🌇 ⭐+1 🪙+${r.coins}`); Sound.chord(4, 'bell');
+    memory('sip'); fact('drink'); if (r.healthy) healthyDay();
+    touch(); hud(); checkDream();
+  }
+  let dreamT = null, dreamCaught = 0, sleepFrom = 0;
+  function goSleep() {
+    if (sleeping) return;
+    const r = Life.doRitual(life, 'sleep', now()); if (!r) return;   // the prize comes at tuck-in, so waking early loses nothing
+    World.setVehicle(null);
+    sleeping = true; target = null; renderAction(); sleepFrom = Life.dayFrac(now());
+    floatMe(`🛏️ ⭐+1 🪙+${r.coins}`);
+    memory('bed'); fact('sleep'); if (r.healthy) healthyDay();
+    if (World.sleep) World.sleep(true); else World.mood('sleepy', 999);
+    touch(); hud(); dreamScreen();
+  }
+  function dreamScreen() {
+    $('dream').hidden = false; dreamCaught = 0; $('dreamCount').textContent = ''; $('dreamStars').innerHTML = '';
+    drawDreamArt();
+    const plan = $('dreamPlan'); plan.innerHTML = '';
+    if (life.band === 3) {   // teens: tomorrow's budget, and a chance to save before bed
+      const r = Life.previewBills(life, town, me.uid);
+      if (r) {
+        const inc = r.lines.filter(l => l.n > 0 && l.night).reduce((a, l) => a + l.n, 0), out = r.lines.filter(l => l.n < 0).reduce((a, l) => a - l.n, 0);
+        const sgn = (n, c) => n ? `<b class="${c}">${c === 'pos' ? '+' : '−'}${coin(n)}</b>` : `<b>${coin(0)}</b>`;
+        plan.innerHTML = `<div class="budget"><div><span>💤 Comes in overnight</span>${sgn(inc, 'pos')}</div><div><span>🧾 Tomorrow's bills${life.rentFree ? ` <small>(rent free for ${life.rentFree} more day${life.rentFree === 1 ? '' : 's'})</small>` : ''}</span>${sgn(out, 'neg')}</div><div class="total"><span>👛 Tomorrow</span><b>${coin(Math.max(0, life.coins + inc - out))}</b></div></div>`;
+        if (life.coins >= 10) plan.append(button('🐷 Save 10 before bed', (b) => { if (Life.bank(life, 'deposit', 10).ok) { daily('save', 10); b.disabled = true; b.textContent = '✓ 🐷 +10'; touch(); hud(); } }, 'choice'));
+      }
+    }
+    clearInterval(dreamT); dreamT = setInterval(dreamTick, 3000); setTimeout(dreamTick, 800);
+    if (typeof Music !== 'undefined' && musicStarted) Music.play('night');
+  }
+  // a star twinkles somewhere in the dream: tap it and count
+  function dreamTick() {
+    if (Care.locked || !sleeping) return;
+    const box = $('dreamStars'); while (box.children.length >= 3) box.firstChild.remove();
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'dream-star'; b.textContent = '⭐'; b.setAttribute('aria-label', 'Catch the star');
+    b.style.left = (8 + Math.random() * 78) + '%'; b.style.top = (6 + Math.random() * 40) + '%';
+    b.addEventListener('click', () => {
+      b.remove(); dreamCaught++; Sound.note(3 + (dreamCaught % 8), 'bell');
+      const got = Life.dreamStar(life), c = $('dreamCount');
+      c.textContent = String(dreamCaught); c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop');
+      if (got) { touch(); hud(); }
+    });
+    box.append(b);
+  }
+  function drawDreamArt() {
+    const c = $('dreamArt'), x = c.getContext('2d');
+    x.clearRect(0, 0, c.width, c.height);
+    x.fillStyle = '#fff6c9'; x.beginPath(); x.arc(270, 40, 24, 0, 7); x.fill(); x.fillStyle = '#2a2356'; x.beginPath(); x.arc(282, 32, 22, 0, 7); x.fill();
+    x.fillStyle = '#f7f1e3'; rr(x, 66, 118, 188, 76, 30); x.fill(); x.lineWidth = 4; x.strokeStyle = '#1f1a2e'; x.stroke();   // the pillow
+    x.save(); x.translate(160, 142); x.scale(2, 2);
+    drawHead(x, 0, 0, 'sleepy', performance.now() / 1000, { color: me.color === '#e4572e' ? '#f4b942' : '#e4572e' });
+    x.restore();
+    x.fillStyle = me.color; rr(x, 22, 176, 276, 76, 24); x.fill(); x.lineWidth = 4; x.strokeStyle = '#1f1a2e'; x.stroke();   // the blanket, in your hoodie colour
+    x.fillStyle = 'rgba(255,255,255,.3)'; for (let i = 0; i < 6; i++) { x.beginPath(); x.arc(52 + i * 43, 214, 7, 0, 7); x.fill(); }
+    x.fillStyle = '#fff'; x.font = 'bold 26px sans-serif'; x.fillText('z', 222, 82); x.font = 'bold 18px sans-serif'; x.fillText('z', 240, 62);
+  }
+  function wakeUp() {
+    if (!sleeping) return;
+    sleeping = false; clearInterval(dreamT); $('dream').hidden = true; $('dreamStars').innerHTML = '';
+    if (World.sleep) World.sleep(false); World.mood('happy', 1);
+    Sound.rooster(); const p = World.pos(); World.burst(p.x, p.y, 'confetti', 16, 4);
+    startMusic(); touch(); hud();
+  }
+  $('wakeBtn').addEventListener('click', () => { Sound.blip(); wakeUp(); });
+
+  /* ---------------- pickups: pool coins, sparkle trail, coin rain, the pot of gold ---------------- */
+  let poolNote = 0;
+  function onPickup(id) {
+    if (id.startsWith('trail:')) { if (Life.kidBonus(life, 'trail', 1, '✨', 'Sparkle coin', 'Found on the way!')) { Sound.coin(); floatMe('+1🪙'); } }
+    else if (id.startsWith('pool:')) { Life.earn(life, 1, null, '🏊', 'Pool coin', 'Found in the pool after your morning swim!'); Sound.note(6 + (poolNote++ % 5), 'bell'); floatMe('+1🪙'); }
+    else if (id.startsWith('rain:')) { if (Life.kidBonus(life, 'rain', 1, '🪙', 'Coin rain!', 'Coins fell from the sky!')) { Sound.coin(); floatMe('+1🪙'); } memory('coinrain'); }
+    else if (id.startsWith('pot:') && !life.wonders[id]) { life.wonders[id] = 1; Life.earn(life, 5, null, '🌈', 'Pot of gold at the end of the rainbow'); Life.addStars(life, 1); Sound.chord(8, 'bell'); World.celebrate(8); floatMe('🌈 +5🪙 ⭐+1'); memory('rainbow'); guide = null; }
+    touch(); hud();
+  }
+  // wonders: the same rare moment for everyone in the room
+  function wonderTick() {
+    if (World.trip || !World.addPickups) return;
+    const w = Town.wonderAt(now());
+    if ((w && w.id) === (wonder && wonder.id)) return;
+    if (wonder) { if (World.rainbow) World.rainbow(false); if (World.shootingStars) World.shootingStars(false); World.clearPickups('rain:'); World.clearPickups('pot:'); if (guide && guide.icon === '🌈') guide = null; }
+    wonder = w;
+    if (!w) return;
+    const p = World.pos();
+    if (w.type === 'rain') { World.addPickups(Array.from({ length: 12 }, (_, i) => ({ id: `rain:${w.id}:${i}`, x: p.x + Math.cos(i * 0.52) * (110 + (i % 3) * 70), y: p.y + Math.sin(i * 0.52) * (110 + (i % 3) * 70), kind: 'coin' }))); toast('<span class="t-small">✨ Wonder!</span>🪙 🌧️ 🪙', { big: true, life: 4 }); }
+    if (w.type === 'rainbow') { if (World.rainbow) World.rainbow(true, w.pot.x, w.pot.y); if (!life.wonders['pot:' + w.id]) { World.addPickups([{ id: 'pot:' + w.id, x: w.pot.x, y: w.pot.y, kind: 'pot' }]); guide = { ...w.pot, h: 8, icon: '🌈' }; } toast('<span class="t-small">✨ Wonder!</span>🌈 → 🍯', { big: true, life: 4 }); }
+    if (w.type === 'stars') { if (World.shootingStars) World.shootingStars(true); toast('<span class="t-small">✨ Wonder!</span>🌠 → 🙏', { big: true, life: 4 }); }
+    Sound.chord(9, 'bell');
+  }
+  function makeWish() {
+    if (!wonder || life.wonders['wish:' + wonder.id]) return;
+    life.wonders['wish:' + wonder.id] = 1; Life.addStars(life, 1); memory('wish');
+    const p = World.pos(); World.floatText(p.x, p.y, '🌠 ⭐+1', 'pay'); Sound.chord(9, 'bell'); World.mood('love', 2); touch(); hud();
+  }
+  // two friends swimming together: a star once a day
+  function buddies() {
+    if (!online() || !World.swimming || life.today.bonus.buddy) return;
+    const p = World.pos(); if (!Town.inPool(p.x, p.y)) return;
+    for (const o of Net.others.values()) if (o.sw && Town.inPool(o.tx ?? o.x, o.ty ?? o.y)) { life.today.bonus.buddy = 1; Life.addStars(life, 1); World.floatText(p.x, p.y, '🏊🤝🏊 ⭐+1', 'pay'); Sound.chord(5, 'bell'); touch(); hud(); return; }
+  }
+
+  /* ---------------- ⭐ stars and levels ---------------- */
+  function levelTick() {
+    const got = Life.claimLevels(life); if (!got.length) return;
+    touch();
+    got.forEach(g => later(() => { Sound.chord(7, 'bell'); World.celebrate(10); toast(`<span class="t-small">⭐ Level ${g.L}!</span>${g.hat ? `${HAT_ICON[g.hat] || '🎩'} New hat!` : `+${coin(g.coins)}`}`, { big: true, life: 4 }); }));
+    if (got.some(g => g.hat)) World.setMe({ color: me.color, hat: life.hat });
+  }
+  function starSheet() {
+    syncDaily();
+    const lv = Life.starLevel(life.xp), lo = Life.starsFor(lv), hi = Life.starsFor(lv + 1), next = Life.levelReward(lv + 1, life.band), t = now();
+    sheet(`⭐ Level ${lv}`, (body) => {
+      body.insertAdjacentHTML('beforeend', `<div class="star-big"><b>⭐ ${life.xp}</b><div class="progress"><div style="width:${Math.round((life.xp - lo) / (hi - lo) * 100)}%"></div></div><span>Lv ${lv + 1}: ${next.hat ? `${HAT_ICON[next.hat]} new hat` : `+${coin(next.coins)}`} · ${hi - life.xp} ⭐ to go</span></div>`);
+      body.insertAdjacentHTML('beforeend', `<div class="ritual-row">${Object.entries(Life.RITUALS).map(([id, T]) => `<span class="${Life.ritualState(life, id, t)}">${T.icon}<small>${life.band === 1 ? '' : T.name}</small></span>`).join('')}<span>${life.band === 1 ? `🌟×${life.perfectDays || 0}` : `🔥 ${life.streak || 0}`}<small>${life.band === 1 ? '' : 'Perfect Days in a row'}</small></span></div>`);
+      body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎯 Today</h4>'); body.append(challengeTiles());
+      const hats = Object.keys(life.hats || {});
+      if (hats.length) {
+        body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎩</h4>');
+        body.append(tiles(tile('🙂', '', '', () => { life.hat = null; World.setMe({ color: me.color, hat: null }); touch(); starSheet(); }, { on: !life.hat }),
+          hats.map(h => tile(HAT_ICON[h] || '🎩', '', '', () => { life.hat = h; World.setMe({ color: me.color, hat: h }); Sound.pop(); touch(); starSheet(); }, { on: life.hat === h }))));
+      }
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${life.band === 1 ? '🌅 🌇 🛏️ 🎯 📸 → ⭐' : 'Stars come from the swim, sip and bed, challenges, memories, classes and your dream.'}</p>`);
+    });
+  }
+  $('starPill').addEventListener('click', () => { Sound.blip(); starSheet(); });
+  $('ritualStrip').addEventListener('click', (e) => { e.stopPropagation(); Sound.blip(); starSheet(); });
+
+  /* ---------------- age: set once on the title screen, changed later only by a grown-up ---------------- */
+  function agePicker() {
+    sheet('👤', (body) => {
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Age group: ${BAND_NAMES[life.band]}. Younger kids have no bills or tax; older kids learn rent, tax and loans.</p>`);
+      const box = document.createElement('div'); box.className = 'tabs ages';
+      for (let a = 6; a <= 16; a++) box.append(button(String(a), () => {
+        me.age = a; me.ageAt = Date.now();
+        const changed = Life.setBand(life, bandOfAge(a)); me.band = life.band; save(); touch(); hud();
+        closeSheet(); toast(`👤 ${a} · ${BAND_NAMES[life.band]}${changed ? ' ✓' : ''}`, { big: true });
+      }, 'tab' + (me.age === a ? ' on' : '')));
+      body.append(box);
+    });
+  }
+  $('ageBtn').addEventListener('click', () => { $('menuPop').hidden = true; Care.grownUp(() => agePicker(), 'Change the age group'); });
+  // a real birthday: one year older (maybe a new age group, with one new idea on each screen)
+  function birthdayCheck() {
+    if (!me.age || !me.ageAt) return;
+    const Y = 365 * 864e5, years = Math.floor((Date.now() - me.ageAt) / Y); if (years < 1) return;
+    me.age += years; me.ageAt += years * Y;
+    const up = Life.setBand(life, bandOfAge(me.age)); me.band = life.band;
+    Life.earn(life, 20, null, '🎂', `Happy birthday! You are ${me.age}`);
+    const NEW = { 2: ['🏛️ You pay a little tax now (half of the grown-up rate).', '🏢 Rent is 3 a day after 3 free days, until you build a house.', '🧾 If coins run short, your savings pay first, then you owe it (no interest).'],
+      3: ['🏛️ Full income tax, and land tax.', '🏢 Rent is 5 a day.', '💸 The bank lends coins, but loans grow every morning.'] };
+    later(() => sheet(`🎂 ${me.age}!`, (body) => {
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">🎁 +${coin(20)}</p>` + (up ? (NEW[life.band] || []).map(t => `<div class="lesson next"><span>${esc(t)}</span></div>`).join('') : ''));
+      body.append(button('✓', closeSheet, 'big-btn small'));
+    }));
   }
 
   /* ---------------- dreams ---------------- */
   function dreamPicker(first, all = false) {
     sheet(first ? '✨ I want to be…' : '✨ Dreams', (body) => {
-      const ids = all ? Object.keys(Life.DREAMS) : Life.FEATURED;
+      const kid = life.band === 1, ids = all && !kid ? Object.keys(Life.DREAMS) : Life.FEATURED_BY_BAND[life.band] || Life.FEATURED;
       const grid = document.createElement('div'); grid.className = 'tiles dreams';
       ids.forEach(id => {
         const d = Life.DREAMS[id];
-        grid.append(tile(d.icon, d.name, '', () => dreamPreview(id, first), { on: life.dream === id }));
+        grid.append(tile(d.icon, kid ? '' : d.name, '', () => dreamPreview(id, first), { on: life.dream === id }));
       });
-      if (!all) grid.append(tile('➕', `${Object.keys(Life.DREAMS).length - ids.length} more`, '', () => dreamPicker(first, true)));
+      if (!all && !kid) grid.append(tile('➕', `${Object.keys(Life.DREAMS).length - ids.length} more`, '', () => dreamPicker(first, true)));
       body.append(grid);
     });
   }
   function dreamPreview(id, first) {
     const d = Life.DREAMS[id];
     sheet(`${d.icon} ${d.name}`, (body) => {
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${esc(d.desc)}</p>` + d.steps.map(([text, , , icon], i) => `<div class="lesson next"><span class="mark">${icon}</span><span>${esc(text)}</span></div>`).join('') + '<div class="lesson next"><span class="mark">∞</span><span>…and it never ends</span></div>');
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${esc(d.desc)}</p>` + Life.stepsOf(life, d).map(([text, , , icon], i) => `<div class="lesson next"><span class="mark">${icon}</span><span>${esc(text)}</span></div>`).join('') + '<div class="lesson next"><span class="mark">∞</span><span>…and it never ends</span></div>');
       body.append(row(button('✓ This is my dream', () => {
         if (life.dream !== id) { life.dream = id; life.dreamStep = 0; life.dreamLv = 0; life.dreamMark = life.stats.earned; }
+        life.seen.pickedDream = 1;
         touch(); closeSheet(); checkDream(); hud(); markers();
         const g = Life.dreamGoal(life);
         toast(`<span class="t-small">${d.icon} ${esc(d.name)}</span>→ ${g.icon} ${esc(g.text)} · follow ➤`, { big: true, life: 5 });
         Sound.chord(5, 'bell');
+        if (!life.daily || !life.daily.shown) later(() => todaySheet());
       }, 'big-btn small'), button('←', () => dreamPicker(first), 'choice alt')));
     });
   }
@@ -1142,7 +1486,7 @@
       dc.append(button('✨ ↻', () => dreamPicker(), 'choice alt'));
       body.append(dc);
       const mem = Object.entries(Life.MEMORIES);
-      body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📸 ${Life.memCount(life)}/${mem.length} · ⭐ ${life.xp}</h4>`);
+      body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📸 ${Life.memCount(life)}/${mem.length} · ⭐ ${life.xp} · Lv ${Life.starLevel(life.xp)}</h4>`);
       body.append(tiles(mem.map(([id, [icon, name]]) => tile(life.memories[id] ? icon : '❔', '', life.memories[id] ? esc(name) : '', null, { cls: life.memories[id] ? 'mem' : 'mem locked' }))));
     });
   }
@@ -1208,6 +1552,7 @@
       x.beginPath(); x.ellipse(X(n.x), Y(n.y), 300 * k, 260 * k, 0, 0, 7); x.fill();
     });
     x.fillStyle = '#efe3c4'; x.beginPath(); x.arc(X(Town.PLAZA.x), Y(Town.PLAZA.y), Town.PLAZA.r * k, 0, 7); x.fill();
+    x.fillStyle = '#7fd0ea'; [HOME.pool, Town.POND].forEach(w => { x.beginPath(); x.ellipse(X(w.x), Y(w.y), w.rx * k, w.ry * k, 0, 0, 7); x.fill(); });
     const F = Town.TOWN_FARM; x.fillStyle = '#a0673b'; x.fillRect(X(F.x), Y(F.y), F.w * k, F.h * k);
     Town.allPlots(town).forEach(p => {
       const st = town && town.plots[p.id], mine = st && st.owner === me.uid;
@@ -1242,7 +1587,7 @@
   $('coinPill').addEventListener('click', () => { Sound.blip(); moneySheet(); });
   $('mapBtn').addEventListener('click', () => { Sound.blip(); mapSheet(); });
   $('lifeBtn').addEventListener('click', () => { Sound.blip(); lifeSheet(); });
-  $('goal').addEventListener('click', () => { Sound.blip(); if (!life.dream) dreamPicker(true); else { guide = null; lifeSheet(); } });
+  $('goal').addEventListener('click', () => { Sound.blip(); if (!life.dream && (life.starter || 0) >= Life.STARTER.length) dreamPicker(true); else if (!life.dream) starSheet(); else { guide = null; lifeSheet(); } });
   $('shiftPill').addEventListener('click', () => { Sound.blip(); jobsSheet(); });
 
   /* ---------------- menu ---------------- */
@@ -1261,7 +1606,7 @@
       body.insertAdjacentHTML('beforeend', `<div class="help-grid">
         <div>💼 → 🪙</div><div>🏫 → 🎓 → 💼⬆️</div><div>🏦 🐷 📈</div><div>🏡 🌱 → 🌾 → 🧺</div>
         <div>🗳️ → 🏛️ → ⛲🏥📚</div><div>🏙️ grows → 🚉💻🎬✈️🚀</div><div>🚌 🚆 🚲 🚗 🛩️</div><div>🏞️ 🎣 📷 🏕️ → 📸 ⭐</div>
-        <div>🏭 👥 📣 → 📈</div><div>✨ → ➤ follow the arrow</div></div>
+        <div>🏭 👥 📣 → 📈</div><div>✨ → ➤ follow the arrow</div><div>🌅 🏊 · 🌇 💧 · 🛏️ 💤 → ⭐🪙</div><div>🎯 ×3 → 🌟</div></div>
         <p class="sheet-sub">⌨️ WASD · Space/E = do · M = map · 1–6 = faces · 📱 drag = walk</p>`);
     });
   }
@@ -1385,9 +1730,10 @@
     if (guide && dist(World.pos(), guide) < 60) guide = null;
     const st = World.state();
     if (!World.trip) pos = World.pos();
-    if (online() && !World.trip) Net.state({ x: Math.round(pos.x), y: Math.round(pos.y), mood: st.mood, moving: st.moving, face: st.face, z: st.hop, title: Life.title(life) });
+    if (online() && !World.trip) Net.state({ x: Math.round(pos.x), y: Math.round(pos.y), mood: sleeping ? 'sleepy' : st.mood, moving: st.moving, face: st.face, z: st.hop, title: Life.title(life), swimming: World.swimming, hat: life.hat || '' });
+    if (sleeping) { const f = Life.dayFrac(t), done = Math.max(0, Math.min(1, (f - sleepFrom) / Math.max(0.01, 1 - sleepFrom))); $('nightFill').style.width = Math.round(done * 100) + '%'; }
     if ((hudT -= dt) <= 0) {
-      hudT = 0.5; hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t));
+      hudT = 0.5; hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t)); wonderTick(); buddies();
       const rain = Town.raining(t); if (rain && !rainWas) { fact('rain'); toast('🌧️ 🌱💧'); } rainWas = rain;
       const up = World.hillAt(World.pos().x, World.pos().y) > 2; if (up && !hillWas) fact('hill'); hillWas = up;
     }
@@ -1406,11 +1752,12 @@
       sw.appendChild(b);
     });
     const ages = $('ages');
-    [1, 2, 3].forEach(b => {
-      const el = document.createElement('button'); el.type = 'button'; el.className = 'tab' + (me.band === b ? ' on' : ''); el.textContent = BAND_NAMES[b];
-      el.addEventListener('click', () => { me.band = b; ages.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === el)); });
+    if (life) ages.closest('.mp-row').hidden = true;   // only a grown-up changes the age of a life (⋯ → 👤)
+    else for (let a = 6; a <= 16; a++) {
+      const el = document.createElement('button'); el.type = 'button'; el.className = 'tab' + (me.age === a ? ' on' : ''); el.textContent = String(a);
+      el.addEventListener('click', () => { me.age = a; me.band = bandOfAge(a); ages.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === el)); });
       ages.appendChild(el);
-    });
+    }
     $('dice').addEventListener('click', () => {
       const A = ['Sunny', 'Brave', 'Happy', 'Clever', 'Kind', 'Lucky', 'Busy', 'Cozy'], B = ['Farmer', 'Builder', 'Baker', 'Mayor', 'Otter', 'Maple', 'Pepper', 'Pixel'];
       nameIn.value = A[Math.floor(Math.random() * A.length)] + ' ' + B[Math.floor(Math.random() * B.length)];
@@ -1422,17 +1769,17 @@
       if (name.length < 2) { $('titleMsg').textContent = '✏️ Name?'; nameIn.focus(); return; }
       me.name = name;
       const fresh = !life;
-      if (fresh) life = Life.fresh(me.band); else life.band = me.band;
+      if (fresh) { life = Life.fresh(me.band); if (me.age) me.ageAt = Date.now(); } else me.band = life.band;
       if (!solo) solo = Town.newTown(Date.now());
       $('title').hidden = true; $('hud').hidden = false; $('minimap').hidden = false;
-      World.setMe({ color: me.color });
+      World.setMe({ color: me.color, hat: life.hat });
       if (pos && pos.x && pos.x < 20000) World.place(pos.x, pos.y);
       playing = true;
       goSolo();
-      dayTick();
+      dayTick(); syncDaily(); birthdayCheck();
       save(); startMusic();
-      if (fresh) later(() => welcome());
-      else if (!life.dream) later(() => dreamPicker(true));
+      if (fresh && life.band > 1) later(() => welcome());
+      else if (!life.dream && (life.starter || 0) >= Life.STARTER.length) later(() => dreamPicker(true));
       if (withFriends) later(() => roomSheet());
       const fromLink = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (fromLink.length >= 3 && !withFriends) later(() => { roomSheet(); $('roomIn').value = fromLink; });
@@ -1460,10 +1807,10 @@
   }
   function welcome() {
     sheet('👋 Small Town', (body) => {
-      body.insertAdjacentHTML('beforeend', `<div class="welcome-row"><span>💼</span><span>🏫</span><span>🏦</span><span>🏡</span><span>🗳️</span><span>✈️</span></div>
-        <p class="sheet-sub">👛 ${coin(life.coins)} · 🏢 🎁 · ➤ follow the arrow</p>`);
-      body.append(button('✨ My dream', () => { sheetOnClose = null; closeSheet(); dreamPicker(true); }, 'big-btn small'));
-    }, () => { if (!life.dream) setTimeout(() => dreamPicker(true), 200); });
+      body.insertAdjacentHTML('beforeend', `<div class="welcome-row"><span>🌅</span><span>💼</span><span>🏦</span><span>🏡</span><span>🗳️</span><span>✈️</span></div>
+        <p class="sheet-sub">👛 ${coin(life.coins)} · 🏢 Rent is free for ${life.rentFree} days, then ${coin(R().rent)} a day until you build a house. · ➤ follow the arrow</p>`);
+      body.append(button('▶', closeSheet, 'big-btn small'));
+    });
   }
 
   /* ---------------- start ---------------- */
@@ -1481,10 +1828,11 @@
       onSpace: () => doAction(),
       others: () => Net.others.values(),
       tagInfo: () => ({ me: { name: me.name, sub: Life.title(life || Life.fresh(2)), talking: Talk.level('me') > 0.08 }, others: (id) => ({ talking: Talk.level(id) > 0.08 }) }),
-      onHop: () => { Sound.pop(); if (life) fact('hop'); },
-      onKick: (j) => { Sound.crunch(Math.min(1, j / 20), true); if (life) fact('kick'); },
+      onHop: () => { Sound.pop(); if (life) { fact('hop'); life.stats.hops = (life.stats.hops || 0) + 1; daily('hop'); } },
+      onKick: (j) => { Sound.crunch(Math.min(1, j / 20), true); if (life) { fact('kick'); life.stats.kicks = (life.stats.kicks || 0) + 1; daily('kick'); } },
+      onPickup: (id, kind) => { if (life) onPickup(id, kind); },
       onThud: () => Sound.drum(0),
-      onSwim: () => { Sound.splash(); if (life) fact('swim'); },
+      onSwim: () => { Sound.splash(); if (life) { fact('swim'); poolSwim(); } },
       onGoal: () => {
         Sound.chord(6, 'bell'); World.mood('laugh', 2); memory('goal');
         if (goalsToday < 5) { goalsToday++; Life.earn(life, 3, null, '⚽', `Goal prize (${goalsToday}/5 today)`); toast('⚽ GOAL!', { big: true }); } else toast('⚽ GOAL! (the 5 prizes for today are used up)', { big: true });
