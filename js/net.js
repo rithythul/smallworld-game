@@ -5,6 +5,7 @@ const Net = (() => {
   const handlers = {};
   let lastState = 0, lastScore = '', replaced = false, clockOffset = 0, rid = 0;
   const pending = new Map();      // town actions waiting for the server's answer
+  const late = new Map();         // actions we stopped waiting for: if the answer still comes, the game can use it
 
   const emit = (evt, data) => (handlers[evt] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
@@ -82,7 +83,11 @@ const Net = (() => {
         break;
       case 'scores': scores = m.list; emit('scores', scores); break;
       case 'replaced': replaced = true; break;
-      case 'tres': { const fn = pending.get(m.rid); if (fn) { pending.delete(m.rid); fn(m.res); } break; }
+      case 'tres': {
+        const fn = pending.get(m.rid); if (fn) { pending.delete(m.rid); fn(m.res); break; }
+        const a = late.get(m.rid); if (a) { late.delete(m.rid); if (m.res && m.res.ok) emit('late', { a, res: m.res }); }
+        break;
+      }
       default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
     }
   }
@@ -110,7 +115,7 @@ const Net = (() => {
       return new Promise((resolve) => {
         pending.set(id, resolve);
         send({ t: 'tact', rid: id, a });
-        setTimeout(() => { if (pending.has(id)) { pending.delete(id); resolve({ ok: false, msg: 'The town did not answer. Try again.' }); } }, 8000);
+        setTimeout(() => { if (pending.has(id)) { pending.delete(id); late.set(id, a); if (late.size > 30) late.delete(late.keys().next().value); resolve({ ok: false, slow: true, msg: 'The town is slow to answer. If it goes through, you will still get it.' }); } }, 10000);
       });
     },
     crunch(id, n = 0, v = '') { if (code) send({ t: 'crunch', b: id, n, v }); },

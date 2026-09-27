@@ -152,7 +152,7 @@
   const PROJECTS = [
     { id: 'fountain', name: 'Plaza Fountain', icon: '⛲', cost: 60, desc: 'A place to meet friends. The town looks happier.' },
     { id: 'lights', name: 'Street Lights', icon: '💡', cost: 110, desc: 'Bright, safe streets at night.' },
-    { id: 'bus', name: 'Bus Line', icon: '🚌', cost: 150, desc: 'A free town bus that drives up and down Main Road.' },
+    { id: 'bus', name: 'Bus Line', icon: '🚌', cost: 150, desc: 'A town bus that drives up and down Main Road. A ticket costs 2 coins.' },
     { id: 'park', name: 'Town Park', icon: '🌳', cost: 210, desc: 'Trees, benches and a playground for everyone.' },
     { id: 'library', name: 'Library', icon: '📚', cost: 280, desc: 'Free books for everyone. Classes give an extra star.' },
     { id: 'clinic', name: 'Clinic', icon: '🏥', cost: 380, desc: 'Doctors and nurses keep the town healthy.' },
@@ -194,7 +194,11 @@
     return Math.max(1, Math.round(gd.base * f));
   }
   // what selling n would pay right now, one by one (each sale lowers the price a little)
-  function sellPreview(town, g, n) { const st = town.stock[g] || 0, each = []; for (let i = 0; i < n; i++) { town.stock[g] = st + i; each.push(price(town, g)); } town.stock[g] = st; return each; }
+  const SELL_MAX = 50;   // the market buys up to 50 of one thing at a time
+  function sellPreview(town, g, n) { const st = town.stock[g] || 0, each = []; for (let i = 0; i < Math.min(n, SELL_MAX); i++) { town.stock[g] = st + i; each.push(price(town, g)); } town.stock[g] = st; return each; }
+  // what buying n logs would cost, one by one (each one bought makes the next a little pricier)
+  function buyPreview(town, g, n) { const st = town.stock[g] || 0, each = []; for (let i = 0; i < n; i++) { town.stock[g] = Math.max(0, st - i); each.push(price(town, g) + 2); } town.stock[g] = st; return each; }
+  const usual = (g) => GOODS[g] ? GOODS[g].base : 0;
   const trend = (town, g) => { const f = price(town, g) / GOODS[g].base; return f > 1.12 ? 'up' : f < 0.88 ? 'down' : 'same'; };
   function cropState(c, now) {
     if (!c) return 'empty';
@@ -212,11 +216,11 @@
     if (raining(now)) Object.values(town.plots).forEach(p => (p.soil || []).forEach(c => { if (c && !c.w) c.w = now; }));
     SELLABLE.forEach(g => { if (typeof town.stock[g] !== 'number') town.stock[g] = NORM; });
     if (typeof town.growth !== 'number') { town.growth = 0; town.districts = 0; }
-    const dt = Math.max(0, now - town.at);
-    if (dt > 20 * 1000) {
-      const steps = Math.min(60, Math.floor(dt / (30 * 1000)));
-      for (let i = 0; i < steps; i++) SELLABLE.forEach(g => { town.stock[g] += (NORM - town.stock[g]) * 0.1; });
-      town.at = now;
+    // prices drift back to normal: 10% of the way every 30 seconds. Leftover time is kept, so frequent checks never lose it.
+    const steps = Math.floor(Math.max(0, now - town.at) / (30 * 1000));
+    if (steps > 0) {
+      for (let i = 0; i < Math.min(60, steps); i++) SELLABLE.forEach(g => { town.stock[g] += (NORM - town.stock[g]) * 0.1; });
+      town.at = steps > 60 ? now : town.at + steps * 30 * 1000;
     }
     const npcTaxes = Math.floor((now - town.lastNpcTax) / (2 * MIN));
     if (npcTaxes > 0) { town.treasury += Math.min(30, npcTaxes * 2); grow(town, Math.min(30, npcTaxes * 2), now); town.lastNpcTax += npcTaxes * 2 * MIN; }
@@ -300,7 +304,7 @@
         return { ok: true, items: c.k === 'tree' ? { log: 3 } : { [c.k]: 1 + (a.bonus ? 1 : 0) }, crop: c.k };
       }
       case 'sell': {
-        const n = Math.max(1, Math.min(50, a.n | 0));
+        const n = Math.max(1, Math.min(SELL_MAX, a.n | 0));
         if (!SELLABLE.includes(a.g)) return fail('The market does not buy that.');
         let coins = 0; const each = [];
         for (let i = 0; i < n; i++) { const p = price(town, a.g); each.push(p); coins += p; town.stock[a.g] += 1; }   // every one sold makes the next a little cheaper
@@ -312,6 +316,13 @@
         let cost = 0; const each = [];
         for (let i = 0; i < n; i++) { const p = price(town, 'log') + 2; each.push(p); cost += p; town.stock.log = Math.max(0, town.stock.log - 1); }
         return { ok: true, cost, each };
+      }
+      case 'sellPlot': {   // sell your land back to the town for half of what it cost (and half of what you built on it)
+        if (!mine) return fail('That is not your land.');
+        const refund = Math.floor(plot.price / 2) + (st.build && BUILD[st.build] ? Math.floor(BUILD[st.build].coins / 2) : 0);
+        delete town.plots[a.id];
+        news(town, `🏡 ${who.name} sold land ${a.id} back to the town.`);
+        return { ok: true, refund, build: st.build || null };
       }
       case 'chop': {
         const t = FOREST.find(x => x.id === a.tree);
@@ -365,7 +376,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
-    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
+    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);
