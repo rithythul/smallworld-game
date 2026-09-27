@@ -193,6 +193,8 @@
     const f = clamp(1.5 - 0.5 * (town.stock[g] || 0) / NORM, 0.5, 1.6);
     return Math.max(1, Math.round(gd.base * f));
   }
+  // what selling n would pay right now, one by one (each sale lowers the price a little)
+  function sellPreview(town, g, n) { const st = town.stock[g] || 0, each = []; for (let i = 0; i < n; i++) { town.stock[g] = st + i; each.push(price(town, g)); } town.stock[g] = st; return each; }
   const trend = (town, g) => { const f = price(town, g) / GOODS[g].base; return f > 1.12 ? 'up' : f < 0.88 ? 'down' : 'same'; };
   function cropState(c, now) {
     if (!c) return 'empty';
@@ -300,14 +302,16 @@
       case 'sell': {
         const n = Math.max(1, Math.min(50, a.n | 0));
         if (!SELLABLE.includes(a.g)) return fail('The market does not buy that.');
-        let coins = 0; for (let i = 0; i < n; i++) { coins += price(town, a.g); town.stock[a.g] += 1; }
-        return { ok: true, coins };
+        let coins = 0; const each = [];
+        for (let i = 0; i < n; i++) { const p = price(town, a.g); each.push(p); coins += p; town.stock[a.g] += 1; }   // every one sold makes the next a little cheaper
+        return { ok: true, coins, each };
       }
       case 'buyGood': {   // logs from the sawmill
         const n = Math.max(1, Math.min(30, a.n | 0));
         if (a.g !== 'log') return fail('Not for sale.');
-        let cost = 0; for (let i = 0; i < n; i++) { cost += price(town, 'log') + 2; town.stock.log = Math.max(0, town.stock.log - 1); }
-        return { ok: true, cost };
+        let cost = 0; const each = [];
+        for (let i = 0; i < n; i++) { const p = price(town, 'log') + 2; each.push(p); cost += p; town.stock.log = Math.max(0, town.stock.log - 1); }
+        return { ok: true, cost, each };
       }
       case 'chop': {
         const t = FOREST.find(x => x.id === a.tree);
@@ -361,7 +365,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
-    RAIL_Y, STATION, DX0, DW, DAY, raining, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
+    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);

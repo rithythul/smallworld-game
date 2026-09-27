@@ -74,12 +74,15 @@
     if (s.done < s.need) return { done: false, left: s.need - s.done };
     const gross = wageOf(life, s.job), tax = Math.round(gross * (taxRate || 0) / 100), net = gross - tax;
     life.coins += net; life.shift = null; life.shiftsToday++;
+    note(life, 'pocket', gross, JOBS[s.job].icon, `Wage: ${JOBS[s.job].name} shift`, 'You finished all the tasks. This is your pay.');
+    note(life, 'pocket', -tax, '🏛️', `Income tax ${taxRate || 0}%`, `${taxRate || 0}% of every wage goes to the town. It pays for the school, roads, parks and the bus.`, { link: 'wage' });
     life.stats.shifts[s.job] = (life.stats.shifts[s.job] || 0) + 1;
     life.stats.wages += net; life.stats.earned += net; life.stats.taxPaid += tax; life.today.earned += net; life.today.tax += tax;
     life.rep += 1;
     const raise = (life.stats.shifts[s.job] % 3 === 0) && life.stats.shifts[s.job] <= 15;
     return { done: true, job: s.job, gross, tax, net, rate: taxRate || 0, raise, next: wageOf(life, s.job) };
   }
+  // stopping early: no pay, because the work was not finished
   const quitShift = (life) => { life.shift = null; };
 
   /* ---------------- the bank ---------------- */
@@ -88,23 +91,42 @@
   function bank(life, what, n, owned) {
     n = Math.floor(n);
     if (!(n > 0)) return { ok: false, why: 'Pick an amount.' };
-    if (what === 'deposit') { if (n > life.coins) return { ok: false, why: 'You do not have that many coins.' }; life.coins -= n; life.bank += n; life.stats.deposits += n; return { ok: true }; }
-    if (what === 'withdraw') { if (n > life.bank) return { ok: false, why: 'Your savings are smaller than that.' }; life.bank -= n; life.coins += n; return { ok: true }; }
-    if (what === 'borrow') { if (life.loan + n > loanLimit(life, owned)) return { ok: false, why: `The bank lends you up to ${loanLimit(life, owned)} coins in total.` }; life.loan += n; life.coins += n; life.stats.borrowed += n; return { ok: true }; }
-    if (what === 'repay') { n = Math.min(n, life.loan); if (!n) return { ok: false, why: 'You do not owe anything!' }; if (n > life.coins) return { ok: false, why: 'You do not have that many coins.' }; life.loan -= n; life.coins -= n; return { ok: true }; }
+    if (what === 'deposit') { if (n > life.coins) return { ok: false, why: 'You do not have that many coins.' }; life.coins -= n; life.bank += n; life.stats.deposits += n;
+      note(life, 'pocket', -n, '🐷', 'Moved to your savings', 'Still yours! It is safe in the bank and grows 2% every morning.', { move: true }); note(life, 'bank', n, '🐷', 'Saved from your pocket'); return { ok: true }; }
+    if (what === 'withdraw') { if (n > life.bank) return { ok: false, why: 'Your savings are smaller than that.' }; life.bank -= n; life.coins += n;
+      note(life, 'bank', -n, '👛', 'Taken out to your pocket'); note(life, 'pocket', n, '🐷', 'Taken out of your savings', '', { move: true }); return { ok: true }; }
+    if (what === 'borrow') { if (life.loan + n > loanLimit(life, owned)) return { ok: false, why: `The bank lends you up to ${loanLimit(life, owned)} coins in total.` }; life.loan += n; life.coins += n; life.stats.borrowed += n;
+      note(life, 'pocket', n, '💸', 'Loan from the bank', `You must pay it back. It grows ${LOAN_RATE}% every morning until you do.`, { move: true }); note(life, 'loan', n, '💸', 'You borrowed'); return { ok: true }; }
+    if (what === 'repay') { n = Math.min(n, life.loan); if (!n) return { ok: false, why: 'You do not owe anything!' }; if (n > life.coins) return { ok: false, why: 'You do not have that many coins.' }; life.loan -= n; life.coins -= n;
+      note(life, 'pocket', -n, '💸', 'Paid back your loan', 'Less to owe means less interest tomorrow.', { move: true }); note(life, 'loan', -n, '💸', 'Paid back'); return { ok: true }; }
     return { ok: false, why: '?' };
   }
 
-  /* ---------------- money helpers ---------------- */
-  function earn(life, n, kind) {
+  /* ---------------- the money diary ---------------- */
+  // Every coin that comes or goes is written down with a reason in plain words, so a kid can always see
+  // WHY their coins changed. acct: 'pocket' (coins), 'bank' (savings) or 'loan' (what you owe).
+  // why = a few words ("Income tax 10%"). how = one short sentence that explains it ("It pays for the school and roads.").
+  const LOG_MAX = 120;
+  function note(life, acct, n, icon, why, how, extra) {
+    n = Math.round(n); if (!n) return null;
+    const e = { id: ++life.logSeq, t: Date.now(), day: life.day, acct, n, icon, why, how: how || '', ...(extra || {}) };
+    life.log.unshift(e); if (life.log.length > LOG_MAX) life.log.length = LOG_MAX;
+    return e;
+  }
+  // coins in: counts as earned (for dreams and the day's summary)
+  function earn(life, n, kind, icon = '🪙', why = 'Coins', how = '') {
     n = Math.round(n); if (!n) return;
     life.coins += n; life.stats.earned += n; life.today.earned += n;
     if (kind) life.stats[kind] = (life.stats[kind] || 0) + n;
+    note(life, 'pocket', n, icon, why, how);
   }
-  function spend(life, n) {
+  // coins out, only if you have them
+  function spend(life, n, icon = '🪙', why = 'Spent', how = '') {
     n = Math.round(n);
     if (n > life.coins) return false;
-    life.coins -= n; life.today.spent += n; return true;
+    life.coins -= n; life.today.spent += n;
+    note(life, 'pocket', -n, icon, why, how);
+    return true;
   }
   const addItem = (life, g, n = 1) => { life.bag[g] = (life.bag[g] || 0) + n; };
   const takeItem = (life, g, n = 1) => { if ((life.bag[g] || 0) < n) return false; life.bag[g] -= n; return true; };
@@ -112,8 +134,8 @@
 
   /* ---------------- homes and plots ---------------- */
   const RENT = Town ? Town.RENT : 5;
-  const ownedPlots = (town, uid) => town ? Object.entries(town.plots).filter(([, p]) => p.owner === uid).map(([id, p]) => ({ id, ...p, plot: Town.PLOT_BY_ID[id] })) : [];
-  const ownsHouse = (town, uid) => ownedPlots(town, uid).some(p => p.build === 'house');
+  const ownedPlots = (town, uid) => town ? Object.entries(town.plots).filter(([, p]) => p.owner === uid).map(([id, p]) => ({ id, ...p, plot: Town.plotById(id) })).filter(p => p.plot) : [];
+  const ownsHouse = (town, uid) => ownedPlots(town, uid).some(p => p.build === 'house' || p.build === 'villa');
   const shopPlot = (town, uid) => ownedPlots(town, uid).find(p => p.build === 'shop');
 
   /* ---------------- things you can own ---------------- */
@@ -146,6 +168,7 @@
       if (T.needs && !hasCert(life, T.needs)) return { ok: false, why: '🎓 ' + SUBJECTS[T.needs].icon };
       if (life.coins < T.cost) return { ok: false, why: `🪙 ${T.cost}` };
       life.coins -= T.cost; life.today.spent += T.cost;
+      note(life, 'pocket', -T.cost, T.icon, `Started a company: ${T.name}`, 'Starting a business costs money first. It earns it back over time.');
       const c = { id: id + Date.now().toString(36).slice(-4), type: id, level: 1, staff: 0, ad: 0, plot: arg || null, days: 0, profit: 0 };
       life.companies.push(c); life.stats.companies++;
       return { ok: true, co: c };
@@ -154,8 +177,10 @@
     const T = COMPANIES[co.type];
     if (what === 'hire') { if (co.staff >= staffMax(co)) return { ok: false, why: '⬆️' }; co.staff++; return { ok: true }; }
     if (what === 'fire') { if (!co.staff) return { ok: false, why: '0' }; co.staff--; return { ok: true }; }
-    if (what === 'upgrade') { const c = upgradeCost(co); if (life.coins < c) return { ok: false, why: `🪙 ${c}` }; life.coins -= c; life.today.spent += c; co.level++; return { ok: true }; }
-    if (what === 'ad') { const c = 6 + 4 * co.level; if (life.coins < c) return { ok: false, why: `🪙 ${c}` }; if (co.ad) return { ok: false, why: '📣' }; life.coins -= c; life.today.spent += c; co.ad = 1; life.stats.ads++; return { ok: true, cost: c }; }
+    if (what === 'upgrade') { const c = upgradeCost(co); if (life.coins < c) return { ok: false, why: `🪙 ${c}` }; life.coins -= c; life.today.spent += c; co.level++;
+      note(life, 'pocket', -c, '⬆️', `${T.name}: made bigger (level ${co.level})`, 'Bigger companies can sell more, but cost more to run each day.'); return { ok: true }; }
+    if (what === 'ad') { const c = 6 + 4 * co.level; if (life.coins < c) return { ok: false, why: `🪙 ${c}` }; if (co.ad) return { ok: false, why: '📣' }; life.coins -= c; life.today.spent += c; co.ad = 1; life.stats.ads++;
+      note(life, 'pocket', -c, '📣', `${T.name}: an ad`, 'Ads cost money now and bring more customers tomorrow.'); return { ok: true, cost: c }; }
     return { ok: false, why: '?' };
   }
   // one day of business: customers buy, workers get paid. Bigger towns have more customers.
@@ -168,11 +193,12 @@
       let n = 0, coins = 0;
       for (const g of Object.keys(life.online)) while (life.online[g] > 0 && n < 6 * co.level * boost) { life.online[g]--; n++; coins += (town ? Town.price(town, g) : 5) + 2; }
       const fee = Math.round(coins * 0.1); rev = coins - fee; life.stats.onlineSold += n; life.stats.onlineCoins += rev;
+      co.lastOnline = { n, coins, fee };
     } else rev = Math.round(T.base * co.level * (1 + 0.35 * co.staff) * demand * size * boost);
-    const cost = T.upkeep * co.level + co.staff * T.wage;
+    const rent = T.upkeep * co.level, wages = co.staff * T.wage, cost = rent + wages, ad = co.ad;
     co.ad = 0; co.days++; co.profit += rev - cost;
     life.stats.coRevenue += rev; life.stats.coProfit += rev - cost;
-    return { rev, cost, net: rev - cost };
+    return { rev, cost, rent, wages, staff: co.staff, ad, net: rev - cost, online: T.online ? co.lastOnline : null };
   }
 
   /* ---------------- a video channel ---------------- */
@@ -218,42 +244,54 @@
     life.day = day; life.shiftsToday = 0; life.today = { earned: 0, spent: 0, tax: 0 };
     if (first) return null;
     const plots = ownedPlots(town, uid);
-    const gain = (label, n, stat) => { if (!n) return; life.coins += n; life.stats.earned += n; if (stat) life.stats[stat] += n; lines.push({ label, n }); };
+    // every line: icon, what it is (words), coins (+ or -), and a short "why"
+    const line = (acct, icon, label, n, how, extra) => { lines.push({ acct, icon, label, n, how: how || '', ...(extra || {}) }); if (acct === 'pocket') note(life, 'pocket', n, icon, label, how, { morning: day }); else note(life, acct, n, icon, label, how, { morning: day }); };
+    const gain = (icon, label, n, stat, how) => { if (!n) return; life.coins += n; life.stats.earned += n; if (stat) life.stats[stat] += n; line('pocket', icon, label, n, how); };
     // income first
-    if (life.bank >= 10) { const i = Math.max(1, Math.floor(life.bank * SAVE_RATE / 100)); life.bank += i; life.stats.interest += i; life.stats.earned += i; lines.push({ label: `🏦 +${SAVE_RATE}%`, n: i }); }
+    if (life.bank >= 10) { const i = Math.max(1, Math.floor(life.bank * SAVE_RATE / 100)); life.bank += i; life.stats.interest += i; life.stats.earned += i; line('bank', '🐷', `Savings grew ${SAVE_RATE}% (interest)`, i, 'The bank pays you for keeping coins there.'); }
     const shop = shopPlot(town, uid);
     if (shop && town) {
       let sold = 0, coins = 0;
       for (const g of Object.keys(life.shelf)) {
         while (life.shelf[g] > 0 && sold < 5) { life.shelf[g]--; sold++; coins += Town.price(town, g) + 3; }
       }
-      if (sold) gain(`🏪 ×${sold}`, coins, 'shopSales'); else lines.push({ label: '🏪 🫙', n: 0 });
+      if (sold) gain('🏪', `Your shop sold ${sold} thing${sold === 1 ? '' : 's'}`, coins, 'shopSales', 'Customers pay the market price + 3.');
+      else lines.push({ acct: 'pocket', icon: '🏪', label: 'Your shop shelf was empty, so it sold nothing', n: 0, how: 'Put things on the shelf to sell tomorrow.' });
     }
-    // companies: revenue in, costs out
-    let coNet = 0;
+    // companies: sales in, costs out. A loss comes out of your pocket, and it says why.
     life.companies.forEach(co => {
       const T = COMPANIES[co.type], r = companyDay(life, co, town);
-      coNet += r.net;
-      lines.push({ label: `${T.icon} ${T.name}`, n: r.net, note: `+${r.rev} −${r.cost}` });
+      const costs = [`rent & supplies ${r.rent}`, r.wages ? `${r.staff} worker${r.staff > 1 ? 's' : ''} ${r.wages}` : ''].filter(Boolean).join(' + ');
+      const how = r.online ? `Sold ${r.online.n} online for ${r.online.coins}, the website kept ${r.online.fee} (10% fee). Costs: ${costs}.`
+        : `Customers paid ${r.rev}${r.ad ? ' (the ad brought extra customers)' : ''}. Costs: ${costs}.`;
+      if (r.net >= 0) { life.coins += r.net; life.stats.earned += r.net; line('pocket', T.icon, `${T.name}: profit`, r.net, how, { note: `+${r.rev} −${r.cost}` }); }
+      else { life.coins += r.net; line('pocket', T.icon, `${T.name}: lost money today`, r.net, how + (r.online && !r.online.n ? ' Nothing was listed to sell!' : ' Costs were bigger than sales.'), { note: `+${r.rev} −${r.cost}` }); }
     });
-    if (coNet > 0) { life.coins += coNet; life.stats.earned += coNet; } else if (coNet < 0) life.coins += coNet;   // a loss comes out of your pocket
     // the channel
     const ch = life.channel;
-    if (ch.videos) { const views = ch.subs * 4 + ch.videos * 2; ch.views += views; const c = Math.floor(views / 10); ch.earned += c; gain(`📹 ${views} 👀`, c, 'viewCoins'); }
+    if (ch.videos) { const views = ch.subs * 4 + ch.videos * 2; ch.views += views; const c = Math.floor(views / 10); ch.earned += c; gain('📹', `Your videos: ${views} views`, c, 'viewCoins', '1 coin for every 10 views.'); }
     // then the bills
     let bills = 0, taxes = 0;
     if (!ownsHouse(town, uid)) {
-      if (life.rentFree > 0) { life.rentFree--; lines.push({ label: `🏢 🎁 ×${life.rentFree + 1}`, n: 0 }); }
-      else { bills += RENT; lines.push({ label: '🏢', n: -RENT }); }
+      if (life.rentFree > 0) { life.rentFree--; lines.push({ acct: 'pocket', icon: '🎁', label: `Free rent (newcomer gift, ${life.rentFree} free day${life.rentFree === 1 ? '' : 's'} left)`, n: 0, how: `After that, rent is ${RENT} a day until you own a house.` }); }
+      else { bills += RENT; lines.push({ acct: 'pocket', icon: '🏢', label: 'Apartment rent', n: -RENT, how: 'You live in an apartment. Build your own house and you stop paying rent.' }); }
     }
-    plots.forEach(p => { const t = Town.TAX[p.plot.kind]; taxes += t; lines.push({ label: `🏛️ ${p.id}`, n: -t }); });
-    Object.keys(life.vehicles).forEach(v => { const u = VEHICLES[v].upkeep; if (u) { bills += u; lines.push({ label: `${VEHICLES[v].icon} ⛽`, n: -u }); } });
-    if (life.loan > 0) { const i = Math.max(1, Math.ceil(life.loan * LOAN_RATE / 100)); life.loan += i; lines.push({ label: `💸 +${LOAN_RATE}%`, n: 0, note: `+${i} 💸` }); life.stats.loanInterest += i; }
+    plots.forEach(p => { const t = Town.TAX[p.plot.kind]; taxes += t; lines.push({ acct: 'pocket', icon: '🏛️', label: `Land tax for your ${p.plot.kind === 'farm' ? 'farm' : 'land'} ${p.id}`, n: -t, how: 'Everyone who owns land pays a little to the town each day.' }); });
+    Object.keys(life.vehicles).forEach(v => { const u = VEHICLES[v].upkeep; if (u) { bills += u; lines.push({ acct: 'pocket', icon: VEHICLES[v].icon, label: `${VEHICLES[v].name}: fuel & repairs`, n: -u, how: 'Owning a vehicle costs money every day, even when you park it.' }); } });
+    // pay the bills
     const due = bills + taxes;
+    lines.filter(l => l.n < 0 && !l.label.includes('lost money')).forEach(l => note(life, 'pocket', l.n, l.icon, l.label, l.how, { morning: day }));
     let borrowed = 0;
     if (due > life.coins) { borrowed = due - life.coins; life.loan += borrowed; life.coins = due; }
     life.coins -= due;
     if (life.coins < 0) { life.loan += -life.coins; borrowed += -life.coins; life.coins = 0; }
+    if (borrowed) {
+      note(life, 'pocket', borrowed, '💸', 'The bank lent you coins for the bills', 'Your pocket did not have enough, so the bank paid the rest. Pay it back at the bank.', { morning: day, move: true });
+      note(life, 'loan', borrowed, '💸', 'Borrowed to pay the bills', '', { morning: day });
+      lines.push({ acct: 'loan', icon: '💸', label: 'Not enough coins: the bank lent you the rest', n: 0, note: `+${borrowed} owed`, how: 'Pay it back at the bank. Loans grow every morning.' });
+    }
+    // loan interest last, on what you owe now
+    if (life.loan > 0) { const i = Math.max(1, Math.ceil(life.loan * LOAN_RATE / 100)); life.loan += i; life.stats.loanInterest += i; lines.push({ acct: 'loan', icon: '💸', label: `Your loan grew ${LOAN_RATE}% (interest)`, n: 0, note: `+${i} owed`, how: 'Borrowed coins cost extra every day until you pay them back.' }); note(life, 'loan', i, '💸', `Loan interest ${LOAN_RATE}%`, '', { morning: day }); }
     life.stats.taxPaid += taxes; if (taxes) life.rep += 1;
     return { day, lines, due, taxes, borrowed, yesterday, coins: life.coins, bank: life.bank, loan: life.loan };
   }
@@ -418,7 +456,7 @@
       school: {}, job: null, shift: null, shiftsToday: 0, day: null, today: { earned: 0, spent: 0, tax: 0 },
       dream: null, dreamStep: 0, dreamLv: 0, dreamMark: 0, rentFree: 3, rep: 0, owesSapling: 0, seen: {},
       vehicles: {}, riding: null, companies: [], channel: { videos: 0, subs: 0, views: 0, earned: 0, places: {} },
-      xp: 0, memories: {}, badges: {}, spotAt: {}, photos: {},
+      xp: 0, memories: {}, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0,
       stats: { earned: 0, wages: 0, shifts: {}, harvested: 0, farmPicked: 0, sold: 0, soldCoins: 0, chopped: 0, replanted: 0, planted: 0,
         interest: 0, loanInterest: 0, taxPaid: 0, votes: 0, ran: 0, won: 0, classes: 0, deposits: 0, borrowed: 0, stocked: 0, shopSales: 0, built: 0,
         companies: 0, ads: 0, coRevenue: 0, coProfit: 0, onlineSold: 0, onlineCoins: 0, listed: 0, viewCoins: 0, photos: 0, rides: 0, rideBus: 0, rideTrain: 0,
@@ -434,13 +472,14 @@
     out.bag = { ...f.bag, ...(l.bag || {}) }; out.today = { ...f.today, ...(l.today || {}) };
     out.channel = { ...f.channel, ...(l.channel || {}) };
     if (!Array.isArray(out.companies)) out.companies = [];
+    if (!Array.isArray(out.log)) { out.log = []; out.logSeq = 0; }
     ['coins', 'bank', 'loan'].forEach(k => { out[k] = Math.max(0, Math.round(+out[k] || 0)); });
     if (!DREAMS[out.dream]) out.dream = out.dream ? 'farmer' : null;
     return out;
   }
 
   const Life = { DAY, MIN, SUBJECTS, CERT_AT, JOBS, DESK_JOBS, DREAMS, FEATURED, SHIFTS_PER_DAY, SAVE_RATE, LOAN_RATE, RENT, ENDLESS,
-    VEHICLES, FARES, COMPANIES, MEMORIES, TRIPS, LATE_PLACES, company, companyDay, staffMax, upgradeCost, makeVideo, remember, memCount,
+    VEHICLES, FARES, COMPANIES, MEMORIES, TRIPS, LATE_PLACES, note, company, companyDay, staffMax, upgradeCost, makeVideo, remember, memCount,
     dayOf, dayFrac, hourOf, clock, hasCert, certCount, canTake, wageOf, startShift, workDone, quitShift, bank, loanLimit,
     earn, spend, addItem, takeItem, bagCount, ownedPlots, ownsHouse, shopPlot, newDay, dreamGoal, checkDream, title, fresh, repair };
   if (typeof module !== 'undefined' && module.exports) module.exports = Life; else root.Life = Life;

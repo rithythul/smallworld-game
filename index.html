@@ -30,9 +30,10 @@
   <div id="hud" hidden>
     <div class="hud-left">
       <div class="hud-row">
-        <div class="pill coins" title="Coins in your pocket"><span class="coin"></span><span id="coinText">0</span></div>
+        <button class="pill coins" id="coinPill" type="button" title="Your coins: tap to see where they came from and went"><span class="coin"></span><span id="coinText">0</span></button>
         <div class="pill clock"><span id="clockIcon">☀️</span><span><span id="clockDay">Day 1 · </span><span id="clockText">6:00 AM</span></span></div>
       </div>
+      <div id="receipts" aria-live="polite"></div>
       <button class="pill goal" id="goal" type="button"><span class="goal-label">Dream</span><span id="goalText">Pick a dream</span></button>
       <button class="pill shift" id="shiftPill" type="button" hidden><span id="shiftText"></span></button>
       <button class="pill room" id="roomPill" type="button" hidden><span class="room-dot"></span><span id="roomText">ABCD</span></button>

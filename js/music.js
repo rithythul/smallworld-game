@@ -21,7 +21,7 @@ const Music = (() => {
   const TICK_MS = 25;                    // how often the scheduler wakes up
   const FADE = 2;                        // cross-fade seconds
   const DUCK = 0.35;                     // level while ducked
-  const LEVEL = 0.65;                    // final music level (after the compressor)
+  const LEVEL = 0.22;                    // final music level (after the compressor): quietly under the sound effects
   const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 
   const mod = (a, n) => ((a % n) + n) % n;
@@ -61,7 +61,7 @@ const Music = (() => {
       A: {
         chords: ['I', 'V', 'vi', 'IV', 'I', 'V', 'IV V', 'I'],
         mel: ['1 3 5:2 6 5 3:2', '2 3 2:2 5,:2 r:2', '1 3 6:2 5 3 1:2', '2:2 1 6, 1:4',
-              '1 3 5:2 6 5 3:2', '2 3 5:2 6 5 2:2', '1 2 3:2 2 1 2:2', '1:6 r:2'],
+              '1 3 5:2 6 5 3:2', '2 3 5:2 6 5 2:2', '5 3 1:2 7, 1 2:2', '1:6 r:2'],
         bass: 'R:2 r 5 R:2 5:2',
       },
       B: {
@@ -88,7 +88,7 @@ const Music = (() => {
       B: {
         chords: ['IV', 'V', 'iii', 'vi', 'IV', 'V', 'IV', 'V'],
         mel: ['6:2 1\' 6 5:4', '5 7 2\' 3\' 2\':4', '3\':2 2\' 1\' 7:4', '6:6 r:2',
-              '6:2 1\' 6 5:4', '5 7 2\' 3\' 2\':4', '1\':2 6 5 3:4', '2:4 r:2 3 4'],
+              '6:2 1\' 6 5:4', '5 7 2\' 3\' 2\':4', '1\':2 6 5 6:4', '2:4 r:2 3 4'],
         bass: 'R:4 5:2 3:2',
       },
       arp: { inst: 'marimba', pat: [0, 2, 3, 2, 1, 2, 3, 2], lo: 52, v: 0.8 },
@@ -97,7 +97,7 @@ const Music = (() => {
 
     // Busy town square: a bouncy marimba tune with a little shuffle, plucky chords on the off-beats.
     day: {
-      name: 'Town Square Stroll', bpm: 104, key: 65, meter: 4, swing: 0.14, intro: 2, gain: 1,
+      name: 'Town Square Stroll', bpm: 104, key: 65, meter: 4, swing: 0.14, intro: 2, gain: 1.06,
       lead: ['marimba', 'kalimba', 'bell'],
       A: {
         chords: ['I', 'IV', 'vi', 'V', 'I', 'IV', 'V', 'I'],
@@ -118,7 +118,7 @@ const Music = (() => {
 
     // Sunset on the porch: slow, lazy swing, warm seventh chords and a soft pad underneath.
     evening: {
-      name: 'Porch Light', bpm: 84, key: 63, meter: 4, swing: 0.18, intro: 1, gain: 1,
+      name: 'Porch Light', bpm: 84, key: 63, meter: 4, swing: 0.18, intro: 1, gain: 1.15,
       lead: ['marimba', 'kalimba'],
       A: {
         chords: ['IM7', 'vi7', 'ii7', 'V7', 'IM7', 'vi7', 'ii7 V7', 'I6'],
@@ -181,7 +181,7 @@ const Music = (() => {
 
     // Floating among the stars: slow bell arpeggios, a dreamy lydian II chord, echoing bells.
     space: {
-      name: 'Moon Garden', bpm: 64, key: 61, meter: 4, swing: 0, intro: 1, gain: 1,
+      name: 'Moon Garden', bpm: 64, key: 61, meter: 4, swing: 0, intro: 1, gain: 1.08,
       lead: ['bell', 'kalimba'],
       A: {
         chords: ['IM7', 'II', 'IM7', 'II', 'vi7', 'IVM7', 'IM7', 'Vsus4'],
@@ -190,7 +190,7 @@ const Music = (() => {
         bass: 'R:8',
       },
       B: {
-        chords: ['vi7', 'IVM7', 'IM7', 'V', 'vi7', 'IVM7', 'II', 'IVM7'],
+        chords: ['vi7', 'IVM7', 'IM7', 'Vsus4', 'vi7', 'IVM7', 'II', 'IVM7'],
         mel: ['1\':4 7:2 5:2', '6:6 3:2', '5:4 7:4', '2\':6 1\':2',
               '1\':4 7:2 5:2', '6:4 1\':4', '2\':4 #4:4', '6:8'],
         bass: 'R:8',
@@ -315,12 +315,14 @@ const Music = (() => {
     const o = c.createOscillator(), g = c.createGain();
     o.type = type;
     o.frequency.value = f;
+    peak = Math.max(0.0002, peak);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(peak * 0.01, t + dur); // rings down 40 dB...
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.04);         // ...then fades out quietly
     o.connect(g); g.connect(dest);
     o.onended = () => { o.disconnect(); g.disconnect(); };
-    o.start(t); o.stop(t + dur + 0.03);
+    o.start(t); o.stop(t + dur + 0.05);
   }
   // a tone that holds a little before it fades (for the bass)
   function held(c, dest, type, f, t, peak, attack, hold, rel) {
@@ -351,21 +353,21 @@ const Music = (() => {
     // warm plucked tine: sine + a soft octave, plus a tiny metallic "tink" on low notes
     kalimba(c, d, t, f, v, len) {
       const ring = clamp(0.6 + len * 0.7, 0.6, 1.7) * (f > 700 ? 0.8 : 1);
-      partial(c, d, 'sine', f, t, 0.32 * v, 0.004, ring);
+      partial(c, d, 'sine', f, t, 0.32 * v, 0.006, ring);
       partial(c, d, 'sine', f * 2, t, 0.06 * v, 0.003, ring * 0.35);
       partial(c, d, 'sine', f * 5.4, t, 0.012 * v, 0.002, 0.05);
     },
     // wooden bar: sine + soft octave, and a very short mallet knock
     marimba(c, d, t, f, v, len) {
       const ring = clamp(0.35 + len * 0.3, 0.35, 0.85) * (f > 700 ? 0.75 : 1);
-      partial(c, d, 'sine', f, t, 0.34 * v, 0.003, ring);
+      partial(c, d, 'sine', f, t, 0.34 * v, 0.004, ring);
       partial(c, d, 'sine', f * 2, t, 0.035 * v, 0.003, ring * 0.3);
       partial(c, d, 'sine', f * (f * 4 < LIMIT ? 4 : 3), t, 0.04 * v, 0.002, 0.06);
     },
     // soft bell / music box: a few sine partials, the high ones fade first
     bell(c, d, t, f, v, len) {
       const ring = clamp(1.3 + len * 0.3, 1.3, 2.6);
-      partial(c, d, 'sine', f, t, 0.24 * v, 0.004, ring);
+      partial(c, d, 'sine', f, t, 0.24 * v, 0.006, ring);
       partial(c, d, 'sine', f * 2.003, t, 0.07 * v, 0.003, ring * 0.45);
       partial(c, d, 'sine', f * 4.01, t, 0.022 * v, 0.002, ring * 0.18);
     },
@@ -418,7 +420,7 @@ const Music = (() => {
       o.start(t); o.stop(t + 0.29);
     },
     // shaker: a puff of filtered noise
-    shaker(c, d, t, v, buf, x) { noiseHit(c, d, t, buf, x || 0, 3000, 0.9, 0.22 * v, 0.012, 0.075); },
+    shaker(c, d, t, v, buf, x) { noiseHit(c, d, t, buf, x || 0, 2600, 0.7, 0.9 * v, 0.012, 0.075); },
     // wooden tick: a very short high sine
     tick(c, d, t, v) { partial(c, d, 'sine', 1560, t, 0.3 * v, 0.001, 0.045); partial(c, d, 'sine', 2350, t, 0.08 * v, 0.001, 0.025); },
   };
@@ -434,7 +436,7 @@ const Music = (() => {
     const lp1 = c.createBiquadFilter(); lp1.type = 'lowpass'; lp1.frequency.value = 3500; lp1.Q.value = -3;
     const lp2 = c.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 5200; lp2.Q.value = -3;
     const comp = c.createDynamicsCompressor();
-    comp.threshold.value = -22; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
+    comp.threshold.value = -24; comp.knee.value = 6; comp.ratio.value = 6; comp.attack.value = 0.001; comp.release.value = 0.2;
     g.level = c.createGain(); g.level.gain.value = LEVEL;
     g.duck = c.createGain();
     g.mute = c.createGain();
@@ -595,7 +597,7 @@ const Music = (() => {
         const cv = s.compPat[i];
         if (!cv) continue;
         const p = i / 2, ch = chordAt(chords, p);
-        voicing(ch, s.comp.lo || 55).forEach((m, j) => note(p, s.comp.inst, 'comp', m, cv * s.comp.v * hum(0.1), e8 * 0.8, j * 0.007));
+        voicing(ch, s.comp.lo || 55).forEach((m, j) => note(p, s.comp.inst, 'comp', m, cv * s.comp.v * hum(0.1), e8 * 0.8, j * 0.012));
       }
     }
     // arpeggio (a little louder while the melody takes a breather)
@@ -630,8 +632,8 @@ const Music = (() => {
     }
     // a little bell sparkle leading into the next section, when the melody leaves room for it
     if (fill && !lateMel && r() < 0.45) {
-      const base = s.key + (s.key + 24 <= 91 ? 12 : 0);
-      [0, 4, 7, 12].forEach((st, j) => note(bar8 - 2 + j * 0.5, 'bell', 'sparkle', base + st, 0.55 + j * 0.12, e8));
+      const tones = voicing(chordAt(chords, bar8 - 2), 67);
+      [tones[0], tones[1], tones[2], tones[0] + 12].forEach((m, j) => note(bar8 - 2 + j * 0.5, 'bell', 'sparkle', m, 0.55 + j * 0.12, e8));
     }
 
     this.queue = this.queue.concat(ev).sort((a, c) => a.t - c.t);
@@ -666,7 +668,20 @@ const Music = (() => {
     }
     timer = setTimeout(tick, TICK_MS);
   }
-  function trim() { while (players.length > 3) players.shift().dispose(); }
+  // too many songs overlapping (very quick mood changes): fade the oldest out fast, then free it
+  function trim() {
+    while (players.length > 3) {
+      const p = players.shift(), now = ctx.currentTime;
+      p.endAt = 0;
+      [p.dry, p.wet].forEach((n) => {
+        const v = n.gain.value;
+        n.gain.cancelScheduledValues(now);
+        n.gain.setValueAtTime(v, now);
+        n.gain.linearRampToValueAtTime(0, now + 0.04);
+      });
+      setTimeout(() => p.dispose(), 120);
+    }
+  }
   // stop scheduling; when muted or hidden, let the audio context sleep to save battery
   function halt() {
     if (timer) { clearTimeout(timer); timer = null; }

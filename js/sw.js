@@ -57,7 +57,7 @@
         const p = Town.project(id); if (!p) return;
         toast(`<span class="t-small">🎉 New!</span>${p.icon} ${esc(p.name)}`, { big: true, life: 4 });
         Sound.chord(5, 'bell');
-        if (/^festival/.test(id)) { World.celebrate(40); Life.earn(life, 5, 'gifts'); toast('🎆 +5🪙'); }
+        if (/^festival/.test(id)) { World.celebrate(40); Life.earn(life, 5, 'gifts', '🎆', 'Festival gift from the town'); }
       });
     }
     builtSeen = t.built.length;
@@ -174,6 +174,56 @@
     Sound.chord(3, 'bell'); touch(); checkDream();
   }
 
+  /* ---------------- receipts: every coin change says why, right next to your coins ---------------- */
+  const needCoins = (n) => `⚠️ You need ${n}🪙 and you have ${life.coins}🪙.`;
+  const sign = (n) => (n > 0 ? '+' : '−') + Math.abs(n);
+  let seenLog = null, lastCoins = null;
+  const ACCT = { bank: '🐷 savings', loan: '💸 you owe' };
+  // owing more is bad news (red), owing less is good news (green)
+  const good = (e) => e.acct === 'loan' ? e.n < 0 : e.n > 0;
+  const amt = (e) => e.acct === 'loan' ? `${sign(e.n)}🪙 owed` : `${sign(e.n)}🪙`;
+  function receipts() {
+    if (!life) return;
+    if (seenLog === null) { seenLog = life.logSeq; lastCoins = life.coins; return; }
+    const fresh = life.log.filter(e => e.id > seenLog).reverse();
+    // safety net: coins changed without a reason written down (should never happen)
+    const delta = life.coins - lastCoins, explained = fresh.filter(e => e.acct === 'pocket').reduce((a, e) => a + e.n, 0);
+    if (delta !== explained) { console.warn('[money] unexplained change', delta - explained); const e = Life.note(life, 'pocket', delta - explained, '🪙', delta - explained > 0 ? 'Coins added' : 'Coins used'); if (e) fresh.push(e); }
+    lastCoins = life.coins; seenLog = life.logSeq;
+    const show = fresh.filter(e => !(e.acct !== 'pocket' && e.move));   // the pocket side of a move is enough
+    if (!show.length) return;
+    const box = $('receipts');
+    const morning = show.filter(e => e.morning);
+    const chip = (html, neg) => {
+      const el = document.createElement('button'); el.type = 'button'; el.className = 'receipt' + (neg ? ' neg' : ''); el.innerHTML = html;
+      el.addEventListener('click', () => { Sound.blip(); moneySheet(); });
+      box.appendChild(el); while (box.children.length > 4) box.firstChild.remove();
+      setTimeout(() => el.classList.add('out'), neg ? 6500 : 4000); setTimeout(() => el.remove(), neg ? 7000 : 4500);
+    };
+    if (morning.length > 2) {   // the morning budget sheet explains these; one summary chip here
+      const net = morning.filter(e => e.acct === 'pocket').reduce((a, e) => a + e.n, 0);
+      chip(`☀️ Morning bills & income: <b class="${net < 0 ? 'neg' : 'pos'}">${sign(net)}🪙</b><small>Tap to see why</small>`, net < 0);
+    }
+    show.filter(e => !(morning.length > 2 && e.morning)).slice(-5).forEach(e => chip(
+      `<b class="${good(e) ? 'pos' : 'neg'}">${amt(e)}</b> ${e.icon} ${esc(e.why)}${e.acct === 'bank' ? ` <em>${ACCT.bank}</em>` : ''}${!good(e) && e.how ? `<small>${esc(e.how)}</small>` : ''}`, !good(e)));
+    if (delta) { const pill = $('coinPill'); pill.classList.remove('up', 'down'); void pill.offsetWidth; pill.classList.add(delta < 0 ? 'down' : 'up'); }
+  }
+  function moneySheet() {
+    sheet('👛 Money history', (body) => {
+      body.insertAdjacentHTML('beforeend', money());
+      const today = life.today;
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Today: earned <b class="pos">${coin(today.earned)}</b> · spent <b class="neg">${coin(today.spent)}</b> · income tax <b>${coin(today.tax)}</b></p>`);
+      if (!life.log.length) { note(body, 'Nothing yet. Every coin you earn or spend will be listed here, with the reason.'); return; }
+      const list = document.createElement('div'); list.className = 'ledger';
+      let lastDay;
+      life.log.forEach(e => {
+        if (e.day !== lastDay) { lastDay = e.day; list.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📅 Day ${Math.max(1, (e.day || 0) - (life.firstDay || e.day || 0) + 1)}</h4>`); }
+        list.insertAdjacentHTML('beforeend', `<div class="led ${good(e) ? 'pos' : 'neg'}"><span class="led-i">${e.icon}</span><span class="led-t"><b>${esc(e.why)}</b>${e.acct === 'bank' ? ` <em>${ACCT.bank}</em>` : ''}${e.how ? `<small>${esc(e.how)}</small>` : ''}</span><b class="led-n">${amt(e)}</b></div>`);
+      });
+      body.append(list);
+    });
+  }
+
   /* ---------------- HUD ---------------- */
   const set = (id, text) => { const el = $(id); if (el && el.textContent !== text) el.textContent = text; };
   function hud() {
@@ -183,6 +233,7 @@
     const day = Life.dayOf(t) - (life.firstDay || Life.dayOf(t)) + 1;
     set('clockIcon', icon); set('clockDay', `Day ${day} · `); set('clockText', Life.clock(t));
     set('coinText', String(life.coins));
+    receipts();
     set('bagText', String(Life.bagCount(life)));
     const g = Life.dreamGoal(life), where = g && placeFor(g.at);
     set('goalText', g ? `${where && where.grow ? '🏙️ ' : ''}${g.icon} ${g.text}` : '✨ Pick a dream');
@@ -378,26 +429,30 @@
       if (msg) note(body, msg);
       const sell = async (g, n) => {
         if ((life.bag[g] || 0) < n || !n) return;
+        const shownPrice = Town.price(town, g);
         const res = await act({ type: 'sell', g, n });
         if (!res.ok) return marketSheet(`⚠️ ${esc(res.msg)}`);
-        Life.takeItem(life, g, n); Life.earn(life, res.coins, 'soldCoins'); life.stats.sold += n;
+        const each = res.each || [], dropped = each.length > 1 && each[each.length - 1] < each[0], sniped = each[0] < shownPrice;
+        const how = [each.length > 1 ? `${each.join(' + ')} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', sniped ? 'Someone sold before you, so the price dropped.' : ''].filter(Boolean).join(' ');
+        Life.takeItem(life, g, n); Life.earn(life, res.coins, 'soldCoins', G[g].icon, `Sold ${n} ${G[g].name.toLowerCase()} at the market`, how); life.stats.sold += n;
         Sound.cash(); World.burst(World.pos().x, World.pos().y, 'coins', 10, 6); touch(); hud(); checkDream(); fact('supply'); if (G[g].seed) fact('profit');
-        marketSheet(`✓ ${G[g].icon}×${n} → +${coin(res.coins)}`);
+        marketSheet(`✓ ${G[g].icon}×${n} → +${coin(res.coins)}${how ? '<br><small>' + how + '</small>' : ''}`);
       };
       const have = Town.SELLABLE.filter(g => life.bag[g]);
       body.append(tiles(Town.SELLABLE.map(g => {
         const n = life.bag[g] || 0, tr = Town.trend(town, g);
-        const t = tile(G[g].icon, `${Town.price(town, g)}🪙 <i class="${tr}">${tr === 'up' ? '▲' : tr === 'down' ? '▼' : ''}</i>`, n ? `×${n}` : '', () => sell(g, 1), { disabled: !n, badge: n > 1 ? 'all' : '' });
+        const all = n > 1 ? Town.sellPreview(town, g, n).reduce((a, b) => a + b, 0) : 0;
+        const t = tile(G[g].icon, `${Town.price(town, g)}🪙 <i class="${tr}">${tr === 'up' ? '▲' : tr === 'down' ? '▼' : ''}</i>`, n ? `×${n}` : '', () => sell(g, 1), { disabled: !n, badge: n > 1 ? `all → ${all}🪙` : '' });
         const b = t.querySelector('.tile-badge'); if (b) b.addEventListener('click', (e) => { e.stopPropagation(); sell(g, life.bag[g]); });
         return t;
       })));
       if (!have.length) note(body, '🎒 0 → 🌾 🪓 🎣');
       const logPrice = Town.price(town, 'log') + 2;
       const buyLogs = async (n) => {
-        if (life.coins < logPrice * n) return marketSheet(`⚠️ 🪙 ${logPrice * n}`);
+        if (life.coins < logPrice * n) return marketSheet(needCoins(logPrice * n));
         const res = await act({ type: 'buyGood', g: 'log', n });
         if (!res.ok) return marketSheet(`⚠️ ${esc(res.msg)}`);
-        Life.spend(life, res.cost); Life.addItem(life, 'log', n); Sound.cash(); touch(); hud(); marketSheet(`✓ 🪵×${n} −${coin(res.cost)}`);
+        Life.spend(life, res.cost, '🪵', `Bought ${n} log${n > 1 ? 's' : ''} at the sawmill`, `${(res.each || []).join(' + ')} = ${res.cost}. The sawmill sells for a bit more than it buys (that is its profit).`); Life.addItem(life, 'log', n); Sound.cash(); touch(); hud(); marketSheet(`✓ 🪵×${n}: ${(res.each || []).join(' + ')} = −${coin(res.cost)}`);
       };
       body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🪚 Buy logs</h4>');
       body.append(tiles(tile('🪵', `${logPrice}🪙`, '×1', () => buyLogs(1)), tile('🪵', `${logPrice * 5}🪙`, '×5', () => buyLogs(5))));
@@ -432,17 +487,18 @@
 
   function jobsSheet(msg = '') {
     sheet('💼 Jobs', (body) => {
-      body.insertAdjacentHTML('beforeend', head('jobs', `Work → wage. ${town.taxRate}% goes to the town as tax.`));
+      body.insertAdjacentHTML('beforeend', head('jobs', `Finish every task in a shift to get paid. ${town.taxRate}% of each wage is income tax: it pays for the school, roads and parks.`));
       if (msg) note(body, msg);
       if (life.shift) {
         const j = Life.JOBS[life.shift.job];
         body.append(card(`<h3>${j.icon} ${j.name} ${'●'.repeat(life.shift.done)}${'○'.repeat(life.shift.need - life.shift.done)}</h3><p class="small">${j.how} → 🔶</p>`, 'next'));
-        body.lastChild.append(button('✕ Stop', () => { Life.quitShift(life); touch(); hud(); jobsSheet(); }, 'choice alt'));
+        body.lastChild.append(button('✕ Stop (no pay)', () => { if (!confirm('Stop this shift? You only get paid when every task is done.')) return; Life.quitShift(life); touch(); hud(); jobsSheet('Shift stopped. No pay, because it was not finished.'); }, 'choice alt'));
       }
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Today ${'●'.repeat(life.shiftsToday)}${'○'.repeat(Math.max(0, Life.SHIFTS_PER_DAY - life.shiftsToday))}</p>`);
       body.append(tiles(Object.entries(Life.JOBS).map(([id, j]) => {
         const can = Life.canTake(life, id, town);
-        return tile(j.icon, j.name, can.ok ? coin(Life.wageOf(life, id)) : '🔒 ' + can.why, () => startShift(id), { disabled: !can.ok || !!life.shift, on: life.shift && life.shift.job === id });
+        const w = Life.wageOf(life, id), tx = Math.round(w * town.taxRate / 100);
+        return tile(j.icon, j.name, can.ok ? `${coin(w)} − ${tx} tax = <b class="keep">${coin(w - tx)}</b>` : '🔒 ' + can.why, () => startShift(id), { disabled: !can.ok || !!life.shift, on: life.shift && life.shift.job === id });
       })));
     });
   }
@@ -511,8 +567,8 @@
   /* ---------------- travel: bus, train, your own wheels ---------------- */
   function travel(kind, from, to) {
     const fare = Life.FARES[kind];
-    if (life.coins < fare) { toast(`⚠️ 🪙 ${fare}`); return; }
-    Life.spend(life, fare); act({ type: 'fare', n: fare });
+    if (life.coins < fare) { toast(needCoins(fare)); return; }
+    Life.spend(life, fare, kind === 'bus' ? '🚌' : '🚆', `${kind === 'bus' ? 'Bus' : 'Train'} ticket to ${to.name}`, 'Fares help pay for buses and trains.'); act({ type: 'fare', n: fare });
     life.stats.rides++; life.stats[kind === 'bus' ? 'rideBus' : 'rideTrain']++;
     World.setVehicle(null);
     closeSheet(); Sound.bell(); hud();
@@ -548,8 +604,8 @@
         return tile(v.icon, own ? '✓' : coin(v.price), `⚡×${v.speed} · ⛽${v.upkeep}`, () => {
           if (own) return;
           if (lock) return dealerSheet('🔒 🎓✈️ (Airport)');
-          if (life.coins < v.price) return dealerSheet(`⚠️ 🪙 ${v.price} · 🏦?`);
-          Life.spend(life, v.price); life.vehicles[id] = Date.now(); touch(); hud(); Sound.cash(); World.burst(World.pos().x, World.pos().y, 'confetti', 30, 4);
+          if (life.coins < v.price) return dealerSheet(needCoins(v.price) + ' Save up, or borrow at the 🏦 bank.');
+          Life.spend(life, v.price, v.icon, `Bought a ${v.name.toLowerCase()}`, v.upkeep ? `It will also cost ${v.upkeep} every morning for fuel and repairs.` : 'Bikes need no fuel!'); life.vehicles[id] = Date.now(); touch(); hud(); Sound.cash(); World.burst(World.pos().x, World.pos().y, 'confetti', 30, 4);
           if (v.upkeep) fact('upkeep');
           checkDream(); dealerSheet(`🔑 ${v.icon}! → ${v.icon} button`);
         }, { on: !!own, disabled: !!lock && !own });
@@ -580,7 +636,7 @@
       if (msg) note(body, msg);
       const ownPlane = !!life.vehicles.plane;
       body.append(tiles(Object.entries(Life.TRIPS).filter(([, T]) => !T.rocket).map(([id, T]) => tile(T.icon, esc(T.name), ownPlane ? '🛩️ free' : coin(T.fare), () => {
-        if (!ownPlane) { if (life.coins < T.fare) return airportSheet(`⚠️ 🪙 ${T.fare}`); Life.spend(life, T.fare); act({ type: 'fare', n: 5 }); }
+        if (!ownPlane) { if (life.coins < T.fare) return airportSheet(needCoins(T.fare)); Life.spend(life, T.fare, '✈️', `Plane ticket to ${T.name}`); act({ type: 'fare', n: 5 }); }
         goTrip(id, 'airport');
       }, { on: !!life.memories[id] }))));
       body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎓 Flight school</h4>');
@@ -594,7 +650,7 @@
   function harborSheet() {
     sheet('⚓ Harbor', (body) => {
       body.insertAdjacentHTML('beforeend', head('harbor', 'Boat to the island: cheaper, slower.') + money());
-      body.append(tiles(tile('⛵', '🏝️', coin(12), () => { if (life.coins < 12) return toast('⚠️ 🪙 12'); Life.spend(life, 12); act({ type: 'fare', n: 3 }); goTrip('island', 'harbor'); }, { disabled: life.coins < 12 })));
+      body.append(tiles(tile('⛵', '🏝️', coin(12), () => { if (life.coins < 12) return toast(needCoins(12)); Life.spend(life, 12, '⛵', 'Boat ticket to Sunny Island'); act({ type: 'fare', n: 3 }); goTrip('island', 'harbor'); }, { disabled: life.coins < 12 })));
     });
   }
   function spaceSheet(msg = '') {
@@ -623,11 +679,11 @@
     sheet(`${P.icon || ''} ${P.name || ''}`, (body) => {
       body.insertAdjacentHTML('beforeend', head(type, HELLO[type] || '👋'));
       body.append(tiles(tile(P.icon, cost ? coin(cost) : 'Visit', '', () => {
-        if (cost && life.coins < cost) return toast(`⚠️ 🪙 ${cost}`);
-        if (cost) Life.spend(life, cost);
+        if (cost && life.coins < cost) return toast(needCoins(cost));
+        if (cost) Life.spend(life, cost, P.icon, ({ cafe: 'Hot cocoa at the Cafe', arcade: 'Arcade game', hotel: 'A night at the Hotel' })[type] || P.name);
         life.xp += 1; memory(type); World.mood('love', 2); Sound.chord(4, 'kalimba');
         if (type === 'museum') { const f = (typeof FACTS !== 'undefined') ? FACTS[Math.floor(Math.random() * FACTS.length)] : null; if (f) toast(`<span class="t-small">🦕 ${esc(f.title)}</span>${esc(f.text)}`, { life: 7 }); }
-        if (type === 'arcade') { closeSheet(); quiz('🕹️', [makeMathQuestion(Math.random, life.band * 2)], (s) => { if (s) { Life.earn(life, 5); toast('🏆 +5🪙'); hud(); } }); return; }
+        if (type === 'arcade') { closeSheet(); quiz('🕹️', [makeMathQuestion(Math.random, life.band * 2)], (s) => { if (s) { Life.earn(life, 5, null, '🏆', 'Arcade prize'); hud(); } else toast('🕹️ So close! Right answers win the prize.'); }); return; }
         touch(); hud(); closeSheet();
       })));
     });
@@ -636,11 +692,13 @@
   /* ---------------- business: companies, the Tech Hub, the studio ---------------- */
   function bizSheet(msg = '') {
     sheet('🏢 Companies', (body) => {
-      body.insertAdjacentHTML('beforeend', head('biz', 'Revenue − costs = profit. Hire to grow. Ads bring customers.') + money());
+      body.insertAdjacentHTML('beforeend', head('biz', 'Sales − costs = profit. If costs are bigger, it is a loss and it comes out of your pocket. Workers sell more but cost wages.') + money());
       if (msg) note(body, msg);
       life.companies.forEach(co => {
         const T = Life.COMPANIES[co.type];
-        const c = card(`<h3>${T.icon} ${T.name} <small>Lv ${co.level} · 👥 ${co.staff}/${Life.staffMax(co)} · ${co.days ? `📈 ${co.profit >= 0 ? '+' : ''}${co.profit}` : '🆕'}${co.ad ? ' · 📣' : ''}</small></h3>`);
+        const last = life.log.find(e => e.icon === T.icon && e.morning);
+        const c = card(`<h3>${T.icon} ${T.name} <small>Lv ${co.level} · 👥 ${co.staff}/${Life.staffMax(co)} · ${co.days ? `total ${co.profit >= 0 ? '+' : ''}${co.profit}🪙` : '🆕 opens tomorrow morning'}${co.ad ? ' · 📣' : ''}</small></h3>
+          <p class="small">Every morning: customers pay you, and you pay rent & supplies (${T.upkeep * co.level}🪙) + ${T.wage}🪙 per worker.${last ? `<br>Last morning: <b class="${last.n < 0 ? 'neg' : 'pos'}">${last.n >= 0 ? '+' : ''}${last.n}🪙</b> ${esc(last.how)}` : ''}</p>`);
         const doIt = (what) => { const r = Life.company(life, what, co.id); if (!r.ok) return bizSheet(`⚠️ ${r.why}`); Sound.cash(); touch(); hud(); checkDream(); bizSheet(`✓ ${T.icon}`); };
         c.append(row(button(`➕👤 ${coin(T.wage)}/day`, () => doIt('hire'), 'choice', co.staff >= Life.staffMax(co)), button('➖👤', () => doIt('fire'), 'choice alt', !co.staff),
           button(`⬆️ ${coin(Life.upgradeCost(co))}`, () => doIt('upgrade'), 'choice alt'), button(`📣 ${coin(6 + 4 * co.level)}`, () => doIt('ad'), 'choice alt', !!co.ad)));
@@ -706,7 +764,7 @@
         if (life.coins < pl.price) return;
         const res = await act({ type: 'buyPlot', id: pl.id });
         if (!res.ok) { closeSheet(); return toast(`⚠️ ${esc(res.msg)}`); }
-        Life.spend(life, res.cost); Sound.chord(2, 'bell'); World.burst(pl.x + pl.w / 2, pl.y + pl.h / 2, 'confetti', 30, 4);
+        Life.spend(life, res.cost, pl.kind === 'farm' ? '🌱' : '🏗️', `Bought land ${pl.id}`, `Land costs a little tax every day: ${Town.TAX[pl.kind]}🪙.`); Sound.chord(2, 'bell'); World.burst(pl.x + pl.w / 2, pl.y + pl.h / 2, 'confetti', 30, 4);
         if (guide && guide.id === pl.id) guide = null;
         touch(); hud(); closeSheet(); checkDream(); fact('land');
         toast(`<span class="t-small">🏡 Yours!</span>${pl.kind === 'farm' ? '🌱 → 💧' : '🔨'}`, { big: true });
@@ -723,7 +781,7 @@
           const res = await act({ type: 'plant', id, i, k });
           closeSheet();
           if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-          Life.spend(life, g.seed); life.stats.planted++; Sound.plant(); const s = Town.soilSpot(Town.plotById(id), i); World.burst(s.x, s.y, 'seeds', 10, 1);
+          Life.spend(life, g.seed, g.icon, `${g.name} seeds`, 'Seeds cost coins now. The crop sells for more later: that is profit.'); life.stats.planted++; Sound.plant(); const s = Town.soilSpot(Town.plotById(id), i); World.burst(s.x, s.y, 'seeds', 10, 1);
           touch(); hud(); toast(`${g.icon} → 💧`);
         }, { disabled: life.coins < g.seed });
       })));
@@ -748,11 +806,11 @@
       const doBuild = async (k, co) => {
         const b = Town.BUILD[k];
         if ((life.bag.log || 0) < b.logs || life.coins < b.coins) return;
-        if (co) { const T = Life.COMPANIES[co]; if (T.needs && !Life.hasCert(life, T.needs)) return toast(`🔒 🎓${Life.SUBJECTS[T.needs].icon}`); if (life.coins < b.coins + T.cost) return toast(`⚠️ 🪙 ${b.coins + T.cost}`); }
+        if (co) { const T = Life.COMPANIES[co]; if (T.needs && !Life.hasCert(life, T.needs)) return toast(`🔒 🎓${Life.SUBJECTS[T.needs].icon}`); if (life.coins < b.coins + T.cost) return toast(needCoins(b.coins + T.cost)); }
         const res = await act({ type: 'build', id, kind: k, k: co });
         closeSheet();
         if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
-        Life.takeItem(life, 'log', b.logs); Life.spend(life, b.coins); life.stats.built++;
+        Life.takeItem(life, 'log', b.logs); Life.spend(life, b.coins, b.icon, `Built a ${b.name.toLowerCase()}`, `${b.logs} logs + ${b.coins} coins for the builders.`); life.stats.built++;
         if (co) { const r = Life.company(life, 'start', co, id); if (r.ok) { memory('company'); fact('company'); } }
         if (k === 'house' || k === 'villa') memory('house');
         [0, 250, 500].forEach(ms => setTimeout(() => Sound.hammer(), ms));
@@ -797,7 +855,7 @@
     const owed = life.owesSapling; life.owesSapling = 0; life.stats.replanted++; life.rep += 1;
     Sound.plant(); World.burst(tr.x, tr.y, 'seeds', 12, 1); World.mood('love', 1.2);
     if (life.shift && life.shift.job === 'lumberjack') workStep();
-    else if (!owed) { Life.earn(life, 1); World.floatText(tr.x, tr.y, '+1🪙'); }
+    else if (!owed) { Life.earn(life, 1, null, '🌱', 'Thank you for planting a tree'); World.floatText(tr.x, tr.y, '+1🪙'); }
     touch(); hud(); checkDream();
   }
   let volunteer = 0;
@@ -840,7 +898,7 @@
         setTimeout(() => {
           fishing = false;
           if (!life.memories.fish || Math.random() < 0.75) { item('fish'); Sound.splash(); World.burst(s.x, s.y, 'water', 16, 2); memory('fish'); World.mood('wow', 1.5); }
-          else { toast('🎣 💨 · 🔁'); Sound.wrong(); life.spotAt[s.id] = t - 80000; return; }
+          else { toast('🎣 The fish got away! Try again in a moment.'); Sound.wrong(); life.spotAt[s.id] = t - 80000; return; }
           finish();
         }, 1400); return;
       case 'photo': {
@@ -888,8 +946,8 @@
     touch(); hud(); checkDream(); fact('tax');
     const j = Life.JOBS[pay.job];
     later(() => sheet('💵 Payday!', (body) => {
-      body.insertAdjacentHTML('beforeend', `<div class="budget"><div><span>${j.icon} Wage</span><b>${coin(pay.gross)}</b></div><div><span>🏛️ Tax ${pay.rate}%</span><b class="neg">−${coin(pay.tax)}</b></div><div class="total"><span>👛</span><b>${coin(pay.net)}</b></div></div>
-        ${pay.raise ? `<p class="sheet-sub">🎉 Raise → ${coin(pay.next)}</p>` : ''}`);
+      body.insertAdjacentHTML('beforeend', `<div class="budget"><div><span>${j.icon} Wage for your ${j.name} shift</span><b class="pos">+${coin(pay.gross)}</b></div><div><span>🏛️ Income tax ${pay.rate}%<small>Goes to the town: it pays for the school, roads and parks.</small></span><b class="neg">−${coin(pay.tax)}</b></div><div class="total"><span>👛 You keep</span><b>${coin(pay.net)}</b></div></div>
+        ${pay.raise ? `<p class="sheet-sub">🎉 Experience pays! Next ${j.name} shift: ${coin(pay.next)}</p>` : ''}`);
       body.append(button('👍', closeSheet, 'big-btn small'));
     }));
   }
@@ -909,7 +967,7 @@
     const subj = Life.DESK_JOBS[s.job], subject = subj === 'any' ? ['money', 'civics', 'tools', 'math', 'science'][Math.floor(Math.random() * 5)] : subj;
     quiz(`${Life.JOBS[s.job].icon}`, classQuestions(subject, life.band, 1), (score) => {
       if (score === null) return;
-      if (score >= 1) { World.say('npc:' + kid, '👍', 2); workStep(); } else toast('🔁');
+      if (score >= 1) { World.say('npc:' + kid, '👍', 2); workStep(); } else toast('💼 Not quite, so that task does not count yet. Try the next customer!', { life: 4 });
     });
   }
 
@@ -926,11 +984,12 @@
     if (r.borrowed) fact('loan');
     later(() => sheet(`☀️ Day ${day - life.firstDay + 1}`, (body) => {
       const b = document.createElement('div'); b.className = 'budget';
-      b.innerHTML = r.lines.map(l => `<div><span>${esc(l.label)}${l.note ? ` <small>${esc(l.note)}</small>` : ''}</span><b class="${l.n < 0 ? 'neg' : l.n > 0 ? 'pos' : ''}">${l.n > 0 ? '+' + coin(l.n) : l.n < 0 ? '−' + coin(-l.n) : '·'}</b></div>`).join('')
-        + `<div class="total"><span>👛</span><b>${coin(r.coins)}</b></div>`;
+      b.innerHTML = r.lines.map(l => `<div><span>${l.icon || ''} ${esc(l.label)}${l.acct === 'bank' ? ' <em>🐷 savings</em>' : ''}${l.how ? `<small>${esc(l.how)}</small>` : ''}</span><b class="${l.n < 0 ? 'neg' : l.n > 0 ? 'pos' : ''}">${l.n > 0 ? '+' + coin(l.n) : l.n < 0 ? '−' + coin(-l.n) : (l.note ? esc(l.note) : '·')}</b></div>`).join('')
+        + `<div class="total"><span>👛 In your pocket now</span><b>${coin(r.coins)}</b></div>`;
       body.append(b);
-      if (r.borrowed) note(body, `🏦 → 💸 ${coin(r.borrowed)} (bills were bigger than your pocket)`);
-      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Yesterday +${coin(r.yesterday.earned)} −${coin(r.yesterday.spent)} · 🐷 ${coin(r.bank)}${r.loan ? ` · 💸 ${coin(r.loan)}` : ''}</p>`);
+      if (r.borrowed) note(body, `💸 Your bills were bigger than your pocket, so the bank lent you ${coin(r.borrowed)}. Pay it back at the bank: loans grow every morning.`);
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">Yesterday you earned ${coin(r.yesterday.earned)} and spent ${coin(r.yesterday.spent)}. 🐷 Savings ${coin(r.bank)}${r.loan ? ` · 💸 You owe ${coin(r.loan)}` : ''}. <button type="button" class="link-btn" id="histBtn">👛 Money history</button></p>`);
+      body.querySelector('#histBtn').addEventListener('click', () => moneySheet());
       body.append(button('☀️', closeSheet, 'big-btn small'));
     }));
     hud(); checkDream();
@@ -1034,6 +1093,7 @@
     });
   }
   $('minimap').addEventListener('click', () => { Sound.blip(); mapSheet(); });
+  $('coinPill').addEventListener('click', () => { Sound.blip(); moneySheet(); });
   $('mapBtn').addEventListener('click', () => { Sound.blip(); mapSheet(); });
   $('lifeBtn').addEventListener('click', () => { Sound.blip(); lifeSheet(); });
   $('goal').addEventListener('click', () => { Sound.blip(); if (!life.dream) dreamPicker(true); else { guide = null; lifeSheet(); } });
@@ -1160,6 +1220,7 @@
     const t = now();
     target = busy() ? null : findTarget();
     renderAction();
+    receipts();
     if (target && target.key.startsWith('npc:')) {
       const id = target.key.slice(4), k = keeper(id);
       if (k && (!lastKeeperSay[id] || performance.now() - lastKeeperSay[id] > 60000)) { lastKeeperSay[id] = performance.now(); World.say('npc:' + id, HELLO[k.type] || '👋', 3); }
@@ -1269,7 +1330,7 @@
       onSwim: () => { Sound.splash(); if (life) fact('swim'); },
       onGoal: () => {
         Sound.chord(6, 'bell'); World.mood('laugh', 2); memory('goal');
-        if (goalsToday < 5) { goalsToday++; Life.earn(life, 3); toast('⚽ GOAL! +3🪙', { big: true }); } else toast('⚽ GOAL!', { big: true });
+        if (goalsToday < 5) { goalsToday++; Life.earn(life, 3, null, '⚽', `Goal prize (${goalsToday}/5 today)`); toast('⚽ GOAL!', { big: true }); } else toast('⚽ GOAL! (the 5 prizes for today are used up)', { big: true });
         touch(); hud();
       },
       onFirework: () => Sound.pop(),
