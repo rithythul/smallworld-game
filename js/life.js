@@ -566,9 +566,10 @@
     { id: 'kick', icon: '⚽', text: 'Kick the ball', goal: [3, 5, 8], at: 'ball' },
     { id: 'class', icon: '🎓', text: 'Take a class', goal: [1, 1, 1], at: 'school' },
     { id: 'fish', icon: '🎣', text: 'Catch a fish', goal: [1, 2, 3], at: 'spot:fish' },
+    { id: 'crunch', icon: '🍜', text: 'Crunch noodle bricks', goal: [3, 5, 8], at: 'brick' },
   ];
   // these can grow with your star level; the others are limited by the day (shifts, stumps, fish, classes)
-  const DAILY_GROWS = ['pick', 'hello', 'hop', 'kick', 'sell', 'save'];
+  const DAILY_GROWS = ['pick', 'hello', 'hop', 'kick', 'sell', 'save', 'crunch'];
   const DAILY_BY_ID = Object.fromEntries(DAILY_POOL.map(d => [d.id, d]));
   function ensureDaily(life, day, ctx) {
     if (life.daily && life.daily.day === day) return life.daily;
@@ -848,11 +849,11 @@
       dream: null, dreamStep: 0, dreamLv: 0, dreamMark: 0, rentFree: RULES[b].rentFree, rep: 0, owesSapling: 0, seen: {},
       hat: null, hats: {}, levelClaimed: 1, starter: 0, rit: {}, daily: null, perfectDays: 0, streak: 0, lastPerfect: null, lastPlayed: null, prevPlayed: null, rested: null, wonders: {},
       vehicles: {}, riding: null, companies: [], channel: { videos: 0, subs: 0, views: 0, earned: 0, places: {} },
-      xp: 0, memories: {}, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
+      xp: 0, memories: {}, noodles: {}, shiny: {}, crunched: { day: null, ids: {} }, faces: {}, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
       stats: { earned: 0, wages: 0, shifts: {}, harvested: 0, farmPicked: 0, sold: 0, soldCoins: 0, chopped: 0, replanted: 0, planted: 0,
         interest: 0, loanInterest: 0, taxPaid: 0, votes: 0, ran: 0, won: 0, classes: 0, deposits: 0, borrowed: 0, stocked: 0, shopSales: 0, built: 0,
         companies: 0, ads: 0, coRevenue: 0, coProfit: 0, onlineSold: 0, onlineCoins: 0, listed: 0, viewCoins: 0, photos: 0, rides: 0, rideBus: 0, rideTrain: 0,
-        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0, gathered: {}, localBonus: 0, stockGain: 0 },
+        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0, gathered: {}, localBonus: 0, stockGain: 0, crunches: 0, bestCombo: 0 },
     };
   }
   // fill in anything missing from older saves

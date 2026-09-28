@@ -365,3 +365,9 @@ button.sure { background: #ffe08a !important; }
 .board-list .stats { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .board-gap { text-align: center; font-weight: 800; opacity: .6; }
 .board-mine { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 6px; }
+
+/* Noodle-dex */
+.dex { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin: 8px 0; }
+.dex-cell { border: 3px solid var(--ink); border-radius: 16px; background: #fff; padding: 4px; display: grid; place-items: center; cursor: pointer; }
+.dex-cell.on { background: #fff1a8; box-shadow: 0 0 0 3px #f4b942; }
+.dex-cell.locked { background: #f3ead8; }

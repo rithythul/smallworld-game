@@ -83,6 +83,7 @@
       fixShift();
       if (sheetKind === 'market' && !$('sheet').hidden && !selling) marketSheet(marketMsg);
     }
+    spawnBricks();
     if (districtsSeen !== null && (t.districts || 0) > districtsSeen) {
       const d = Town.district(t.districts);
       toast(`<span class="t-small">🏙️ The town grew!</span>${d.landmarks.map(l => l.icon).join(' ')} ${esc(d.name)} →`, { big: true, life: 6 });
@@ -381,6 +382,7 @@
     if (at === 'pool') return { x: HOME.pool.x, y: HOME.pool.y - HOME.pool.ry + 30, h: 6 };
     if (at === 'tap') return town.built.includes('fountain') && dist(p, Town.PROJECT_SPOTS.fountain) < dist(p, HOME.tap) ? { ...Town.PROJECT_SPOTS.fountain, h: 8 } : { ...HOME.tap, h: 8 };
     if (at === 'home') return { ...homeDoor(), h: 12 };
+    if (at === 'brick') { const b = nearest((World.pickups ? World.pickups() : []).filter(q => q.kind === 'brick'), p); return b ? { x: b.x, y: b.y, h: 5 } : null; }
     if (at === 'ball') return { ...(World.ballAt ? World.ballAt() : Town.BALL), h: 5 };
     if (at === 'npc') { const k = nearest(World.keepers.filter(q => !life.today.hello[q.id]), p); return k ? { x: k.x, y: k.y, h: 13 } : null; }
     if (at === 'stop') { if (World.busOn) { const s = nearest(Town.stopsOf(town), p); return { x: s.x, y: s.y, h: 10 }; } return Town.stationsOf(town).length > 1 ? K('station') : hall(); }
@@ -846,6 +848,7 @@
   }
   function endTrip() {
     World.endTrip(tripFrom ? tripFrom.x : 4800, tripFrom ? tripFrom.y : 1500);
+    spawnBricks(true);
     Sound.bell(); startMusic(); hud(); touch();
   }
   function airportSheet(msg = '') {
@@ -1343,6 +1346,7 @@
     if (!life.firstDay) life.firstDay = day;
     if (sleeping) wakeUp();
     const r = Life.newDay(life, town, me.uid, day);
+    spawnBricks(true);
     touch();
     syncDaily();
     if (!r) return;
@@ -1413,7 +1417,7 @@
     const r = Life.doRitual(life, 'swim', now());
     if (!r) { World.mood('laugh', 1.5); return; }
     floatMe(`🌅 ⭐+1 🪙+${r.coins}`); Sound.chord(5, 'bell'); World.mood('wow', 2);
-    memory('pool'); fact('dawn'); if (r.healthy) healthyDay();
+    memory('pool'); findNoodle('dawn'); fact('dawn'); if (r.healthy) healthyDay();
     const n = R().poolCoins, P = HOME.pool;
     if (World.addPickups && n) World.addPickups(Array.from({ length: n }, (_, i) => ({ id: `pool:${life.day}:${i}`, x: P.x + Math.cos(i * 2.4 + 0.5) * P.rx * 0.55, y: P.y + Math.sin(i * 2.4 + 0.5) * P.ry * 0.55, kind: 'coin' })));
     boostTick();
@@ -1424,7 +1428,7 @@
     const r = Life.doRitual(life, 'sip', now());
     if (!r) { World.floatText(p.x, p.y, '💧❤️', 'task'); return; }
     floatMe(`🌇 ⭐+1 🪙+${r.coins}`); Sound.chord(4, 'bell');
-    memory('sip'); fact('drink'); if (r.healthy) healthyDay();
+    memory('sip'); findNoodle('mint'); fact('drink'); if (r.healthy) healthyDay();
     touch(); hud(); checkDream();
   }
   let dreamT = null, dreamCaught = 0, sleepFrom = 0, sleepDay = 0;
@@ -1492,12 +1496,92 @@
   /* ---------------- pickups: pool coins, sparkle trail, coin rain, the pot of gold ---------------- */
   let poolNote = 0;
   function onPickup(id) {
+    if (id.startsWith('nb:')) return crunchBrick(id);
     if (id.startsWith('trail:')) { if (Life.kidBonus(life, 'trail', 1, '✨', 'Sparkle coin', 'Found on the way!')) { Sound.coin(); floatMe('+1🪙'); } }
     else if (id.startsWith('pool:')) { Life.earn(life, 1, null, '🏊', 'Pool coin', 'Found in the pool after your morning swim!'); Sound.note(6 + (poolNote++ % 5), 'bell'); floatMe('+1🪙'); }
     else if (id.startsWith('rain:')) { if (Life.kidBonus(life, 'rain', 1, '🪙', 'Coin rain!', 'Coins fell from the sky!')) { Sound.coin(); floatMe('+1🪙'); } memory('coinrain'); }
     else if (id.startsWith('pot:') && !life.wonders[id]) { life.wonders[id] = 1; Life.earn(life, 5, null, '🌈', 'Pot of gold at the end of the rainbow'); Life.addStars(life, 1); Sound.chord(8, 'bell'); World.celebrate(8); floatMe('🌈 +5🪙 ⭐+1'); memory('rainbow'); guide = null; }
     touch(); hud();
   }
+  /* ---------------- the noodle hunt (from Noodle Universe): golden bricks in every town, every morning ---------------- */
+  // Walk into a brick to crunch it. Each town's bricks hide that kind of town's noodle; quick crunches make a combo and a tune.
+  const BRICK_VOICE = { mountain: 'bell', desert: 'tom', beach: 'steel', lake: 'glass', forest: 'kalimba', college: 'harp', uptown: 'flute', oldtown: 'harp' };
+  function brickSpots(k) {
+    if (!k) { const g = Town.GARDEN0; return [[g.x - 40, g.y - 40], [g.x + g.w + 40, g.y - 40], [g.x - 40, g.y + g.h + 40], [g.x + g.w + 40, g.y + g.h + 40], [g.x + g.w / 2, g.y + g.h + 90]]; }
+    const d = Town.district(k), g = d.garden;
+    return [[g.x - 50, g.y + 40], [g.x + g.w + 50, g.y + 40], [g.x - 50, g.y + g.h - 40], [g.x + g.w + 50, g.y + g.h - 40], [d.x0 + 560, 1820], [d.x0 + 1450, 1820]];
+  }
+  let brickKey = '';
+  function spawnBricks(force) {
+    if (!World.addPickups || World.trip || !town || !life) return;
+    const day = life.day; if (!day) return;
+    const key = `${day}:${town.districts || 0}:${townKey()}`; if (key === brickKey && !force) return; brickKey = key;
+    if (life.crunched.day !== day) life.crunched = { day, ids: {}, stars: 0 };
+    World.clearPickups('nb:');
+    const list = [];
+    for (let k = 0; k <= (town.districts || 0); k++) brickSpots(k).forEach(([x, y], i) => { const id = `nb:${day}:${k}:${i}`; if (!life.crunched.ids[id]) list.push({ id, x, y, kind: 'brick' }); });
+    World.addPickups(list);
+  }
+  let combo = { n: 0, at: 0 };
+  function crunchBrick(id) {
+    const [, day, k] = id.split(':'), t = performance.now();
+    if (life.crunched.day !== +day) life.crunched = { day: +day, ids: {}, stars: 0 };
+    if (life.crunched.ids[id]) return;
+    life.crunched.ids[id] = 1; life.stats.crunches = (life.stats.crunches || 0) + 1;
+    combo = t - combo.at < 4000 ? { n: combo.n + 1, at: t } : { n: 1, at: t };
+    life.stats.bestCombo = Math.max(life.stats.bestCombo || 0, combo.n);
+    const d = +k ? Town.district(+k) : null, kind = d ? d.kind : null;
+    Sound.crunch(1); Sound.note(4 + (combo.n - 1) % 8, BRICK_VOICE[kind] || 'marimba', { harmony: combo.n >= 3 });
+    World.mood('crunch', 0.8);
+    const cap = life.band === 1 ? 5 : 3;   // a few stars a day from bricks
+    let msg = combo.n > 1 ? `🍜 ×${combo.n}` : '🍜';
+    if ((life.crunched.stars || 0) < cap) { life.crunched.stars = (life.crunched.stars || 0) + 1; Life.addStars(life, 1); msg += ' ⭐+1'; }
+    floatMe(msg);
+    daily('crunch');
+    // which noodle was inside?
+    const hour = Life.hourOf ? Life.hourOf(now()) : 12;
+    const kindNoodle = NOODLE_DEX.find(n => n.kind && n.kind === kind);
+    const tries = [kindNoodle && kindNoodle.id, 'brick', hour >= 20 && 'glass', combo.n >= 5 && 'macaroni', combo.n >= 10 && 'rigatoni', Math.random() < 0.2 && 'crinkle'];
+    const got = tries.find(n => n && !life.noodles[n]);
+    if (got) findNoodle(got);
+    else if (Math.random() < NOODLE_SHINY) {
+      const have = Object.keys(life.noodles).filter(n => !life.shiny[n]);
+      if (have.length) { const n = have[Math.floor(Math.random() * have.length)]; life.shiny[n] = Date.now(); Life.addStars(life, 2); later(() => { toast(`<span class="t-small">✨ Golden noodle! ⭐ +2</span>✨ ${esc(NOODLE_BY_ID[n].name)}`, { big: true, life: 4 }); Sound.secret(); World.celebrate(12); }); }
+    }
+    touch(); hud(); checkDream();
+  }
+  // a new noodle for the Noodle-dex: ⭐ +3
+  function findNoodle(id) {
+    const n = NOODLE_BY_ID[id]; if (!n || life.noodles[id]) return false;
+    life.noodles[id] = Date.now(); Life.addStars(life, 3);
+    const count = Object.keys(life.noodles).length;
+    later(() => { toast(`<span class="t-small">🍜 New noodle! ${count}/${NOODLE_DEX.length} · ⭐ +3</span>${esc(n.name)}`, { big: true, life: 4 }); Sound.discover(); World.celebrate(10); });
+    if (count === NOODLE_DEX.length) later(() => { toast('<span class="t-small">🏆 Noodle-dex complete!</span>🍜🍜🍜', { big: true, life: 5 }); World.celebrate(40); });
+    touch(); hud();
+    return true;
+  }
+  function noodleIcon(n, size, locked, shiny) {
+    const c = document.createElement('canvas'); c.width = c.height = size * 2; c.style.width = c.style.height = size + 'px';
+    try { drawNoodleIcon(c.getContext('2d'), n, size * 2, locked, shiny); } catch (e) {}
+    return c;
+  }
+  function noodleSheet(sel) {
+    const have = Object.keys(life.noodles).length;
+    sheet(`🍜 ${have}/${NOODLE_DEX.length}`, (body) => {
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${life.band === 1 ? '🍜 → 🚶 → ⭐' : 'Walk into the golden noodle bricks in every town. They come back every morning. Each kind of town hides its own noodle.'}</p>`);
+      const grid = document.createElement('div'); grid.className = 'dex';
+      NOODLE_DEX.forEach(n => {
+        const got = !!life.noodles[n.id], b = document.createElement('button'); b.type = 'button'; b.className = 'dex-cell' + (sel === n.id ? ' on' : '') + (got ? '' : ' locked');
+        b.append(noodleIcon(n, 54, !got, !!life.shiny[n.id]));
+        b.addEventListener('click', () => { Sound.blip(); noodleSheet(n.id); });
+        grid.append(b);
+      });
+      if (sel) { const n = NOODLE_BY_ID[sel], got = life.noodles[sel]; body.append(card(`<h3>${got ? esc(n.name) : '❔'}${life.shiny[sel] ? ' ✨' : ''}</h3><p class="small">${got ? `${{ common: 'Common', rare: 'Rare', legendary: 'Legendary', secret: 'Secret' }[n.rarity]} · ` : ''}💡 ${esc(n.hint)}</p>`)); }
+      body.append(grid);
+      body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">🍜 ${life.stats.crunches || 0} crunched · best combo ×${life.stats.bestCombo || 0} · ✨ ${Object.keys(life.shiny).length} golden</p>`);
+    });
+  }
+
   // wonders: the same rare moment for everyone in the room
   function wonderTick() {
     if (World.trip || !World.addPickups) return;
@@ -1514,7 +1598,7 @@
   }
   function makeWish() {
     if (!wonder || life.wonders['wish:' + wonder.id]) return;
-    life.wonders['wish:' + wonder.id] = 1; Life.addStars(life, 1); memory('wish');
+    life.wonders['wish:' + wonder.id] = 1; Life.addStars(life, 1); memory('wish'); findNoodle('cloud');
     const p = World.pos(); World.floatText(p.x, p.y, '🌠 ⭐+1', 'pay'); Sound.chord(9, 'bell'); World.mood('love', 2); touch(); hud();
   }
   // two friends swimming together: a star once a day
@@ -1619,7 +1703,7 @@
       body.insertAdjacentHTML('beforeend', `<div class="wallet"><span>🎒 ${bag.length ? bag.map(([g, n]) => `${(G[g] || { icon: '📷' }).icon}×${n}`).join(' ') : '🫙'}</span></div>`);
       body.append(myThings());
       body.append(card(`<h3>🎓 ${Object.entries(Life.SUBJECTS).map(([s, x]) => `${x.icon}${Life.hasCert(life, s) ? '✓' : '·'}`).join(' ')} ${life.badges.pilot ? '🧑‍✈️' : ''}${life.badges.astronaut ? '🧑‍🚀' : ''}</h3>`));
-      body.append(button('🪪 My card', () => cardSheet('me'), 'choice alt'));
+      body.append(row(button('🪪 My card', () => cardSheet('me'), 'choice alt'), button(`🍜 ${Object.keys(life.noodles).length}/${NOODLE_DEX.length}`, () => noodleSheet(), 'choice alt')));
       const dc = card(`<h3>${d ? `${d.icon} ${esc(Life.title(life))}` : '✨'}</h3>${d ? dreamSteps() : ''}`);
       dc.append(button('✨ ↻', () => dreamPicker(), 'choice alt'));
       body.append(dc);
@@ -1836,18 +1920,18 @@
       if (kinds.length) body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">🗺️ ${kinds.length}/${Object.keys(Town.KINDS).length}</h4><div class="pcard-row">${kinds.map(k => `<span title="${esc(k.name || '')}">${k.icon}</span>`).join('')}</div>`);
       const mem = (c.best || []).map(id => Life.MEMORIES[id]).filter(Boolean);
       if (mem.length) body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📸</h4><div class="pcard-row">${mem.map(([icon, name]) => `<span title="${esc(name)}">${icon}</span>`).join('')}</div>`);
-      if (!isMe) body.append(button('👋', () => { Net.emote('👋'); World.say('me', '👋', 3); Sound.pop(); closeSheet(); }, 'big-btn small'));
+      if (!isMe) body.append(button('👋', () => { Net.emote('👋'); World.say('me', '👋', 3); Sound.pop(); closeSheet(); findNoodle('feather'); }, 'big-btn small'));
     });
   }
   /* ---------------- the leaderboard: everyone has a record, and many ways to be on top ---------------- */
   // Every board counts something that only goes up. A secret key on this device keeps the record yours.
   if (!me.key) me.key = newUid() + newUid();
-  const BOARDS = [['xp', '⭐', 'Stars'], ['week', '📅', 'This week'], ['earned', '💼', 'Coins earned'], ['mem', '📸', 'Memories'], ['perfect', '🌟', 'Perfect Days'], ['kinds', '🗺️', 'Towns'], ['nights', '🌙', 'Nights']];
+  const BOARDS = [['xp', '⭐', 'Stars'], ['week', '📅', 'This week'], ['earned', '💼', 'Coins earned'], ['mem', '📸', 'Memories'], ['noodles', '🍜', 'Noodles'], ['perfect', '🌟', 'Perfect Days'], ['kinds', '🗺️', 'Towns'], ['nights', '🌙', 'Nights']];
   const onServer = /^https?:$/.test(location.protocol);
   let boardSent = '';
   function myRecord() {
     return { id: me.uid, key: me.key, name: me.name || 'Squareface', color: me.color, hat: life.hat || '', dream: life.dream || '', band: life.band,
-      xp: life.xp, earned: Math.round(life.stats.earned || 0), mem: Life.memCount(life), perfect: life.perfectDays || 0, kinds: Object.keys(life.kindsSeen || {}).length, nights: life.stats.sleeps || 0 };
+      xp: life.xp, earned: Math.round(life.stats.earned || 0), mem: Life.memCount(life), noodles: Object.keys(life.noodles || {}).length, perfect: life.perfectDays || 0, kinds: Object.keys(life.kindsSeen || {}).length, nights: life.stats.sleeps || 0 };
   }
   function postRecord(force) {
     if (!onServer || !life || !me.name) return Promise.resolve();
@@ -1948,7 +2032,7 @@
     $('talkBar').insertBefore(fb, $('talkBar').firstChild);
     fb.addEventListener('click', () => { bar.hidden = !bar.hidden; fb.classList.toggle('on', !bar.hidden); Talk.close(); });
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
-    bar.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; World.mood(b.dataset.face, 3); Sound.note(FACES.indexOf(b.dataset.face) * 2 + 5, 'kalimba'); bar.hidden = true; $('faceBtn').classList.remove('on'); });
+    bar.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; World.mood(b.dataset.face, 3); life.faces[b.dataset.face] = 1; if (FACES.every(f => life.faces[f])) findNoodle('smile'); Sound.note(FACES.indexOf(b.dataset.face) * 2 + 5, 'kalimba'); bar.hidden = true; $('faceBtn').classList.remove('on'); });
   }
   addEventListener('keydown', (e) => {
     if (!playing || busy() || e.target.tagName === 'INPUT') return;
@@ -1983,7 +2067,7 @@
     if (!k) { toast('<span class="t-small">🏡 Welcome back</span>Small Town', { big: true, life: 3 }); return; }
     const D = Town.district(k);
     toast(`<span class="t-small">${D.icon} ${esc(D.kindName)}</span>${esc(D.name)}${life.band === 1 ? '' : `<br><small>${esc(D.blurb)}</small>`}`, { big: true, life: 4 });
-    if (!life.kindsSeen[D.kind]) { life.kindsSeen[D.kind] = 1; memory('k_' + D.kind); checkDream(); touch(); }
+    if (!life.kindsSeen[D.kind]) { life.kindsSeen[D.kind] = 1; memory('k_' + D.kind); if (Object.keys(Town.KINDS).every(k => life.kindsSeen[k])) findNoodle('peak'); checkDream(); touch(); }
   }
 
   /* ---------------- the loop ---------------- */

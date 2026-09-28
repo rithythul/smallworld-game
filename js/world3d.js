@@ -3418,7 +3418,11 @@ const _m4 = new THREE.Matrix4();
 const PICK_MAX = 40, PICK_R = 2.5;
 const pickKit = {}, picks = [], picked = new Set();   // picks: {id, kind, x, z, y, water, ph, born}
 function buildPickKit() {
-  const coin = new Builder(), star = new Builder(), pot = new Builder();
+  const coin = new Builder(), star = new Builder(), pot = new Builder(), brick = new Builder();
+  // a crunchy ramen brick: a golden block with wavy noodles pressed into its sides
+  brick.add(GEO.rbox(2.2, 1.4, 1.5, 0.35), M(0, 0, 0), '#f4c35a', { ol: 0.08, ao: 0.15 });
+  for (let r = 0; r < 3; r++) for (let i = 0; i < 5; i++) brick.add(GEO.sph(0.2, 8, 6), M(-0.8 + i * 0.4, -0.38 + r * 0.38 + ((i + r) % 2) * 0.08, 0.72), '#e2a53c', { ol: 0 });
+  for (let r = 0; r < 3; r++) for (let i = 0; i < 5; i++) brick.add(GEO.sph(0.2, 8, 6), M(-0.8 + i * 0.4, -0.38 + r * 0.38 + ((i + r) % 2) * 0.08, -0.72), '#e2a53c', { ol: 0 });
   coin.add(GEO.cyl(1, 1, 0.3, 20), M(0, 0, 0, 0, Math.PI / 2), COL.yellow, { ol: 0.07 });
   coin.add(GEO.cyl(0.66, 0.66, 0.36, 20), M(0, 0, 0, 0, Math.PI / 2), COL.gold, { ol: 0 });
   star.add(GEO.star(1.25, 0.55, 0.36), M(0, 0, 0), COL.yellow, { ol: 0.07 });
@@ -3427,7 +3431,7 @@ function buildPickKit() {
   pot.add(GEO.torus(0.95, 0.2, 20), M(0, 0.86, 0), '#5d4f70', { ol: 0.05 });
   pot.add(GEO.sph(0.9, 12, 6, true), M(0, 0.8, 0, 0, 0, 0, 1, 0.6, 1), COL.yellow, { ol: 0.05 });
   [[0.35, 0.2, 0.4], [-0.4, -0.25, -0.5], [0, 0.45, 0.2]].forEach(([dx, dz, a], i) => pot.add(GEO.cyl(0.3, 0.3, 0.1, 10), M(dx, 1.25 + i * 0.06, dz, a, 0.5), COL.gold, { ol: 0.03 }));
-  Object.entries({ coin, star, pot }).forEach(([k, b]) => {
+  Object.entries({ coin, star, pot, brick }).forEach(([k, b]) => {
     const { main, line } = b.geometries(), mesh = new THREE.InstancedMesh(main, toonMat, PICK_MAX), out = new THREE.InstancedMesh(line, outlineMat, PICK_MAX);
     [mesh, out].forEach(m => { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); });
     mesh.castShadow = true;
@@ -3452,7 +3456,7 @@ function addPickups(list) {
     for (let k = 0; k < 3 && solidAt(x, z, 0.8); k++) { const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
     if (solidAt(x, z, 0.8)) continue;
     // on water it floats at the surface, on land it hovers
-    const w = waterAt(x, z), pot = it.kind === 'pot';
+    const w = waterAt(x, z), pot = it.kind === 'pot' || it.kind === 'brick';
     const y = w ? (w.y ?? 0.07) + (pot ? 0.45 : 0.75) : groundAt(x, z) + hillH(x, z) + (pot ? 1.15 : 2);
     picks.push({ id, kind: it.kind, x, z, y, water: !!w, ph: (hash(id) % 628) / 100, born: now });
   }
@@ -3463,19 +3467,19 @@ function clearPickups(prefix = '', forget = false) {
 }
 function takePickup(p) {
   picked.add(p.id);
-  burst(gxOf(p.x), gyOf(p.z), p.kind === 'star' ? 'confetti' : 'coins', p.kind === 'pot' ? 30 : 12, p.y);
+  burst(gxOf(p.x), gyOf(p.z), p.kind === 'star' || p.kind === 'brick' ? 'confetti' : 'coins', p.kind === 'pot' ? 30 : p.kind === 'brick' ? 18 : 12, p.y);
   if (hooks.onPickup) try { hooks.onPickup(p.id, p.kind); } catch (e) { console.error(e); }
 }
 function updatePickups(t) {
   if (!pickKit.coin) return;
-  const n = { coin: 0, star: 0, pot: 0 }, canTake = !rideNow && player.sf && player.sf.root.visible && player.sf.y < 6 && flyH < 2;
+  const n = { coin: 0, star: 0, pot: 0, brick: 0 }, canTake = !rideNow && player.sf && player.sf.root.visible && player.sf.y < 6 && flyH < 2;
   for (let i = picks.length - 1; i >= 0; i--) {
     const p = picks[i];
     if (canTake && Math.hypot(p.x - player.x, p.z - player.z) < PICK_R) { picks.splice(i, 1); takePickup(p); continue; }
     const K = pickKit[p.kind], k = n[p.kind]++;
     const pop = Math.min(1, (now - p.born) / 0.35), s = pop * (2 - pop);   // pops in when it appears
     const bob = p.water ? Math.sin(t * 2 + p.ph) * 0.1 : Math.sin(t * 2.6 + p.ph) * 0.3;
-    const spin = p.kind === 'pot' ? t * 0.8 : t * (p.kind === 'coin' ? 2.4 : 1.8);
+    const spin = p.kind === 'pot' || p.kind === 'brick' ? t * 0.8 : t * (p.kind === 'coin' ? 2.4 : 1.8);
     _m4.compose(_p.set(p.x, p.y + bob, p.z), _q.setFromEuler(_e.set(p.water ? Math.sin(t * 1.6 + p.ph) * 0.12 : 0, spin + p.ph, 0)), _s.setScalar(Math.max(0.01, s)));
     K.mesh.setMatrixAt(k, _m4); K.out.setMatrixAt(k, _m4);
   }
