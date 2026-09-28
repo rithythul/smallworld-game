@@ -1515,11 +1515,13 @@
   function spawnBricks(force) {
     if (!World.addPickups || World.trip || !town || !life) return;
     const day = life.day; if (!day) return;
-    const key = `${day}:${town.districts || 0}:${townKey()}`; if (key === brickKey && !force) return; brickKey = key;
+    // only the town you are in and its neighbours, so an endless region never runs out of room for bricks
+    const here = World.pos ? Town.districtAt(town, World.pos().x) : 0, lo = Math.max(0, here - 1), hi = Math.min(town.districts || 0, here + 1);
+    const key = `${day}:${lo}-${hi}:${townKey()}`; if (key === brickKey && !force) return; brickKey = key;
     if (life.crunched.day !== day) life.crunched = { day, ids: {}, stars: 0 };
     World.clearPickups('nb:');
     const list = [];
-    for (let k = 0; k <= (town.districts || 0); k++) brickSpots(k).forEach(([x, y], i) => { const id = `nb:${day}:${k}:${i}`; if (!life.crunched.ids[id]) list.push({ id, x, y, kind: 'brick' }); });
+    for (let k = lo; k <= hi; k++) brickSpots(k).forEach(([x, y], i) => { const id = `nb:${day}:${k}:${i}`; if (!life.crunched.ids[id]) list.push({ id, x, y, kind: 'brick' }); });
     World.addPickups(list);
   }
   let combo = { n: 0, at: 0 };
@@ -1616,11 +1618,40 @@
     if (got.some(g => g.hat)) World.setMe({ color: me.color, hat: life.hat });
   }
   const liveStreak = () => life.lastPerfect === life.day || life.lastPerfect === life.prevPlayed ? life.streak || 0 : 0;
+  // How to reach the next level: every way to earn stars, how many it gives, whether it is still open today,
+  // and one tap puts the guide arrow on it. Things you can do right now come first.
+  function levelWays(toGo) {
+    const t = now(), rows = [], go = (at, icon) => () => { const w = placeFor(at); if (w) { guide = { ...w, icon }; closeSheet(); toast(`${icon} ➤`, { life: 2 }); } else toast(`${icon} ⏳`, { life: 2 }); };
+    Object.entries(Life.RITUALS).forEach(([id, T]) => { const st = Life.ritualState(life, id, t); rows.push({ icon: T.icon, text: T.name, stars: '+1', state: st === 'open' ? 'now' : st === 'done' ? 'done' : 'later', note: st === 'done' ? 'done today' : st === 'open' ? 'open now' : `${Life.RULES[life.band].win[id][0]}:00`, run: go(T.at, T.icon) }); });
+    (life.daily ? life.daily.list : []).forEach(c => { const D = Life.DAILY_BY_ID[c.id]; rows.push({ icon: D.icon, text: D.text, stars: '+1', state: c.done ? 'done' : 'now', note: c.done ? 'done today' : `${c.n}/${c.goal}`, run: go(D.at, D.icon) }); });
+    if (life.daily && life.daily.list.length) rows.push({ icon: '🌟', text: 'Perfect Day: all 3 challenges', stars: '+2', state: life.daily.perfect ? 'done' : 'soon', note: life.daily.perfect ? 'done today' : `${life.daily.list.filter(c => c.done).length}/3` });
+    const cap = life.band === 1 ? 5 : 3, got = life.crunched && life.crunched.day === life.day ? life.crunched.stars || 0 : 0;
+    rows.push({ icon: '🍜', text: 'Crunch noodle bricks', stars: '+1 each', state: got < cap ? 'now' : 'done', note: `${got}/${cap} today`, run: go('brick', '🍜') });
+    const g = Life.dreamGoal(life);
+    if (g) rows.push({ icon: g.icon || '✨', text: g.text, stars: '+2', state: 'now', note: g.of ? `step ${g.i + 1}/${g.of}` : 'dream level', run: go(g.at, g.icon || '✨') });
+    else rows.push({ icon: '✨', text: 'Pick a dream', stars: '+2 a step', state: 'now', note: '', run: () => { closeSheet(); dreamPicker(true); } });
+    const nextKind = Town.districtsOf(town).find(d => !life.kindsSeen[d.kind]);
+    if (nextKind) rows.push({ icon: nextKind.icon, text: `Visit ${nextKind.name}`, stars: '+5', state: 'now', note: 'new memory', run: go('kind:next', nextKind.icon) });
+    rows.push({ icon: '🎓', text: 'Take a class', stars: life.band === 1 ? '+1 a right answer' : '+1, +3 for a certificate', state: 'now', note: '', run: go('school', '🎓') });
+    rows.push({ icon: '📸', text: 'New places and firsts', stars: '+5', state: 'soon', note: `${Life.memCount(life)}/${Object.keys(Life.MEMORIES).length}`, run: () => { closeSheet(); lifeSheet(); } });
+    rows.push({ icon: '🍜', text: 'New noodles for the Noodle-dex', stars: '+3', state: 'soon', note: `${Object.keys(life.noodles).length}/${NOODLE_DEX.length}`, run: () => noodleSheet() });
+    const rank = { now: 0, soon: 1, later: 2, done: 3 };
+    rows.sort((a, b) => rank[a.state] - rank[b.state]);
+    const box = card(`<h3>🪜 How to level up</h3>`, 'ways');
+    rows.forEach(r => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = `way ${r.state}`;
+      b.innerHTML = `<span class="w-icon">${r.icon}</span><span class="w-text">${esc(r.text)}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span><span class="w-stars">${r.state === 'done' ? '✓' : `⭐ ${esc(r.stars)}`}</span>`;
+      if (r.run && r.state !== 'done') b.addEventListener('click', () => { Sound.blip(); r.run(); }); else b.disabled = r.state === 'done';
+      box.append(b);
+    });
+    return box;
+  }
   function starSheet() {
     syncDaily();
     const lv = Life.starLevel(life.xp), lo = Life.starsFor(lv), hi = Life.starsFor(lv + 1), next = Life.levelReward(lv + 1, life.band), t = now();
     sheet(`⭐ Level ${lv}`, (body) => {
       body.insertAdjacentHTML('beforeend', `<div class="star-big"><b>⭐ ${life.xp}</b><div class="progress"><div style="width:${Math.round((life.xp - lo) / (hi - lo) * 100)}%"></div></div><span>Lv ${lv + 1}: ${next.hat ? `${HAT_ICON[next.hat]} new hat` : `+${coin(next.coins)}`} · ${hi - life.xp} ⭐ to go</span></div>`);
+      body.append(levelWays(hi - life.xp));
       body.insertAdjacentHTML('beforeend', `<div class="ritual-row">${Object.entries(Life.RITUALS).map(([id, T]) => `<span class="${Life.ritualState(life, id, t)}">${T.icon}<small>${life.band === 1 ? '' : T.name}</small></span>`).join('')}<span>${life.band === 1 ? `🌟×${life.perfectDays || 0}` : `🔥 ${liveStreak()}`}<small>${life.band === 1 ? '' : 'Perfect Days in a row'}</small></span></div>`);
       body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🎯 Today</h4>'); body.append(challengeTiles());
       const hats = Object.keys(life.hats || {});
@@ -1763,6 +1794,7 @@
   }
 
   /* ---------------- map ---------------- */
+  const MAP_TINT = { downtown: '#cfcac0', uptown: '#c9e6a8', rural: '#d7e79a', beach: '#f1e2b3', mountain: '#b7cf9a', college: '#c8dfa5', oldtown: '#d5ccbc', lake: '#b7deb8', desert: '#e8c79a', forest: '#93bf73' };
   function drawMap(c, big) {
     const R = Town.worldRight(town), B = { x0: 3380, x1: R, y0: -420, y1: 2640 };
     const x = c.getContext('2d'), W = c.width, H = c.height;
@@ -1777,7 +1809,7 @@
     x.strokeStyle = '#e9d9b0'; x.lineCap = 'round'; x.lineWidth = Math.max(3, 80 * k);
     const roads = Town.ROADS.concat(...Town.districtsOf(town).map(d => d.roads));
     roads.forEach(([ax, ay, bx, by]) => { x.beginPath(); x.moveTo(X(Math.max(ax, B.x0)), Y(ay)); x.lineTo(X(bx), Y(by)); x.stroke(); });
-    const TINT = { downtown: '#cfcac0', uptown: '#c9e6a8', rural: '#d7e79a', beach: '#f1e2b3', mountain: '#b7cf9a', college: '#c8dfa5', oldtown: '#d5ccbc', lake: '#b7deb8', desert: '#e8c79a', forest: '#93bf73' };
+    const TINT = MAP_TINT;
     Town.districtsOf(town).forEach(d => { x.fillStyle = TINT[d.kind] || '#b4dc7a'; x.fillRect(X(d.x0), Y(B.y0), 2000 * k, (B.y1 - B.y0) * k); const G2 = d.garden; x.fillStyle = '#8cc45e'; x.fillRect(X(G2.x - G2.w / 2), Y(G2.y - G2.h / 2), G2.w * k, G2.h * k); });
     Town.districtsOf(town).forEach(d => {
       const n = d.nat; x.fillStyle = { lake: '#7fd0ea', beach: '#f4e3b5', hills: '#a8d46c', stars: '#9ccb78', grove: '#8cc45e', meadow: '#c3e58f', canyon: '#d98b5f' }[d.nature];
@@ -1805,20 +1837,40 @@
     if (!World.trip) { const p = World.pos(); x.fillStyle = me.color; x.strokeStyle = '#34233f'; x.lineWidth = 2.5; x.beginPath(); x.arc(X(p.x), Y(p.y), Math.max(4.5, 50 * k), 0, 7); x.fill(); x.stroke(); }
   }
   function mapSheet() {
-    sheet('🗺️', (body) => {
-      // a readable scale that scrolls sideways as the region grows, opened where you are
+    const ds = Town.districtsOf(town), here = World.trip ? -1 : Town.districtAt(town, World.pos().x);
+    sheet(`🗺️ ${ds.length + 1} towns`, (body) => {
+      // 1) the whole region at a glance, west to east: tap a town to see it and get an arrow there
+      const strip = document.createElement('div'); strip.className = 'region';
+      const friendsIn = (k) => [...Net.others.values()].filter(o => o.x != null && o.x < 20000 && Town.districtAt(town, o.tx ?? o.x) === k).map(o => `<i style="background:${esc(o.color)}"></i>`).join('');
+      const cell = (k, icon, name, tint, seen) => `<button type="button" class="region-town ${k === here ? 'here' : ''} ${seen ? '' : 'new'}" data-k="${k}" style="--tint:${tint}">
+        <span class="rt-icon">${icon}</span><span class="rt-name">${esc(name)}</span>${k === here ? `<span class="rt-me" style="background:${esc(me.color)}"></span>` : ''}<span class="rt-friends">${friendsIn(k)}</span>${seen ? '' : '<span class="rt-badge">NEW</span>'}</button>`;
+      const need = Town.growthNeed(ds.length + 1), prev = Town.growthNeed(ds.length), have = Math.floor(town.growth || 0), pct = Math.max(0, Math.min(100, Math.round((have - prev) / Math.max(1, need - prev) * 100)));
+      strip.innerHTML = cell(0, '🏡', 'Small Town', '#b4dc7a', true) + ds.map(d => cell(d.k, d.icon, d.name, MAP_TINT[d.kind] || '#b4dc7a', !!life.kindsSeen[d.kind])).join('') +
+        `<button type="button" class="region-town next" data-k="next"><span class="rt-icon">🚧</span><span class="rt-name">Next town</span><span class="rt-bar"><b style="width:${pct}%"></b></span></button>`;
+      body.append(strip);
+      // 2) the detailed map, at a readable scale that scrolls sideways, opened where you are
       const c = document.createElement('canvas'); c.className = 'map-canvas wide';
       const R = Town.worldRight(town), H = 460, ratio = (R - 3380) / 3060;
       c.height = H; c.width = Math.round(Math.min(16000, H * ratio)); c.style.width = (c.width / 2) + 'px'; c.style.height = (H / 2) + 'px';
       const wrap = document.createElement('div'); wrap.className = 'map-wrap scroll'; wrap.append(c); body.append(wrap);
       drawMap(c, true);
-      requestAnimationFrame(() => { const p = World.pos(); wrap.scrollLeft = Math.max(0, (p.x - 3380) / (R - 3380) * c.width / 2 - wrap.clientWidth / 2); });
-      body.append(tiles(Town.BUILDINGS.map(b => tile(b.icon, '', '', () => { const k = keeper(b.id); if (k) guide = { x: k.x, y: k.y, h: 13, icon: b.icon }; closeSheet(); })),
-        tile('🌲', '', '', () => { guide = { x: 4130, y: 480, h: 12, icon: '🌲' }; closeSheet(); }), tile('🌾', '', '', () => { guide = { x: 5520, y: 470, h: 10, icon: '🌾' }; closeSheet(); })));
-      if (town.districts) {
-        body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🚆 Towns</h4>');
-        body.append(tiles(Town.districtsOf(town).map(d => tile(d.icon, '', life.band === 1 ? '' : esc(d.name), () => { guide = { x: d.gate.x + 200, y: d.gate.y - 60, h: 12, icon: d.icon }; closeSheet(); }, { on: !!life.kindsSeen[d.kind] && Town.districtAt(town, World.pos().x) === d.k }))));
-      }
+      const scrollTo = (gx, smooth) => wrap.scrollTo({ left: Math.max(0, (gx - 3380) / (R - 3380) * c.width / 2 - wrap.clientWidth / 2), behavior: smooth ? 'smooth' : 'auto' });
+      requestAnimationFrame(() => { scrollTo(World.pos().x); const on = strip.querySelector('.here'); if (on) strip.scrollLeft = on.offsetLeft - strip.clientWidth / 2 + on.offsetWidth / 2; });
+      strip.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-k]'); if (!b) return; Sound.blip();
+        if (b.dataset.k === 'next') { toast(`<span class="t-small">🚧 Next town: ${have}/${need}</span>${life.band === 1 ? '🏛️🪙 🚌 🔨 → 🏙️' : 'Taxes, bus and train fares, building and town projects make the region grow.'}`, { life: 5 }); scrollTo(R, true); return; }
+        const k = +b.dataset.k, d = k ? Town.district(k) : null;
+        strip.querySelectorAll('.pick').forEach(x => x.classList.remove('pick')); b.classList.add('pick');
+        scrollTo(d ? d.x0 + 1000 : 4800, true);
+        guide = d ? { x: d.gate.x + 200, y: d.gate.y - 60, h: 12, icon: d.icon } : { x: 4800, y: 1500, h: 12, icon: '🏡' };
+        toast(`${d ? d.icon : '🏡'} ${esc(d ? d.name : 'Small Town')} ➤`, { life: 2 });
+      });
+      // 3) the places in Small Town, as small chips: tap one for an arrow
+      const chips = document.createElement('div'); chips.className = 'place-chips';
+      const chip = (icon, name, to) => { const b = button(`${icon}${life.band === 1 ? '' : `<small>${esc(name)}</small>`}`, () => { guide = { ...to, icon }; closeSheet(); }, 'place-chip'); b.title = name; chips.append(b); };
+      Town.BUILDINGS.forEach(b => { const k = keeper(b.id); if (k) chip(b.icon, b.name, { x: k.x, y: k.y, h: 13 }); });
+      chip('🌲', 'Forest', { x: 4130, y: 480, h: 12 }); chip('🌾', 'Town Farm', { x: 5520, y: 470, h: 10 }); chip('🏊', 'Pool', placeFor('pool'));
+      body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🏡 Small Town</h4>'); body.append(chips);
     });
   }
   $('minimap').addEventListener('click', () => { Sound.blip(); mapSheet(); });
@@ -2063,6 +2115,7 @@
     const k = Town.districtAt(town, World.pos().x);
     if (k === inTown) return;
     const first = inTown === null; inTown = k;
+    spawnBricks();
     if (first) return;
     if (!k) { toast('<span class="t-small">🏡 Welcome back</span>Small Town', { big: true, life: 3 }); return; }
     const D = Town.district(k);

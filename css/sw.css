@@ -371,3 +371,36 @@ button.sure { background: #ffe08a !important; }
 .dex-cell { border: 3px solid var(--ink); border-radius: 16px; background: #fff; padding: 4px; display: grid; place-items: center; cursor: pointer; }
 .dex-cell.on { background: #fff1a8; box-shadow: 0 0 0 3px #f4b942; }
 .dex-cell.locked { background: #f3ead8; }
+
+/* the region strip on the map: every town, west to east */
+.region { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 10px; margin-bottom: 6px; scroll-snap-type: x proximity; }
+.region-town { position: relative; flex: none; width: 84px; min-height: 92px; border: 3px solid var(--ink); border-radius: 16px; background: var(--tint, #b4dc7a); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 8px 4px 6px; font: inherit; color: var(--ink); cursor: pointer; scroll-snap-align: center; }
+.region-town .rt-icon { font-size: 30px; line-height: 1.1; }
+.region-town .rt-name { font-size: 11px; font-weight: 800; line-height: 1.15; text-align: center; overflow-wrap: anywhere; }
+.region-town.here { box-shadow: 0 0 0 3px #ffd23f, 0 3px 0 var(--ink); }
+.region-town.pick { transform: translateY(-2px); box-shadow: 0 0 0 3px #5b7cfa; }
+.region-town .rt-me { position: absolute; top: -7px; left: 50%; transform: translateX(-50%); width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--ink); }
+.region-town .rt-friends { display: flex; gap: 2px; }
+.region-town .rt-friends i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink); }
+.region-town .rt-badge { position: absolute; top: -8px; right: -6px; background: #e4572e; color: #fff; font-size: 9px; font-weight: 800; border-radius: 8px; padding: 1px 5px; border: 2px solid var(--ink); }
+.region-town.new { opacity: .92; }
+.region-town.next { background: repeating-linear-gradient(45deg, #fff3d6 0 8px, #ffe7b3 8px 16px); border-style: dashed; }
+.region-town .rt-bar { width: 64px; height: 8px; border: 2px solid var(--ink); border-radius: 6px; background: #fff; overflow: hidden; margin-top: 4px; }
+.region-town .rt-bar b { display: block; height: 100%; background: #8cbf5a; }
+
+/* how to level up */
+.clue.ways { display: flex; flex-direction: column; gap: 6px; }
+.clue.ways h3 small { font-size: 13px; opacity: .75; margin-left: 6px; }
+.way { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font: inherit; color: var(--ink); background: #fff; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 10px; cursor: pointer; }
+.way .w-icon { font-size: 24px; flex: none; width: 30px; text-align: center; }
+.way .w-text { flex: 1; font-weight: 700; line-height: 1.2; }
+.way .w-text small { display: block; font-size: 11px; font-weight: 700; opacity: .7; }
+.way .w-stars { flex: none; font-weight: 800; font-size: 13px; background: #fff1a8; border: 2px solid var(--ink); border-radius: 10px; padding: 1px 7px; }
+.way.now { box-shadow: 0 3px 0 var(--ink); }
+.way.now .w-text small { color: #3f8a2c; opacity: 1; }
+.way.later, .way.soon { background: #fbf6ea; }
+.way.done { opacity: .55; cursor: default; }
+.way.done .w-stars { background: #d9f0c5; }
+.place-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.place-chip { display: flex; align-items: center; gap: 4px; border: 2.5px solid var(--ink); border-radius: 12px; background: #fff; padding: 4px 10px; font: inherit; font-size: 20px; color: var(--ink); cursor: pointer; }
+.place-chip small { font-size: 12px; font-weight: 800; }

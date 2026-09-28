@@ -38,7 +38,7 @@ Coins only go down with a reason you can see: a receipt appears by your coins, a
 
 ### A region of towns that never ends
 
-Small Town is only the first town. As everyone works, pays taxes and builds, a new town opens to the east, reached by road and train, forever. Each town has its own kind, look, places, jobs and wants:
+Small Town is only the first town. Six more are open from the very first minute (Downtown, Uptown, Green Valley, Seashell Bay, Snowcap and College Hill), reached by road and train. After that, as everyone works, pays taxes and builds, one more town opens to the east, forever. The 🗺️ map starts with a strip of every town from west to east (where you are, where your friends are, and how close the next town is); tap a town to see it on the map and get an arrow there. Each town has its own kind, look, places, jobs and wants:
 
 | Town | What's there |
 |---|---|
@@ -78,6 +78,11 @@ Every town has a 🛒 local market that pays more for what that town wants (Down
 - **Music:** gentle songs made in code that change with the time of day, trips and space (⋯ → 🎵 to turn off).
 - **Friends:** a room name puts everyone in one shared, saved town. Chat, faces and voice (a grown-up says OK first).
 - **Healthy play:** breaks, a daily limit and grown-up settings behind a math question.
+- **🪜 How to level up:** the ⭐ page lists every way to earn stars right now (rituals, today's challenges, noodle bricks, your dream's next step, a town you have not visited, classes, memories, noodles), how many stars each gives and whether it is open, done or later today. Tap one and the guide arrow takes you there.
+- **🍜 The noodle hunt (from Noodle Universe):** golden noodle bricks sit by the Small World Garden of every town and come back every morning. Walk into one to crunch it: a note in that town's instrument, a combo that climbs the scale, a few stars a day, and noodles for the 24-noodle Noodle-dex (one per kind of town, plus night glass, combos, rituals, wishes, waves and faces; 1 in 40 comes back golden).
+- **Leaderboard (🏆 in the ⋯ menu or on the ⭐ page):** every player has a record on the server. Boards: stars, stars this week, coins earned, memories, Perfect Days, kinds of towns and nights, for everyone or only your age group, plus "My records" with your place on every board. Every board counts something that only goes up, so spending or a bad day never drops you. A secret key on the device keeps a record yours, and the server limits how fast numbers can grow.
+- **Rooms:** up to 8 players share one room and its town; there can be any number of rooms at once.
+- **Player cards:** walk up to a friend (the big button shows 👋 and their name), tap a name in the friends list, or open 🪪 My card from your life page. A card shows your Squareface, hat, dream, star level, memories, Perfect Days, nights slept, home and the kinds of towns you have visited. Cards hold no typed words, only numbers and things the game already knows, so they are safe for young kids. 👋 waves back.
 - **The Small World mark** is mown into the lawn beside the plaza.
 
 The 3D is made with [three.js](https://threejs.org) (MIT, bundled in `js/vendor/`). All models are built in code: no model files to download.
@@ -107,9 +112,6 @@ The original 2D game is still here at `classic.html` (⋯ menu → 🍜 Classic 
 - **The Udon Snail's trip:** after Chapter 2 the snail walks to the Soba Peaks over 7 real days and brings a gift.
 - **Healthy play for kids:** grown-up settings (⋯ menu → 🔒) for breaks, play time, chat and voice; a 5-minute break after 20 minutes of play, 60 minutes of play per day, and grown-up settings behind a math question. "Going to eat" pauses the game; in team rooms friends see you are away and earn you thank-you coins.
 - **Leaderboard:** coins, noodles, stars and trophies across everyone playing online.
-- **Leaderboard (🏆 in the ⋯ menu or on the ⭐ page):** every player has a record on the server. Boards: stars, stars this week, coins earned, memories, Perfect Days, kinds of towns and nights, for everyone or only your age group, plus "My records" with your place on every board. Every board counts something that only goes up, so spending or a bad day never drops you. A secret key on the device keeps a record yours, and the server limits how fast numbers can grow.
-- **Rooms:** up to 8 players share one room and its town; there can be any number of rooms at once.
-- **Player cards:** walk up to a friend (the big button shows 👋 and their name), tap a name in the friends list, or open 🪪 My card from your life page. A card shows your Squareface, hat, dream, star level, memories, Perfect Days, nights slept, home and the kinds of towns you have visited. Cards hold no typed words, only numbers and things the game already knows, so they are safe for young kids. 👋 waves back.
 - **Online saves:** save with a name and a 4-digit PIN, load it on any device. There is no recovery: forget the PIN and you start a new game.
 
 See [GAME_DESIGN.md](GAME_DESIGN.md) for the original design.

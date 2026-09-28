@@ -131,7 +131,10 @@
   const WORK = { ranch: ['cow', 'cow', 'hen', 'hen'], orchard: ['apple', 'apple', 'apple', 'apple'], mine: ['ore', 'ore', 'ore', 'ore'] };
   const WORK_ITEM = { cow: 'milk', hen: 'egg', apple: 'apple', ore: 'ore' };
   const WORK_REGROW = 45 * 1000;
-  const growthNeed = (k) => 25 + 60 * (k - 1) + 20 * (k - 1) * (k - 1);   // growth points to open district k
+  // A region from day one: the first towns are open when a town is made, so there is always somewhere to go.
+  // After them, growth (taxes, fares, building, projects) opens one more town at a time, forever.
+  const START_TOWNS = 6;
+  const growthNeed = (k) => { const j = k - START_TOWNS; return j <= 0 ? 0 : 25 + 60 * (j - 1) + 20 * (j - 1) * (j - 1); };   // growth points to open district k
   const dcache = {};
   function district(k) {
     if (dcache[k]) return dcache[k];
@@ -293,7 +296,7 @@
 
   /* ---------------- a new town ---------------- */
   function newTown(now) {
-    return { v: 1, created: now, at: now, treasury: 40, growth: 0, districts: 0, taxRate: 10, plots: {}, cut: {}, saplings: {}, farm: {},
+    return { v: 1, created: now, at: now, treasury: 40, growth: 0, districts: START_TOWNS, taxRate: 10, plots: {}, cut: {}, saplings: {}, farm: {},
       stock: Object.fromEntries(SELLABLE.map(g => [g, NORM])), work: {}, built: [], votes: {}, mayor: null, election: null,
       lastNpcTax: now, lastForester: now, news: [] };
   }
@@ -332,6 +335,7 @@
     if (raining(now)) Object.values(town.plots).forEach(p => (p.soil || []).forEach(c => { if (c && !c.w) c.w = now; }));
     SELLABLE.forEach(g => { if (typeof town.stock[g] !== 'number') town.stock[g] = NORM; });
     if (typeof town.growth !== 'number') { town.growth = 0; town.districts = 0; }
+    if ((town.districts || 0) < START_TOWNS) town.districts = START_TOWNS;   // older saved towns get the region too
     if (!town.work || typeof town.work !== 'object') town.work = {};
     // prices drift back to normal: 10% of the way every 30 seconds. Leftover time is kept, so frequent checks never lose it.
     const steps = Math.floor(Math.max(0, now - town.at) / (30 * 1000));
@@ -504,7 +508,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
-    RAIL_Y, STATION, DX0, DW, DAY, GARDEN0, KINDS, CYCLE, WORK_ITEM, WORK_REGROW, STOCKS, stockPrice, districtAt, localMult, workOf, workById, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, HOME, POND, BALL, OLD_SPOTS, inPool, spotsOf, wonderAt, POTS, rng, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
+    RAIL_Y, STATION, DX0, DW, DAY, GARDEN0, START_TOWNS, KINDS, CYCLE, WORK_ITEM, WORK_REGROW, STOCKS, stockPrice, districtAt, localMult, workOf, workById, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, HOME, POND, BALL, OLD_SPOTS, inPool, spotsOf, wonderAt, POTS, rng, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);

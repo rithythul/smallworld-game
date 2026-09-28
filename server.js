@@ -224,6 +224,7 @@ function townFor(code) {
   let town = null;
   try { town = JSON.parse(fs.readFileSync(path.join(TOWN_DIR, code + '.json'), 'utf8')); } catch (e) { town = null; }
   if (!town || town.v !== 1) town = Town.newTown(Date.now());
+  Town.settle(town, Date.now());   // bring an old saved town up to today's rules before anyone sees it
   t = { town, dirty: false };
   towns.set(code, t);
   return t;
