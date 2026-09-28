@@ -107,6 +107,7 @@ The original 2D game is still here at `classic.html` (⋯ menu → 🍜 Classic 
 - **The Udon Snail's trip:** after Chapter 2 the snail walks to the Soba Peaks over 7 real days and brings a gift.
 - **Healthy play for kids:** grown-up settings (⋯ menu → 🔒) for breaks, play time, chat and voice; a 5-minute break after 20 minutes of play, 60 minutes of play per day, and grown-up settings behind a math question. "Going to eat" pauses the game; in team rooms friends see you are away and earn you thank-you coins.
 - **Leaderboard:** coins, noodles, stars and trophies across everyone playing online.
+- **Player cards:** walk up to a friend (the big button shows 👋 and their name), tap a name in the friends list, or open 🪪 My card from your life page. A card shows your Squareface, hat, dream, star level, memories, Perfect Days, nights slept, home and the kinds of towns you have visited. Cards hold no typed words, only numbers and things the game already knows, so they are safe for young kids. 👋 waves back.
 - **Online saves:** save with a name and a 4-digit PIN, load it on any device. There is no recovery: forget the PIN and you start a new game.
 
 See [GAME_DESIGN.md](GAME_DESIGN.md) for the original design.

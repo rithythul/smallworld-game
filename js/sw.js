@@ -308,6 +308,7 @@
   /* ---------------- HUD ---------------- */
   const set = (id, text) => { const el = $(id); if (el && el.textContent !== text) el.textContent = text; };
   function hud() {
+    if (online()) Net.card(myCard());
     if (!life) return;
     const t = now(), h = Life.hourOf(t), rain = Town.raining(t);
     const icon = rain ? '🌧️' : h < 7 ? '🌅' : h < 18 ? '☀️' : h < 20 ? '🌇' : '🌙';
@@ -412,6 +413,8 @@
     { const d = dist(p, tap); if (d < (tap === HOME.tap ? 60 : 190)) add({ key: 'tap', label: 'Drink', icon: '💧', cls: 'water', run: () => sip() }, d, 10); }
     if (Life.ritualState(life, 'sleep', t) === 'open') { const h = homeDoor(), d = dist(p, h); if (d < (h.own ? 110 : 80)) add({ key: 'bed', label: 'Sleep', icon: '🛏️', cls: 'buy', run: () => goSleep() }, d, 30); }
     if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 90);   // anything close by comes first; otherwise the big button is a wish
+    // a friend close by: see their card (anything else close by comes first)
+    if (online()) Net.others.forEach(o => { const ox = o.tx ?? o.x, oy = o.ty ?? o.y; if (ox == null) return; const d = dist(p, { x: ox, y: oy }); if (d < 55) add({ key: 'card:' + o.id, label: o.name, icon: '👋', cls: 'talk', run: () => cardSheet(o) }, d + 40); });
     // bus stops
     if (World.busOn) Town.stopsOf(town).forEach(s => { const d = dist(p, s); if (d < 70) add({ key: 'bus:' + s.id, label: `Ride · ${coin(Life.FARES.bus)}`, icon: '🚌', cls: 'buy', run: () => stopSheet(s) }, d); });
     // land
@@ -1615,6 +1618,7 @@
       body.insertAdjacentHTML('beforeend', `<div class="wallet"><span>🎒 ${bag.length ? bag.map(([g, n]) => `${(G[g] || { icon: '📷' }).icon}×${n}`).join(' ') : '🫙'}</span></div>`);
       body.append(myThings());
       body.append(card(`<h3>🎓 ${Object.entries(Life.SUBJECTS).map(([s, x]) => `${x.icon}${Life.hasCert(life, s) ? '✓' : '·'}`).join(' ')} ${life.badges.pilot ? '🧑‍✈️' : ''}${life.badges.astronaut ? '🧑‍🚀' : ''}</h3>`));
+      body.append(button('🪪 My card', () => cardSheet('me'), 'choice alt'));
       const dc = card(`<h3>${d ? `${d.icon} ${esc(Life.title(life))}` : '✨'}</h3>${d ? dreamSteps() : ''}`);
       dc.append(button('✨ ↻', () => dreamPicker(), 'choice alt'));
       body.append(dc);
@@ -1785,13 +1789,56 @@
       const link = `${location.origin}${location.pathname}?room=${Net.code}`;
       body.insertAdjacentHTML('beforeend', `<div class="code-box"><div class="code">${esc(Net.code)}</div></div><p class="link-line">${esc(link)}</p>`);
       const list = document.createElement('div'); list.className = 'players';
-      const rowFor = (name, color, sub, isMe) => `<div class="player-row ${isMe ? 'me' : ''}"><span class="dot" style="background:${color}"></span><span class="who">${esc(name)}</span><span class="stats"><span class="stat">${esc(sub || '')}</span></span></div>`;
-      list.innerHTML = rowFor(me.name, me.color, Life.title(life), true) + [...Net.others.values()].map(o => rowFor(o.name, o.color, o.ti, false)).join('');
+      const rowFor = (name, color, sub, id) => `<button type="button" class="player-row ${id === 'me' ? 'me' : ''}" data-card="${id}"><span class="dot" style="background:${color}"></span><span class="who">${esc(name)}</span><span class="stats"><span class="stat">${esc(sub || '')}</span></span><span class="go">🪪</span></button>`;
+      list.innerHTML = rowFor(me.name, me.color, Life.title(life), 'me') + [...Net.others.values()].map(o => rowFor(o.name, o.color, o.ti, o.id)).join('');
+      list.addEventListener('click', (e) => { const b = e.target.closest('[data-card]'); if (!b) return; Sound.blip(); const id = b.dataset.card; cardSheet(id === 'me' ? 'me' : Net.others.get(+id)); });
       body.append(list);
       body.append(row(button('📋 Copy', () => { navigator.clipboard && navigator.clipboard.writeText(link).then(() => toast('📋 ✓')).catch(() => {}); }, 'choice'),
         button('🚪 Leave', () => { Net.leave(); Talk.leave(); goSolo(); closeSheet(); toast('🏡'); }, 'choice alt')));
     });
   }
+  /* ---------------- player cards: who someone is in the game, with no words anyone typed ---------------- */
+  function myCard() {
+    const homes = myPlots().map(p => p.build);
+    const best = Object.entries(life.memories).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+    return { xp: life.xp, mem: Life.memCount(life), perfect: life.perfectDays || 0, days: life.stats.sleeps || 0,
+      home: homes.includes('villa') ? 2 : homes.includes('house') ? 1 : 0, dream: life.dream || '', hat: life.hat || '',
+      kinds: Object.keys(life.kindsSeen || {}), best };
+  }
+  const cardOf = (o) => o === 'me' ? { name: me.name, color: me.color, card: myCard() } : o;
+  function cardSheet(who) {
+    const o = cardOf(who), isMe = who === 'me';
+    if (!isMe && !Net.others.has(o.id)) return toast('👋 ✕');
+    const c = o.card || {}, d = Life.DREAMS[c.dream], lv = Life.starLevel(c.xp || 0);
+    sheet(isMe ? '🪪' : '🪪 👋', (body) => {
+      const top = document.createElement('div'); top.className = 'pcard';
+      const cv = document.createElement('canvas'); cv.width = 132; cv.height = 132; cv.className = 'pcard-face';
+      const x = cv.getContext('2d');
+      x.save(); x.translate(66, 88); x.scale(1.45, 1.45);
+      rr(x, -15, 4, 30, 26, 10); fillStroke(x, o.color, 3);
+      drawHead(x, 0, -20, 'happy', 0, { color: o.color === '#e4572e' ? '#f4b942' : '#e4572e' });
+      x.restore();
+      const face = document.createElement('div'); face.className = 'pcard-pic'; face.style.background = o.color + '33';
+      face.append(cv);
+      if (c.hat && HAT_ICON[c.hat]) face.insertAdjacentHTML('beforeend', `<span class="pcard-hat">${HAT_ICON[c.hat]}</span>`);
+      top.append(face);
+      top.insertAdjacentHTML('beforeend', `<div class="pcard-who"><b>${esc(o.name || 'Squareface')}</b>
+        <span>${d ? `${d.icon} ${esc(d.title)}` : '🌱'} · ⭐ Lv ${lv}</span></div>`);
+      body.append(top);
+      if (!o.card) { body.append(card('<p class="small">⏳ 🪪</p>')); return; }
+      const stat = (icon, n, what) => `<div class="pcard-stat" title="${what}"><span>${icon}</span><b>${n}</b><small>${what}</small></div>`;
+      body.insertAdjacentHTML('beforeend', `<div class="pcard-stats">
+        ${stat('⭐', c.xp || 0, 'stars')}${stat('📸', `${c.mem || 0}`, 'memories')}${stat('🌟', c.perfect || 0, 'perfect days')}
+        ${stat('🌙', c.days || 0, 'nights')}${stat(['⛺', '🏠', '🏰'][c.home] || '⛺', ['—', '✓', '✓'][c.home] || '—', ['no home yet', 'house', 'villa'][c.home] || '')}</div>`);
+      const kinds = (c.kinds || []).map(k => Town.KINDS[k]).filter(Boolean);
+      if (kinds.length) body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">🗺️ ${kinds.length}/${Object.keys(Town.KINDS).length}</h4><div class="pcard-row">${kinds.map(k => `<span title="${esc(k.name || '')}">${k.icon}</span>`).join('')}</div>`);
+      const mem = (c.best || []).map(id => Life.MEMORIES[id]).filter(Boolean);
+      if (mem.length) body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📸</h4><div class="pcard-row">${mem.map(([icon, name]) => `<span title="${esc(name)}">${icon}</span>`).join('')}</div>`);
+      if (!isMe) body.append(button('👋', () => { Net.emote('👋'); World.say('me', '👋', 3); Sound.pop(); closeSheet(); }, 'big-btn small'));
+    });
+  }
+  Net.on('emote', (m) => { if (m.id !== Net.me && Net.others.has(m.id)) World.say(m.id, m.e, 3); });
+
   function goSolo() {
     if (!solo) solo = Town.newTown(Date.now());
     Town.settle(solo, Date.now());

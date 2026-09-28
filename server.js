@@ -223,7 +223,15 @@ const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, 
 const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
 
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host, voice: p.voice || 0 };
+  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host, voice: p.voice || 0, card: p.card || null };
+}
+// A player card holds no words anyone typed: only numbers and ids the game already knows (the client ignores ids it does not know).
+const cardId = (v) => typeof v === 'string' && /^[a-z0-9_]{1,24}$/.test(v) ? v : '';
+const cardIds = (a, n) => Array.isArray(a) ? [...new Set(a.map(cardId).filter(Boolean))].slice(0, n) : [];
+function cleanCard(c) {
+  if (!c || typeof c !== 'object') return null;
+  return { xp: num(c.xp, 0, 1e7), mem: num(c.mem, 0, 999), perfect: num(c.perfect, 0, 99999), days: num(c.days, 0, 99999), home: num(c.home, 0, 2) | 0,
+    dream: cardId(c.dream), hat: cardId(c.hat), kinds: cardIds(c.kinds, 20), best: cardIds(c.best, 8) };
 }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(room, msg, except) {
@@ -385,8 +393,17 @@ wss.on('connection', (ws) => {
         broadcast(room, { t: 'emote', id: p.id, e: p.away ? '🍽️' : '👋' });
         break;
       case 'emote':
+        if (!allow(p, 'emoteBucket', 4, 5)) return;
         broadcast(room, { t: 'emote', id: p.id, e: clean(m.e, 4) });
         break;
+      case 'card': {
+        if (!allow(p, 'cardBucket', 3, 20)) return;
+        const c = cleanCard(m.c), key = JSON.stringify(c);
+        if (key === JSON.stringify(p.card || null)) return;
+        p.card = c;
+        broadcast(room, { t: 'player', p: publicPlayer(p) });
+        break;
+      }
       case 'chat': {
         if (!allow(p, 'chatBucket', 5, 10)) return send(ws, { t: 'chat-slow' });
         const q = Number.isInteger(m.q) && m.q >= 0 && m.q < PHRASE_COUNT ? m.q : null;

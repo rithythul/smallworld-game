@@ -64,6 +64,7 @@ const Net = (() => {
         me = m.you; code = m.code; mode = m.mode; others.clear();
         if (m.now) clockOffset = m.now - Date.now();   // one shared clock for the beat and the wonders
         m.players.forEach(p => { if (p.id !== me) others.set(p.id, { ...p, x: null, y: null }); });
+        cardSent = ''; sendCard();
         emit('joined', m);
         break;
       case 'player':
@@ -92,6 +93,15 @@ const Net = (() => {
       }
       default: emit(m.t, m); // crunch, found, emote, respawn, error, chat, rtc
     }
+  }
+
+  let card = null, cardSent = '', cardAt = 0, cardTimer = 0;
+  function sendCard() {
+    if (!code || !card) return;
+    const key = JSON.stringify(card); if (key === cardSent) return;
+    const wait = cardAt + 7000 - Date.now();
+    if (wait > 0) { if (!cardTimer) cardTimer = setTimeout(() => { cardTimer = 0; sendCard(); }, wait); return; }
+    cardSent = key; cardAt = Date.now(); send({ t: 'card', c: card });
   }
 
   return {
@@ -131,6 +141,8 @@ const Net = (() => {
       lastScore = key; send({ t: 'score', found, coins, stars });
     },
     emote(e) { if (code) send({ t: 'emote', e }); },
+    // my player card: numbers and ids only. Sent when it changes, at most once every few seconds.
+    card(c) { card = c; sendCard(); },
     color(c) { if (code) send({ t: 'color', color: c }); },
     away(on) { if (code) send({ t: 'away', on: !!on }); },
     chat(text) { if (code) send({ t: 'chat', text: String(text).slice(0, 80) }); },
