@@ -331,3 +331,7 @@ button.sure { background: #ffe08a !important; }
 @media (max-width: 420px) { #starPill small { display: none; } #ritualStrip i { font-size: 15px; } }
 .budget b.move { color: var(--ink-soft); }
 #ages.nudge { animation: wiggle .4s ease 2; }
+/* the region of towns */
+.tile.wanted { box-shadow: 0 0 0 3px #ffd23f, 0 3px 0 var(--ink); }
+.tile .usual.wanted { color: #3e7d22; }
+.spark { display: block; width: 100%; max-width: 220px; height: 34px; color: #5b7cfa; margin: 2px 0 4px; }

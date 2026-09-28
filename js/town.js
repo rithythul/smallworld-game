@@ -40,6 +40,8 @@
     { id: 'old-stars', type: 'stars', x: 4546, y: 1450 },
     { id: 'old-berry', type: 'berry', x: 5090, y: 470 },
   ];
+  // every town has a Small World Garden: a little park with the Small World mark in the middle (here: by the plaza)
+  const GARDEN0 = { x: 4546, y: 1330, w: 300, h: 190 };
   const inPool = (x, y, pad = 0) => { const u = (x - HOME.pool.x) / (HOME.pool.rx + pad), v = (y - HOME.pool.y) / (HOME.pool.ry + pad); return u * u + v * v < 1; };
 
   // land for sale: farms east of the market, building lots in the west and south
@@ -67,31 +69,91 @@
     cafe: { name: 'Cafe', icon: '☕', npc: { name: 'Barista Bean', color: '#9a7b5b', hat: 'chef' }, wall: '#ffe2c6', roof: '#e4572e' },
     arcade: { name: 'Arcade', icon: '🕹️', npc: { name: 'Gamer Glitch', color: '#b98cff', hat: 'propeller' }, wall: '#eadcff', roof: '#5b7cfa' },
     hotel: { name: 'Hotel', icon: '🏨', npc: { name: 'Manager Mint', color: '#8cbf5a', hat: 'crown' }, wall: '#fff3d6', roof: '#b98cff' },
+    // places that belong to one kind of town
+    exchange: { name: 'Stock Exchange', icon: '📈', npc: { name: 'Broker Bull', color: '#3e7d22', hat: 'crown' }, wall: '#e9eef5', roof: '#34233f' },
+    office: { name: 'Office Tower', icon: '🏢', npc: { name: 'Manager Memo', color: '#5b7cfa', hat: 'beanie' }, wall: '#d6e4f0', roof: '#5b7cfa' },
+    gallery: { name: 'Art Gallery', icon: '🖼️', npc: { name: 'Artist Iris', color: '#ff8fb1', hat: 'flower' }, wall: '#fff8e8', roof: '#b98cff' },
+    concert: { name: 'Concert Hall', icon: '🎻', npc: { name: 'Maestro Melody', color: '#b98cff', hat: 'bowl' }, wall: '#f3eddd', roof: '#9a3b3b' },
+    ranch: { name: 'Sunny Ranch', icon: '🐄', npc: { name: 'Rancher Clover', color: '#9a7b5b', hat: 'bowl' }, wall: '#e4572e', roof: '#fff8e8' },
+    orchard: { name: 'Apple Orchard', icon: '🍎', npc: { name: 'Grower Pip', color: '#8cbf5a', hat: 'flower' }, wall: '#ffe2c6', roof: '#8cbf5a' },
+    mine: { name: 'Crystal Mine', icon: '⛏️', npc: { name: 'Miner Flint', color: '#6b5a78', hat: 'beanie' }, wall: '#b8aca0', roof: '#6b5a78' },
+    lodge: { name: 'Ski Lodge', icon: '🎿', npc: { name: 'Coach Frost', color: '#2fa4b5', hat: 'beanie' }, wall: '#a0673b', roof: '#fff8e8' },
+    hotsprings: { name: 'Hot Springs', icon: '♨️', npc: { name: 'Keeper Steam', color: '#ff8fb1', hat: 'flower' }, wall: '#cfc6d8', roof: '#9a7b5b' },
+    icecream: { name: 'Ice Cream Stand', icon: '🍦', npc: { name: 'Scoop', color: '#ff8fb1', hat: 'chef' }, wall: '#ffe2ef', roof: '#ff8fb1' },
+    lighthouse: { name: 'Lighthouse', icon: '🗼', npc: { name: 'Keeper Beam', color: '#e4572e', hat: 'bowl' }, wall: '#fff8e8', roof: '#e4572e' },
+    university: { name: 'University', icon: '🎓', npc: { name: 'Professor Quill', color: '#34233f', hat: 'bowl' }, wall: '#c8664a', roof: '#34233f' },
+    castle: { name: 'Castle', icon: '🏰', npc: { name: 'Knight Nutmeg', color: '#8a8f99', hat: 'crown' }, wall: '#cfc6d8', roof: '#5b7cfa' },
+    boathouse: { name: 'Boathouse', icon: '🛶', npc: { name: 'Captain Paddle', color: '#2fa4b5', hat: 'bowl' }, wall: '#a0673b', roof: '#2fa4b5' },
+    sawmill: { name: 'Sawmill', icon: '🪚', npc: { name: 'Sawyer Oak', color: '#9a7b5b', hat: 'beanie' }, wall: '#c79a64', roof: '#6b4a2f' },
+    treehouse: { name: 'Treehouse', icon: '🛖', npc: { name: 'Ranger Fern', color: '#8cbf5a', hat: 'flower' }, wall: '#c79a64', roof: '#5f9e57' },
+    observatory: { name: 'Observatory', icon: '🔭', npc: { name: 'Stargazer Luna', color: '#5b7cfa', hat: 'propeller' }, wall: '#f7f1e3', roof: '#8a8f99' },
+    mart: { name: 'Local Market', icon: '🛒', npc: { name: 'Shopkeeper', color: '#f4b942', hat: 'chef' }, wall: '#fff3d6', roof: '#e4572e' },
   };
   Object.assign(STATION, PLACES.station);
-  const DISTRICTS = [
-    { name: 'Station District', land: ['tech', 'biz'], nature: 'lake' },
-    { name: 'Studio District', land: ['studio', 'dealer'], nature: 'hills' },
-    { name: 'Airport District', land: ['airport', 'harbor'], nature: 'beach' },
-    { name: 'Space District', land: ['space', 'stadium'], nature: 'stars' },
+  // Small Town is the first town of a region that never ends. Each time the region grows, a new town opens
+  // to the east, and each town has its own kind: a busy downtown, a fancy uptown, farm valleys, beach towns,
+  // mountain towns, a college town, an old town with a castle, lake towns, canyon towns and forest villages.
+  const KINDS = {
+    downtown: { name: 'Downtown', icon: '🏙️', suffix: 'City', nature: 'lake', pool: ['exchange', 'office', 'hotel', 'cafe', 'arcade'], lot: 1.6, farm: 1.3,
+      wants: { wheat: 1.4, carrot: 1.4, tomato: 1.4, corn: 1.4, milk: 1.5, egg: 1.5, apple: 1.4, berry: 1.3 }, blurb: 'Tall towers, busy offices, the stock exchange.' },
+    uptown: { name: 'Uptown', icon: '🏛️', suffix: 'Heights', nature: 'meadow', pool: ['gallery', 'concert', 'museum', 'cafe', 'hotel'], lot: 2, farm: 1.5,
+      wants: { gem: 1.6, shell: 1.4, fish: 1.3, apple: 1.2 }, blurb: 'Big houses, gardens, art and music.' },
+    rural: { name: 'Farm Valley', icon: '🌾', suffix: 'Farms', nature: 'meadow', pool: ['ranch', 'orchard', 'cafe'], lot: 0.8, farm: 0.7, farms: 8,
+      wants: { log: 1.4, ore: 1.4, gem: 1.2, fish: 1.2 }, blurb: 'Barns, cows, apple trees and cheap farmland.' },
+    beach: { name: 'Beach Town', icon: '🏖️', suffix: 'Bay', nature: 'beach', pool: ['icecream', 'lighthouse', 'harbor', 'cafe'], lot: 1.2, farm: 1,
+      wants: { apple: 1.3, milk: 1.3, egg: 1.3, log: 1.3, corn: 1.2 }, blurb: 'Sand, surf, ice cream and a lighthouse.' },
+    mountain: { name: 'Mountain Town', icon: '⛰️', suffix: 'Peak', nature: 'hills', pool: ['mine', 'lodge', 'hotsprings', 'cafe'], lot: 0.9, farm: 0.9,
+      wants: { fish: 1.5, shell: 1.5, tomato: 1.3, berry: 1.2 }, blurb: 'Snowy peaks, a crystal mine, skiing and hot springs.' },
+    college: { name: 'College Town', icon: '🎓', suffix: 'College', nature: 'grove', pool: ['university', 'museum', 'stadium', 'cafe'], lot: 1.3, farm: 1,
+      wants: { berry: 1.4, apple: 1.3, egg: 1.2, corn: 1.2 }, blurb: 'The university, the big stadium and busy students.' },
+    oldtown: { name: 'Old Town', icon: '🏰', suffix: 'Old Town', nature: 'stars', pool: ['castle', 'museum', 'cafe', 'hotel'], lot: 1.4, farm: 1,
+      wants: { log: 1.3, gem: 1.3, milk: 1.2 }, blurb: 'A castle, old walls and stories from long ago.' },
+    lake: { name: 'Lake Town', icon: '🛶', suffix: 'Lake', nature: 'lake', pool: ['boathouse', 'cafe', 'hotel'], lot: 1.1, farm: 0.9,
+      wants: { ore: 1.3, wheat: 1.3, carrot: 1.3, egg: 1.2 }, blurb: 'Cabins, boats and the best fishing.' },
+    desert: { name: 'Canyon Town', icon: '🌵', suffix: 'Canyon', nature: 'canyon', pool: ['mine', 'observatory', 'cafe'], lot: 0.7, farm: 0.8,
+      wants: { fish: 1.6, apple: 1.5, milk: 1.4, berry: 1.4, tomato: 1.3 }, blurb: 'Red rocks, cactus, a mine and the clearest night sky.' },
+    forest: { name: 'Forest Village', icon: '🌲', suffix: 'Woods', nature: 'grove', pool: ['sawmill', 'treehouse', 'cafe'], lot: 0.8, farm: 0.9,
+      wants: { fish: 1.3, shell: 1.4, corn: 1.3, milk: 1.2 }, blurb: 'Tall pines, a sawmill and treehouses.' },
+  };
+  // the first six towns are always the same, then the region keeps going with new towns of every kind
+  const FIRST = [
+    { kind: 'downtown', name: 'Downtown', land: ['tech', 'exchange', 'biz'] },
+    { kind: 'uptown', name: 'Uptown', land: ['studio', 'gallery', 'dealer'] },
+    { kind: 'rural', name: 'Green Valley', land: ['ranch', 'orchard', 'cafe'] },
+    { kind: 'beach', name: 'Seashell Bay', land: ['airport', 'icecream', 'harbor'] },
+    { kind: 'mountain', name: 'Snowcap', land: ['space', 'mine', 'lodge'] },
+    { kind: 'college', name: 'College Hill', land: ['university', 'museum', 'stadium'] },
   ];
-  const POOL = ['museum', 'zoo', 'cafe', 'arcade', 'hotel'], NATURES = ['grove', 'lake', 'meadow', 'hills', 'beach'];
-  const NATURE_NAME = { lake: 'Blue Lake', hills: 'Sunny Hills', beach: 'Seashell Beach', stars: 'Star Hill', grove: 'Mushroom Grove', meadow: 'Butterfly Meadow' };
-  const NAMES = ['Maple', 'Cedar', 'Willow', 'Pine', 'Birch', 'Aspen', 'Juniper', 'Elm', 'Hazel', 'Rowan'];
+  const CYCLE = ['downtown', 'rural', 'mountain', 'uptown', 'beach', 'oldtown', 'lake', 'desert', 'forest', 'college'];
+  const NATURE_NAME = { lake: 'Blue Lake', hills: 'Sunny Hills', beach: 'Seashell Beach', stars: 'Star Hill', grove: 'Mushroom Grove', meadow: 'Butterfly Meadow', canyon: 'Red Canyon' };
+  const NAMES = ['Maple', 'Cedar', 'Willow', 'Pine', 'Birch', 'Aspen', 'Juniper', 'Elm', 'Hazel', 'Rowan', 'Clover', 'Sunny', 'Misty', 'Golden', 'Silver'];
+  // what you can gather in some towns (shared: once picked, it regrows for everyone)
+  const WORK = { ranch: ['cow', 'cow', 'hen', 'hen'], orchard: ['apple', 'apple', 'apple', 'apple'], mine: ['ore', 'ore', 'ore', 'ore'] };
+  const WORK_ITEM = { cow: 'milk', hen: 'egg', apple: 'apple', ore: 'ore' };
+  const WORK_REGROW = 45 * 1000;
   const growthNeed = (k) => 25 + 60 * (k - 1) + 20 * (k - 1) * (k - 1);   // growth points to open district k
   const dcache = {};
   function district(k) {
     if (dcache[k]) return dcache[k];
-    const x0 = DX0 + (k - 1) * DW, d = DISTRICTS[k - 1];
-    const land = d ? d.land : [POOL[(k * 2) % POOL.length], POOL[(k * 2 + 1) % POOL.length]];
-    const nature = d ? d.nature : NATURES[k % NATURES.length];
-    const name = d ? d.name : `${NAMES[k % NAMES.length]} District`;
+    const x0 = DX0 + (k - 1) * DW, f = FIRST[k - 1], r = rng(k * 7717 + 5);
+    const kind = f ? f.kind : CYCLE[(k - 7) % CYCLE.length], K = KINDS[kind];
+    let land = f ? f.land : null;
+    if (!land) { const pool = K.pool.slice(); land = []; while (land.length < 3 && pool.length) land.push(pool.splice(Math.floor(r() * pool.length), 1)[0]); }
+    // wide buildings go in the wide slots
+    const wide = (t) => ['airport', 'stadium'].includes(t);
+    land = land.slice().sort((a, b) => (wide(b) ? 1 : 0) - (wide(a) ? 1 : 0));
+    if (land.length === 3 && wide(land[0])) land = [land[0], land[2], land[1]];
+    const round = Math.floor((k - 7) / (NAMES.length * 2)), name = f ? f.name : `${NAMES[(k * 7) % NAMES.length]} ${K.suffix}${round ? ' ' + (round + 1) : ''}`;
+    const nature = f && k === 1 ? 'lake' : K.nature;
     const mk = (type, x, y, w) => ({ id: type + k, type, x, y, w, ...PLACES[type] });
-    const landmarks = [mk(land[0], x0 + 520, 1690, type0w(land[0])), mk(land[1], x0 + 1480, 1690, type0w(land[1]))];
+    const SLOTS = [330, 1640, 700];
+    const landmarks = land.map((t, i) => mk(t, x0 + SLOTS[i], 1690, i === 2 ? Math.min(260, type0w(t)) : type0w(t)));
+    landmarks.push({ ...mk('mart', x0 + 1260, 1690, 180) });
     const station = { ...mk('station', x0 + 1180, -20, 260), id: 'station' + k };
     const plots = [];
-    [1900, 2110].forEach((y, r) => [150, 380, 1100, 1330].forEach((dx, c) => plots.push({ id: `D${k}L${r * 4 + c + 1}`, kind: 'lot', x: x0 + dx, y, w: 200, h: 170, price: 100 + 10 * k + r * 10 + c * 5 })));
-    [880, 1090].forEach((y, r) => [1150, 1380].forEach((dx, c) => plots.push({ id: `D${k}F${r * 2 + c + 1}`, kind: 'farm', x: x0 + dx, y, w: 200, h: 165, price: 70 + 5 * k + r * 10 + c * 5 })));
+    [1900, 2110].forEach((y, row) => [150, 380, 1100, 1330].forEach((dx, c) => plots.push({ id: `D${k}L${row * 4 + c + 1}`, kind: 'lot', x: x0 + dx, y, w: 200, h: 170, price: Math.round((100 + 10 * k + row * 10 + c * 5) * K.lot) })));
+    const FP = [[1150, 880], [1380, 880], [1150, 1090], [1380, 1090], [1150, 670], [1380, 670], [1610, 880], [1610, 1090]].slice(0, K.farms || 4);
+    FP.forEach(([dx, y], i) => plots.push({ id: `D${k}F${i + 1}`, kind: 'farm', x: x0 + dx, y, w: 200, h: 165, price: Math.round((70 + 5 * k + (i % 4 >= 2 ? 10 : 0) + (i % 2) * 5) * K.farm) }));
     const roads = [[x0 - 20, 1760, x0 + DW, 1760], [x0 + 1000, -60, x0 + 1000, 2560], [x0 + 1000, 1330, x0 + 1760, 1330]];
     const cx = x0 + 480, cy = 620;
     const SP = {
@@ -101,11 +163,35 @@
       stars: [['stars', 0, 60], ['photo', -260, 230], ['gem', 280, 240], ['camp', -300, -200]],
       grove: [['berry', -240, 180], ['berry', 240, 200], ['photo', 0, -250], ['camp', 300, -150]],
       meadow: [['photo', -200, 150], ['berry', 220, 220], ['camp', 0, -220], ['view', 280, -60]],
+      canyon: [['view', 0, 40], ['gem', -260, 220], ['stars', 260, 200], ['photo', -280, -200]],
     }[nature];
     const spots = SP.map(([type, dx, dy], i) => ({ id: `n${k}.${i}`, type, x: cx + dx, y: cy + dy }));
-    return (dcache[k] = { k, x0, x1: x0 + DW, name, nature, natureName: NATURE_NAME[nature], nat: { x: cx, y: cy }, landmarks, station, plots, roads, spots, stop: { x: x0 + 250, y: 1700 } });
+    // gathering spots in a row in front of the ranch, the orchard and the mine
+    const work = [];
+    landmarks.forEach(L => (WORK[L.type] || []).forEach((type, i) => work.push({ id: `w${k}.${work.length}`, type, place: L.type, x: L.x - 150 + i * 100, y: 1420 })));
+    return (dcache[k] = { k, x0, x1: x0 + DW, name, kind, kindName: K.name, icon: K.icon, blurb: K.blurb, nature, natureName: NATURE_NAME[nature], nat: { x: cx, y: cy }, landmarks, station, plots, roads, spots, work, stop: { x: x0 + 900, y: 1700 }, gate: { x: x0 + 60, y: 1760 }, garden: { x: x0 + 780, y: 2090, w: 300, h: 340 } });
   }
   function type0w(t) { return t === 'airport' ? 360 : t === 'stadium' ? 320 : 280; }
+  // which town are you in? (0 = Small Town)
+  const districtAt = (town, x) => { const k = Math.floor((x - DX0) / DW) + 1; return k >= 1 && k <= ((town && town.districts) || 0) ? k : 0; };
+  // a local market pays more for what its town wants
+  const localMult = (k, g) => { if (!k) return 1; const K = KINDS[district(k).kind]; return (K.wants && K.wants[g]) || 1; };
+  const workOf = (town) => districtsOf(town).flatMap(d => d.work);
+  const workById = (id) => { const m = /^w(\d{1,3})\.(\d{1,2})$/.exec(id || ''); return m ? district(+m[1]).work[+m[2]] || null : null; };
+
+  /* ---------------- the Stock Exchange: three companies, prices that move every day (the same for everyone) ---------------- */
+  const STOCKS = {
+    bake: { name: 'Sunny Bakery', icon: '🥐', base: 20, trend: 0.004, vol: 0.12, dividend: 1, blurb: 'Steady. Pays 1 coin a day for every 5 shares.' },
+    toy: { name: 'Toy Town Co.', icon: '🧸', base: 35, trend: 0.008, vol: 0.25, dividend: 0, blurb: 'Goes up and down more.' },
+    rocket: { name: 'Rocket Corp', icon: '🚀', base: 60, trend: 0.015, vol: 0.45, dividend: 0, blurb: 'Can go way up, or way down. Risky!' },
+  };
+  function stockPrice(town, sym, day) {
+    const S = STOCKS[sym]; if (!S) return 0;
+    const t = Math.max(0, day - Math.floor((town ? town.created : 0) / DAY)), ph = sym.length * 1.7;
+    const h = ((Math.sin((t + 1) * 12.9898 + ph * 78.233) * 43758.5453) % 1 + 1) % 1;   // a little daily noise
+    const wobble = 0.6 * Math.sin(t * 0.9 + ph) + 0.4 * Math.sin(t * 2.7 + ph * 2) + (h - 0.5) * 0.4;
+    return Math.max(1, Math.round(S.base * (1 + S.trend * t) * (1 + S.vol * wobble)));
+  }
   const districtsOf = (town) => Array.from({ length: (town && town.districts) || 0 }, (_, i) => district(i + 1));
   const allPlots = (town) => PLOTS.concat(...districtsOf(town).map(d => d.plots));
   function plotById(id) {
@@ -164,9 +250,13 @@
     shell: { name: 'Shell', icon: '🐚', base: 6 },
     gem: { name: 'Crystal', icon: '💎', base: 16 },
     berry: { name: 'Berries', icon: '🫐', base: 5 },
+    milk: { name: 'Milk', icon: '🥛', base: 8 },
+    egg: { name: 'Eggs', icon: '🥚', base: 6 },
+    apple: { name: 'Apple', icon: '🍎', base: 6 },
+    ore: { name: 'Ore', icon: '🪨', base: 9 },
   };
   const CROPS = ['wheat', 'carrot', 'tomato', 'corn'];
-  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log', 'fish', 'shell', 'gem', 'berry'];
+  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log', 'fish', 'shell', 'gem', 'berry', 'milk', 'egg', 'apple', 'ore'];
   const NORM = 20;   // how much of each good the market usually has
   const FARM_REGROW = 40 * 1000, TREE_REGROW = 5 * MIN;
   const TAX = { farm: 2, lot: 3 };          // property tax per day
@@ -204,7 +294,7 @@
   /* ---------------- a new town ---------------- */
   function newTown(now) {
     return { v: 1, created: now, at: now, treasury: 40, growth: 0, districts: 0, taxRate: 10, plots: {}, cut: {}, saplings: {}, farm: {},
-      stock: Object.fromEntries(SELLABLE.map(g => [g, NORM])), built: [], votes: {}, mayor: null, election: null,
+      stock: Object.fromEntries(SELLABLE.map(g => [g, NORM])), work: {}, built: [], votes: {}, mayor: null, election: null,
       lastNpcTax: now, lastForester: now, news: [] };
   }
   function news(town, text) { town.news.unshift(text); town.news.length = Math.min(town.news.length, 8); }
@@ -242,6 +332,7 @@
     if (raining(now)) Object.values(town.plots).forEach(p => (p.soil || []).forEach(c => { if (c && !c.w) c.w = now; }));
     SELLABLE.forEach(g => { if (typeof town.stock[g] !== 'number') town.stock[g] = NORM; });
     if (typeof town.growth !== 'number') { town.growth = 0; town.districts = 0; }
+    if (!town.work || typeof town.work !== 'object') town.work = {};
     // prices drift back to normal: 10% of the way every 30 seconds. Leftover time is kept, so frequent checks never lose it.
     const steps = Math.floor(Math.max(0, now - town.at) / (30 * 1000));
     if (steps > 0) {
@@ -332,9 +423,20 @@
       case 'sell': {
         const n = Math.max(1, Math.min(SELL_MAX, a.n | 0));
         if (!SELLABLE.includes(a.g)) return fail('The market does not buy that.');
+        const at = Number.isInteger(a.at) && a.at > 0 ? a.at : 0;
+        if (at > (town.districts || 0)) return fail('That town is not here yet.');
+        const mult = localMult(at, a.g);   // a town that wants this pays more for it
         let coins = 0; const each = [];
-        for (let i = 0; i < n; i++) { const p = price(town, a.g); each.push(p); coins += p; town.stock[a.g] += 1; }   // every one sold makes the next a little cheaper
-        return { ok: true, coins, each };
+        for (let i = 0; i < n; i++) { const p = Math.round(price(town, a.g) * mult); each.push(p); coins += p; town.stock[a.g] += 1; }   // every one sold makes the next a little cheaper
+        return { ok: true, coins, each, mult };
+      }
+      case 'gather': {   // milk a cow, collect eggs, pick an apple, dig ore: it regrows for everyone
+        const w = workById(a.spot);
+        if (!w || +a.spot.slice(1).split('.')[0] > (town.districts || 0)) return fail('Nothing here.');
+        if (now - (town.work[w.id] || 0) < WORK_REGROW) return fail('Not ready yet. It comes back soon.');
+        town.work[w.id] = now;
+        const item = w.type === 'ore' && rng(now % 100000)() < 0.12 ? 'gem' : WORK_ITEM[w.type];
+        return { ok: true, item, type: w.type };
       }
       case 'buyGood': {   // logs from the sawmill
         const n = Math.max(1, Math.min(30, a.n | 0));
@@ -402,7 +504,7 @@
   }
 
   const Town = { X0, X1, H, MIN, BUILDINGS, PLAZA, ROADS, TOWN_FARM, FARM_SPOTS, PLOTS, PLOT_BY_ID, FOREST, PROJECT_SPOTS, GOODS, CROPS, SELLABLE, TAX, RENT, BUILD, PROJECTS,
-    RAIL_Y, STATION, DX0, DW, DAY, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, HOME, POND, BALL, OLD_SPOTS, inPool, spotsOf, wonderAt, POTS, rng, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
+    RAIL_Y, STATION, DX0, DW, DAY, GARDEN0, KINDS, CYCLE, WORK_ITEM, WORK_REGROW, STOCKS, stockPrice, districtAt, localMult, workOf, workById, raining, sellPreview, buyPreview, usual, SELL_MAX, NORM, HOME, POND, BALL, OLD_SPOTS, inPool, spotsOf, wonderAt, POTS, rng, PLACES, COMPANY_TYPES, district, districtsOf, allPlots, plotById, placesOf, hasPlace, stopsOf, stationsOf, worldRight, growthNeed, grow,
     FARM_REGROW, soilSpot, newTown, settle, act, price, trend, cropState, cropProgress, treeState, forestLeft, project, projectChoices };
   if (typeof module !== 'undefined' && module.exports) module.exports = Town; else root.Town = Town;
 })(typeof window !== 'undefined' ? window : globalThis);

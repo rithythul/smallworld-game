@@ -75,10 +75,17 @@
     marketer: { name: 'Marketer', icon: '📣', wage: 24, tasks: 3, place: 'tech', needs: ['money'], how: 'Make 3 ads at the Tech Hub.' },
     coder: { name: 'Coder', icon: '💻', wage: 26, tasks: 3, place: 'tech', needs: ['math'], how: 'Fix 3 bugs at the Tech Hub.' },
     tutor: { name: 'Tutor', icon: '🍎', wage: 26, tasks: 3, place: 'school', needs: 3, how: 'Help 3 students at the School.' },
+    rancher: { name: 'Rancher', icon: '🐄', wage: 15, tasks: 3, place: 'ranch', how: 'Milk the cows and collect eggs at the ranch (3).' },
+    picker: { name: 'Apple Picker', icon: '🍎', wage: 14, tasks: 3, place: 'orchard', how: 'Pick 3 apples at the orchard.' },
+    miner: { name: 'Miner', icon: '⛏️', wage: 20, tasks: 3, place: 'mine', how: 'Dig 3 rocks at the mine.' },
+    office: { name: 'Office Worker', icon: '🏢', wage: 24, tasks: 3, place: 'office', needs: ['money'], how: 'Answer 3 questions at the Office Tower.' },
   };
-  const DESK_JOBS = { clerk: 'civics', teller: 'money', tutor: 'any', marketer: 'money', coder: 'math' };
+  // which gathering spot counts for which job
+  const WORK_JOB = { cow: 'rancher', hen: 'rancher', apple: 'picker', ore: 'miner' };
+  const DESK_JOBS = { clerk: 'civics', teller: 'money', tutor: 'any', marketer: 'money', coder: 'math', office: 'money' };
   // places that only exist once the town has grown enough
-  const LATE_PLACES = { tech: 'Tech Hub', biz: 'Business Center', studio: 'Media Studio', dealer: 'Wheels & Wings', airport: 'Airport', space: 'Space Center', harbor: 'Harbor', nature: 'Station District' };
+  const LATE_PLACES = { tech: 'Tech Hub', biz: 'Business Center', studio: 'Media Studio', dealer: 'Wheels & Wings', airport: 'Airport', space: 'Space Center', harbor: 'Harbor', nature: 'a new town',
+    ranch: 'Sunny Ranch (Farm Valley)', orchard: 'Apple Orchard (Farm Valley)', mine: 'Crystal Mine (Mountain Town)', office: 'Office Tower (a city)' };
   function canTake(life, id, town) {
     const j = JOBS[id]; if (!j) return { ok: false, why: 'No such job.' };
     if (town && LATE_PLACES[j.place] && !(j.place === 'nature' ? (town.districts || 0) >= 1 : Town.hasPlace(town, j.place))) return { ok: false, why: `🏙️ ${LATE_PLACES[j.place]}`, grow: true };
@@ -92,7 +99,7 @@
   }
   const SHIFTS_PER_DAY = 3;
   // experience pays: +10% for every 3 shifts in the same job, up to +50%
-  const wageOf = (life, id) => Math.round(JOBS[id].wage * (1 + 0.1 * Math.min(5, Math.floor((life.stats.shifts[id] || 0) / 3))));
+  const wageOf = (life, id) => Math.round(JOBS[id].wage * (1 + 0.1 * Math.min(5, Math.floor((life.stats.shifts[id] || 0) / 3))) * (life.badges && life.badges.degree ? 1.1 : 1));
   function startShift(life, id, targets, town) {
     const c = canTake(life, id, town); if (!c.ok) return c;
     const most = rules(life).shifts;
@@ -309,6 +316,31 @@
     return { rev, cost, rent, wages, staff: co.staff, ad, net: rev - cost, online: T.online ? co.lastOnline : null };
   }
 
+  /* ---------------- shares at the Stock Exchange ---------------- */
+  // Buy a piece of a company. Its price goes up and down every day; a bakery pays a little every morning (a dividend).
+  function trade(life, town, what, sym, n, day) {
+    const S = Town.STOCKS[sym]; if (!S) return { ok: false, why: '?' };
+    if (!rules(life).loans) return { ok: false, why: 'The Stock Exchange is for kids who are 9 or older.' };
+    const p = Town.stockPrice(town, sym, day), h = life.shares[sym] = life.shares[sym] || { n: 0, paid: 0 };
+    n = Math.floor(n);
+    if (what === 'buy') {
+      if (!(n > 0) || p * n > life.coins) return { ok: false, why: `${n} share${n === 1 ? '' : 's'} cost ${p * n} coins.` };
+      life.coins -= p * n; life.today.spent += p * n; h.n += n; h.paid += p * n;
+      note(life, 'pocket', -p * n, S.icon, `Bought ${n} share${n === 1 ? '' : 's'} of ${S.name}`, `${n} × ${p} = ${p * n}. Shares go up and down: sell when the price is higher than you paid.`, { buy: true });
+      return { ok: true, price: p };
+    }
+    if (what === 'sell') {
+      n = Math.min(n, h.n); if (!(n > 0)) return { ok: false, why: 'You have no shares to sell.' };
+      const avg = h.paid / h.n, cost = Math.round(avg * n), got = p * n, gain = got - cost;
+      h.n -= n; h.paid -= cost; life.coins += got; life.today.earned += got; life.stats.stockGain = (life.stats.stockGain || 0) + gain;
+      if (gain > 0) life.stats.earned += gain;
+      note(life, 'pocket', got, S.icon, `Sold ${n} share${n === 1 ? '' : 's'} of ${S.name}`, `${n} × ${p} = ${got}. You paid ${cost}, so that is a ${gain >= 0 ? 'gain' : 'loss'} of ${Math.abs(gain)}.`);
+      return { ok: true, price: p, gain };
+    }
+    return { ok: false, why: '?' };
+  }
+  const sharesWorth = (life, town, day) => Object.entries(life.shares || {}).reduce((a, [sym, h]) => a + h.n * Town.stockPrice(town, sym, day), 0);
+
   /* ---------------- a video channel ---------------- */
   // New places make better videos. Subscribers watch every day, and views earn a little ad money.
   function makeVideo(life, place) {
@@ -328,6 +360,11 @@
     flight: ['✈️', 'First flight'], mayor: ['👑', 'Mayor'], goal: ['⚽', 'First goal'],
     pool: ['🏊', 'Morning swim'], sip: ['🚰', 'Sunset sip'], bed: ['🛏️', 'Sweet dreams'], perfect: ['🌟', 'Perfect Day'],
     rainbow: ['🌈', 'A rainbow'], coinrain: ['🪙', 'Coin rain'], wish: ['🌠', 'A wish on a shooting star'],
+    gallery: ['🖼️', 'Art gallery'], concert: ['🎻', 'A concert'], lodge: ['🎿', 'Skiing'], hotsprings: ['♨️', 'Hot springs'], icecream: ['🍦', 'Ice cream at the beach'],
+    lighthouse: ['🗼', 'Top of the lighthouse'], castle: ['🏰', 'Inside the castle'], boathouse: ['🛶', 'Rowing on the lake'], treehouse: ['🛖', 'A treehouse'], observatory: ['🔭', 'The observatory'],
+    milk: ['🥛', 'Milked a cow'], apple: ['🍎', 'Picked an apple'], ore: ['⛏️', 'Dug in the mine'], graduate: ['🎓', 'Graduated'], shares: ['📈', 'First shares'],
+    k_downtown: ['🏙️', 'Downtown'], k_uptown: ['🏛️', 'Uptown'], k_rural: ['🌾', 'Farm Valley'], k_beach: ['🏖️', 'Beach Town'], k_mountain: ['⛰️', 'Mountain Town'],
+    k_college: ['🎓', 'College Town'], k_oldtown: ['🏰', 'Old Town'], k_lake: ['🛶', 'Lake Town'], k_desert: ['🌵', 'Canyon Town'], k_forest: ['🌲', 'Forest Village'],
     museum: ['🦕', 'Dinosaur bones'], zoo: ['🦁', 'Zoo day'], cafe: ['☕', 'Hot cocoa'], arcade: ['🕹️', 'Arcade high score'], hotel: ['🏨', 'Hotel night'],
   };
   function remember(life, id) {
@@ -391,6 +428,8 @@
       else if (R.coLossZero) { co.profit -= r.net; life.stats.coProfit -= r.net; lines.push({ acct: 'pocket', icon: T.icon, label: `${T.name}: a quiet day`, n: 0, how: 'Not many customers today. Kids never lose money on a company.', night: true }); }
       else { losses += -r.net; bill(T.icon, `${T.name}: lost money today`, -r.net, how + (r.online && !r.online.n ? ' Nothing was listed to sell!' : ' Costs were bigger than sales.')); }
     });
+    // shares: the bakery pays a dividend
+    Object.entries(life.shares || {}).forEach(([sym, h]) => { const S = Town.STOCKS[sym]; const d = S && S.dividend ? Math.floor(h.n / 5) * S.dividend : 0; if (d) gain(S.icon, `${S.name} paid a dividend`, d, null, `Companies can share their profit with the people who own shares: 1 coin for every 5 shares (you have ${h.n}).`); });
     // the channel
     const ch = life.channel;
     if (ch.videos) { const views = ch.subs * 4 + ch.videos * 2; ch.views += views; const c = Math.floor(views / 10); ch.earned += c; gain('📹', `Your videos: ${views} views`, c, 'viewCoins', '1 coin for every 10 views.'); }
@@ -725,6 +764,48 @@
       ['Walk on the Moon', (l) => !!l.memories.moon, 'space', '🌙'],
     ] },
   };
+  const kinds = (l) => Object.keys(l.kindsSeen || {}).length;
+  Object.assign(DREAMS, {
+    traveler: { name: 'Traveler', icon: '🗺️', title: 'Traveler', desc: 'Visit every kind of town.', steps: [
+      ['Ride the train', (l) => (L(l).rideTrain || 0) >= 1, 'station', '🚆'],
+      ['Visit 3 kinds of towns', (l) => kinds(l) >= 3, 'kind:next', '🏙️'],
+      ['Sell where it is wanted', (l) => (L(l).localBonus || 0) >= 1, 'mart', '🛒'],
+      ['Visit 6 kinds of towns', (l) => kinds(l) >= 6, 'kind:next', '🗺️'],
+      ['12 memories', (l) => memCount(l) >= 12, 'nature', '📸'],
+      ['Visit all 10 kinds', (l) => kinds(l) >= 10, 'kind:next', '🌍'],
+    ] },
+    rancher: { name: 'Rancher', icon: '🐄', title: 'Rancher', desc: 'Cows, hens and apples in Farm Valley.', steps: [
+      ['Visit Farm Valley', (l) => !!(l.kindsSeen || {}).rural, 'kind:rural', '🌾'],
+      ['Milk a cow', (l) => ((L(l).gathered || {}).milk || 0) >= 1, 'work:cow', '🥛'],
+      ['Rancher shift', (l) => (L(l).shifts.rancher || 0) >= 1, 'ranch', '🐄'],
+      ['Pick 5 apples', (l) => ((L(l).gathered || {}).apple || 0) >= 5, 'work:apple', '🍎'],
+      ['Buy a farm', (l, c) => has(c, 'farm'), 'farmland', '🏡'],
+      ['Earn 200 selling', (l) => L(l).soldCoins >= 200, 'mart', '💰'],
+    ] },
+    mountaineer: { name: 'Mountaineer', icon: '⛰️', title: 'Mountaineer', desc: 'Climb, dig and ski in the mountains.', steps: [
+      ['Visit Mountain Town', (l) => !!(l.kindsSeen || {}).mountain, 'kind:mountain', '⛰️'],
+      ['Top of the hill', (l) => !!l.memories.view, 'spot:view', '🏔️'],
+      ['Dig 3 rocks', (l) => ((L(l).gathered || {}).ore || 0) + ((L(l).gathered || {}).gem || 0) >= 3, 'work:ore', '⛏️'],
+      ['Go skiing', (l) => !!l.memories.lodge, 'lodge', '🎿'],
+      ['Miner shift', (l) => (L(l).shifts.miner || 0) >= 1, 'mine', '⛏️'],
+      ['Hot springs', (l) => !!l.memories.hotsprings, 'hotsprings', '♨️'],
+    ] },
+    investor: { name: 'Investor', icon: '📈', title: 'Investor', desc: 'Make money grow on the Stock Exchange.', steps: [
+      ['Money class', (l) => hasCert(l, 'money'), 'school', '🎓'],
+      ['Visit Downtown', (l) => !!(l.kindsSeen || {}).downtown, 'kind:downtown', '🏙️'],
+      ['Buy shares', (l) => Object.values(l.shares || {}).some(h => h.n > 0), 'exchange', '📈'],
+      ['Own all 3 companies', (l) => Object.values(l.shares || {}).filter(h => h.n > 0).length >= 3, 'exchange', '🏢'],
+      ['Gain 30 from shares', (l) => (L(l).stockGain || 0) >= 30, 'exchange', '💰'],
+      ['Office job', (l) => (L(l).shifts.office || 0) >= 1, 'office', '💼'],
+    ] },
+    graduate: { name: 'Graduate', icon: '🎓', title: 'Graduate', desc: 'Study hard and get a degree.', steps: [
+      ['Take a class', (l) => L(l).classes >= 1, 'school', '📚'],
+      ['3 certificates', (l) => certCount(l) >= 3, 'school', '🎓'],
+      ['Visit College Town', (l) => !!(l.kindsSeen || {}).college, 'kind:college', '🏫'],
+      ['Get a degree', (l) => !!(l.badges || {}).degree, 'university', '🎓'],
+      ['Tutor shift', (l) => (L(l).shifts.tutor || 0) >= 1, 'jobs', '🍎'],
+    ] },
+  });
   // the few shown first; the rest are one tap away. Little kids get six that all work in the old town.
   const FEATURED = ['farmer', 'builder', 'youtuber', 'astronaut', 'ceo', 'explorer'];
   const FEATURED_BY_BAND = { 1: ['farmer', 'builder', 'shopkeeper', 'banker', 'teacher', 'explorer'], 2: FEATURED, 3: FEATURED };
@@ -762,7 +843,7 @@
     const b = clamp(band | 0, 1, 3) || 2;
     return {
       v: 1, coins: RULES[b].start, bank: 0, loan: 0, iou: 0, band: b,
-      bag: { wheat: 0, carrot: 0, tomato: 0, corn: 0, log: 0, fish: 0, shell: 0, gem: 0, berry: 0, photo: 0 }, shelf: {}, online: {},
+      bag: { wheat: 0, carrot: 0, tomato: 0, corn: 0, log: 0, fish: 0, shell: 0, gem: 0, berry: 0, photo: 0, milk: 0, egg: 0, apple: 0, ore: 0 }, shelf: {}, online: {}, shares: {}, kindsSeen: {},
       school: {}, job: null, shift: null, shiftsToday: 0, day: null, today: freshToday(),
       dream: null, dreamStep: 0, dreamLv: 0, dreamMark: 0, rentFree: RULES[b].rentFree, rep: 0, owesSapling: 0, seen: {},
       hat: null, hats: {}, levelClaimed: 1, starter: 0, rit: {}, daily: null, perfectDays: 0, streak: 0, lastPerfect: null, lastPlayed: null, prevPlayed: null, rested: null, wonders: {},
@@ -771,7 +852,7 @@
       stats: { earned: 0, wages: 0, shifts: {}, harvested: 0, farmPicked: 0, sold: 0, soldCoins: 0, chopped: 0, replanted: 0, planted: 0,
         interest: 0, loanInterest: 0, taxPaid: 0, votes: 0, ran: 0, won: 0, classes: 0, deposits: 0, borrowed: 0, stocked: 0, shopSales: 0, built: 0,
         companies: 0, ads: 0, coRevenue: 0, coProfit: 0, onlineSold: 0, onlineCoins: 0, listed: 0, viewCoins: 0, photos: 0, rides: 0, rideBus: 0, rideTrain: 0,
-        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0 },
+        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0, gathered: {}, localBonus: 0, stockGain: 0 },
     };
   }
   // fill in anything missing from older saves
@@ -782,7 +863,8 @@
     out.stats = { ...f.stats, ...(l.stats || {}) }; out.stats.shifts = { ...(l.stats && l.stats.shifts || {}) }; out.stats.found = { ...(l.stats && l.stats.found || {}) };
     out.bag = { ...f.bag, ...(l.bag || {}) }; out.today = { ...f.today, ...(l.today || {}) };
     ['bonus', 'count', 'hello', 'bell'].forEach(k => { if (!out.today[k] || typeof out.today[k] !== 'object') out.today[k] = {}; });
-    ['rit', 'hats', 'wonders', 'land', 'townSeen'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
+    out.stats.gathered = { ...(l.stats && l.stats.gathered || {}) };
+    ['rit', 'hats', 'wonders', 'land', 'townSeen', 'shares', 'kindsSeen'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
     out.iou = Math.max(0, Math.round(+out.iou || 0));
     // old saves: no burst of level gifts, and no starter steps if they already play
     out.levelClaimed = typeof l.levelClaimed === 'number' ? l.levelClaimed : starLevel(out.xp);
@@ -802,7 +884,7 @@
   const Life = { DAY, MIN, SUBJECTS, CERT_AT, JOBS, DESK_JOBS, DREAMS, FEATURED, FEATURED_BY_BAND, SHIFTS_PER_DAY, SAVE_RATE, LOAN_RATE, RENT, ENDLESS,
     RULES, rules, taxOf, grantOf, effRate, rentOf, landTaxOf, upkeepOf, seeded, stepsOf, kidBonus, dreamStar, previewBills, setBand, RITUALS, ritualState, ritualNext, doRitual,
     starLevel, starsFor, addStars, LEVEL_HATS, levelReward, claimLevels, STARTER, checkStarter, DAILY_POOL, DAILY_BY_ID, ensureDaily, dailyAdd, freshToday,
-    VEHICLES, FARES, COMPANIES, MEMORIES, TRIPS, LATE_PLACES, note, company, companyDay, staffMax, upgradeCost, onlineCap, closeValue, sellVehicle, interestTomorrow, taxOn, makeVideo, remember, memCount,
+    VEHICLES, FARES, COMPANIES, MEMORIES, TRIPS, LATE_PLACES, WORK_JOB, trade, sharesWorth, note, company, companyDay, staffMax, upgradeCost, onlineCap, closeValue, sellVehicle, interestTomorrow, taxOn, makeVideo, remember, memCount,
     dayOf, dayFrac, hourOf, clock, hasCert, certCount, canTake, wageOf, startShift, workDone, quitShift, bank, loanLimit,
     earn, spend, addItem, takeItem, bagCount, ownedPlots, ownsHouse, shopPlot, newDay, dreamGoal, checkDream, title, fresh, repair };
   if (typeof module !== 'undefined' && module.exports) module.exports = Life; else root.Life = Life;

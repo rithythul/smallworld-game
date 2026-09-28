@@ -185,7 +185,8 @@ function cleanAction(a) {
   if (Number.isInteger(a.i) && a.i >= 0 && a.i < 10) out.i = a.i;
   ['k', 'g', 'kind', 'tree', 'project'].forEach(k => { if (typeof a[k] === 'string' && /^[a-z0-9]{1,16}$/.test(a[k])) out[k] = a[k]; });
   if (typeof a.cand === 'string' && UIDRE.test(a.cand)) out.cand = a.cand;
-  ['n', 'rep', 'rate'].forEach(k => { if (typeof a[k] === 'number' && isFinite(a[k])) out[k] = Math.round(a[k]); });
+  ['n', 'rep', 'rate', 'at'].forEach(k => { if (typeof a[k] === 'number' && isFinite(a[k])) out[k] = Math.round(a[k]); });
+  if (typeof a.spot === 'string' && /^w\d{1,3}\.\d{1,2}$/.test(a.spot)) out.spot = a.spot;
   if (a.bonus) out.bonus = true;
   return out;
 }

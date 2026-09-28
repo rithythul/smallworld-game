@@ -36,6 +36,25 @@ The age picked for a new life sets its rules. After that, only a grown-up change
 
 Coins only go down with a reason you can see: a receipt appears by your coins, and tapping the coins shows the whole money history. For the youngest, coins only go down when they tap Buy.
 
+### A region of towns that never ends
+
+Small Town is only the first town. As everyone works, pays taxes and builds, a new town opens to the east, reached by road and train, forever. Each town has its own kind, look, places, jobs and wants:
+
+| Town | What's there |
+|---|---|
+| 🏙️ Downtown | office towers, the 📈 Stock Exchange (shares that go up and down, a bakery that pays dividends), office jobs |
+| 🏛️ Uptown | mansions and gardens, an art gallery, a concert hall; land costs the most |
+| 🌾 Farm Valley | a ranch (milk cows, collect eggs), an apple orchard, cheap farmland, rancher and picker jobs |
+| 🏖️ Beach Town | sand and sea, an ice cream stand, a lighthouse, the harbor and airport |
+| ⛰️ Mountain Town | snowy peaks you can climb, a crystal mine (miner job), a ski lodge, hot springs, the space center |
+| 🎓 College Town | the University (pass the exam for a degree: +10% on every wage), the stadium |
+| 🏰 Old Town | a castle and old streets |
+| 🛶 Lake Town | cabins and rowing boats |
+| 🌵 Canyon Town | red rocks, cactus, a mine and an observatory |
+| 🌲 Forest Village | tall pines, a sawmill and treehouses |
+
+Every town has a 🛒 local market that pays more for what that town wants (Downtown pays ×1.5 for milk; the mountains pay more for fish), so it pays to carry things where they are wanted. Every town also has a 🌱 Small World Garden with the Small World mark in the middle. New dreams: Traveler, Rancher, Mountaineer, Investor and Graduate.
+
 ### Small Town Days (from Noodle Universe)
 
 - **🌅 Morning swim** in the Sunrise Pool by the Apartments, **🌇 a sunset sip** at the water tap, **🛏️ bedtime** at home. Each gives ⭐ and a few coins in its time window; the pool and tap work all day. All three make a Healthy Day. At bedtime you dream: catch stars and count them while the night passes. Older kids who slept work 10% better the next day, and teens see tomorrow's budget before bed.

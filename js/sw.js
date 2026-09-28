@@ -19,6 +19,17 @@
     dealer: 'Bikes, cars, planes!', airport: 'Fly away on a trip ✈️', harbor: 'Boat to the island ⛵', space: 'Train for space 🚀',
     stadium: 'Score goals on the field ⚽', museum: 'Dinosaurs inside! 🦕', zoo: 'Come see the animals', cafe: 'Hot cocoa? ☕',
     arcade: 'Beat the high score 🕹️', hotel: 'Stay the night 🏨',
+    exchange: 'Buy shares. Prices move every day 📈', office: 'Busy busy! Want an office job?', gallery: 'Come see the paintings 🖼️', concert: 'Tonight: the town orchestra 🎻',
+    ranch: 'Milk the cows, collect the eggs 🐄', orchard: 'Pick apples! 🍎', mine: 'Dig for ore and crystals ⛏️', lodge: 'Snow is perfect today 🎿',
+    hotsprings: 'Warm water, happy muscles ♨️', icecream: 'Two scoops? 🍦', lighthouse: 'Climb up and look out 🗼', university: 'Study hard, earn a degree 🎓',
+    castle: 'This castle is 500 years old 🏰', boathouse: 'Row across the lake 🛶', sawmill: 'Logs pay well here 🪵', treehouse: 'Up the ladder! 🛖',
+    observatory: 'See the stars any time 🔭', mart: 'This town pays more for what it wants.',
+  };
+  // fun places: what they cost and what they give
+  const FUN = {
+    cafe: { cost: 3, why: 'Hot cocoa at the Cafe' }, arcade: { cost: 2, why: 'Arcade game' }, hotel: { cost: 10, why: 'A night at the Hotel' },
+    museum: {}, zoo: {}, gallery: {}, lighthouse: {}, castle: { fact: true }, treehouse: {}, observatory: {}, hotsprings: {},
+    concert: { cost: 4, why: 'A concert ticket' }, lodge: { cost: 5, why: 'A ski pass' }, icecream: { cost: 2, why: 'Ice cream' }, boathouse: { cost: 3, why: 'A rowing boat for an hour' },
   };
 
   /* ---------------- saved state ---------------- */
@@ -95,6 +106,7 @@
     if (JSON.stringify(solo) !== before) { onTown(solo); touch(); }
   }, 10000);
 
+  const here = () => World.trip ? 0 : Town.districtAt(town, World.pos().x);
   const townKey = () => online() ? 'room:' + Net.code : 'solo';
   // land you bought in a friends' town is written down, so if the server ever resets that town you get your coins back
   function landBook(id, info, key = townKey()) {
@@ -349,7 +361,13 @@
     const hall = () => { const k = keeper('hall'); return k && { x: k.x, y: k.y, h: 13, grow: true }; };
     const K = (type) => { const k = nearest(World.keepers.filter(q => q.type === type), p); return k ? { x: k.x, y: k.y, h: 13 } : null; };
     if (['jobs', 'bank', 'market', 'school', 'hall', 'rent'].includes(at)) return K(at);
-    if (['tech', 'biz', 'studio', 'dealer', 'airport', 'harbor', 'space', 'station'].includes(at)) return K(at) || hall();
+    if (['tech', 'biz', 'studio', 'dealer', 'airport', 'harbor', 'space', 'station', 'exchange', 'office', 'ranch', 'orchard', 'mine', 'lodge', 'hotsprings', 'university', 'mart', 'gallery'].includes(at)) return K(at) || hall();
+    if (at.startsWith('work:')) { const type = at.split(':')[1], ready = Town.workOf(town).filter(w => w.type === type && t - (town.work[w.id] || 0) >= Town.WORK_REGROW), all = Town.workOf(town).filter(w => w.type === type); const w = nearest(ready.length ? ready : all, p); return w ? { x: w.x, y: w.y, h: 7 } : hall(); }
+    if (at.startsWith('kind:')) {   // a town of a kind (or the next kind you have not seen)
+      const want = at.split(':')[1], ds = Town.districtsOf(town).filter(d => want === 'next' ? !life.kindsSeen[d.kind] : d.kind === want);
+      const d = nearest(ds.map(q => ({ x: q.gate.x + 200, y: q.gate.y - 60, d: q })), p);
+      return d ? { x: d.x, y: d.y, h: 12 } : hall();
+    }
     if (at === 'tree' || at === 'stump') { const tr = nearest(Town.FOREST.filter(x => Town.treeState(town, x.id, t) === at), p) || (at === 'stump' && nearest(Town.FOREST.filter(x => Town.treeState(town, x.id, t) === 'tree'), p)); return tr ? { x: tr.x, y: tr.y, h: at === 'tree' ? 12 : 5 } : null; }
     if (at === 'market' && !Town.SELLABLE.some(g => life.bag[g])) return placeFor('townfarm');   // nothing to sell yet: go and pick something first
     if (at === 'farmland' || at === 'lot') { const f = nearest(Town.allPlots(town).filter(pl => pl.kind === (at === 'lot' ? 'lot' : 'farm') && !(town.plots[pl.id] && town.plots[pl.id].owner)).map(pl => ({ ...plotCenter(pl), id: pl.id })), p); return f ? { ...f, h: 8 } : null; }
@@ -429,6 +447,12 @@
       const d = dist(p, s); if (d > 48) return;
       if (t - (town.farm[i] || 0) >= Town.FARM_REGROW) add({ key: 'farm:' + i, label: 'Pick', icon: G[Town.CROPS[i % 4]].icon, cls: 'work', run: () => farmwork(i) }, d, job === 'farmhand' ? 20 : 0);
     });
+    // milking, eggs, apples and ore in the new towns
+    if (!World.trip) Town.workOf(town).forEach(w => {
+      const d = dist(p, w); if (d > 60) return;
+      const ready = t - (town.work[w.id] || 0) >= Town.WORK_REGROW, S = GATHER[w.type];
+      add(ready ? { key: 'gather:' + w.id, label: S.label, icon: S.icon, cls: 'work', run: () => gather(w) } : { key: 'wait:' + w.id, label: '⏳', icon: S.icon, cls: 'look idle', run: () => toast(`${S.icon} ⏳`) }, d, Life.WORK_JOB[w.type] === job ? 20 : 0);
+    });
     // nature
     spotsNow().forEach(s => { const d = dist(p, s); if (d < 60) add(spotAction(s), d, job === 'ranger' ? 20 : 0); });
     cands.sort((a, b) => a.d - b.d);
@@ -478,6 +502,7 @@
       if (job === 'builder') sh.targets.forEach(id => { const pl = Town.plotById(id); if (pl) list.push({ ...plotCenter(pl), h: 9 }); });
       if (Life.DESK_JOBS[job]) { const k = nearest(World.keepers.filter(q => q.type === Life.JOBS[job].place), World.pos()); if (k) list.push({ x: k.x, y: k.y, h: 13 }); }
       if (job === 'farmhand') Town.FARM_SPOTS.forEach((s, i) => { if (t - (town.farm[i] || 0) >= Town.FARM_REGROW) list.push({ ...s, h: 7 }); });
+      if (['rancher', 'picker', 'miner'].includes(job)) Town.workOf(town).filter(w => Life.WORK_JOB[w.type] === job && t - (town.work[w.id] || 0) >= Town.WORK_REGROW).forEach(w => list.push({ x: w.x, y: w.y, h: 7 }));
       if (job === 'ranger') { const done = sh.targets || [], night = Life.hourOf(t) >= 19.5; spotsNow().filter(s => !done.includes(s.id) && !(life.spotAt[s.id] && t - life.spotAt[s.id] < 90000) && (s.type !== 'stars' || night) && s.type !== 'home').slice(0, 4).forEach(s => list.push({ x: s.x, y: s.y, h: 8 })); }
       if (job === 'lumberjack') {
         const want = life.owesSapling || Town.forestLeft(town) <= 10 ? 'stump' : 'tree';
@@ -529,8 +554,10 @@
   function openPlace(type, id) {
     Sound.pop(); World.npcMood(id, 'love', 1.5);
     if (!life.today.hello[id]) { life.today.hello[id] = 1; daily('hello'); }
-    const fn = ({ bank: bankSheet, market: marketSheet, school: schoolSheet, jobs: jobsSheet, hall: hallSheet, rent: rentSheet, station: stationSheet,
-      tech: techSheet, biz: bizSheet, studio: studioSheet, dealer: dealerSheet, airport: airportSheet, harbor: harborSheet, space: spaceSheet, stadium: stadiumSheet })[type];
+    const fn = ({ bank: bankSheet, market: () => marketSheet('', 0), school: schoolSheet, jobs: jobsSheet, hall: hallSheet, rent: rentSheet, station: stationSheet,
+      tech: techSheet, biz: bizSheet, studio: studioSheet, dealer: dealerSheet, airport: airportSheet, harbor: harborSheet, space: spaceSheet, stadium: stadiumSheet,
+      exchange: exchangeSheet, office: jobsSheet, university: universitySheet, ranch: () => workPlaceSheet('ranch'), orchard: () => workPlaceSheet('orchard'), mine: () => workPlaceSheet('mine'),
+      mart: () => marketSheet('', here()), sawmill: () => marketSheet('', here()) })[type];
     if (fn) fn(); else funSheet(type);
   }
   const placeInfo = (type) => (places().find(p => (p.type || p.id) === type) || Town.PLACES[type] || {});
@@ -573,10 +600,11 @@
   function afterSell(g, n, res, shown) {
     const each = res.each || [], sold = each.length || n, dropped = sold > 1 && each[each.length - 1] < each[0];
     if (sold < n) Life.addItem(life, g, n - sold);   // the market buys up to 50 at a time
-    const lower = shown != null && res.coins < shown && !R().fairPrice;
+    const lower = shown != null && res.coins < shown - 1 && !R().fairPrice;
     const why = !lower ? '' : online() ? `Someone in this town sold ${G[g].name.toLowerCase()} a moment before you, so the price was lower (${shown} shown, ${res.coins} paid).` : `Prices slowly go back to normal, and it moved a little since the market opened (${shown} shown, ${res.coins} paid).`;
     const sum = each.length > 8 ? `${each.slice(0, 3).join(' + ')} + … + ${each.slice(-2).join(' + ')}` : each.join(' + ');
-    const how = [sold > 1 ? `${sum} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', why, sold < n ? `The market buys up to ${Town.SELL_MAX} at a time. You still have ${n - sold}.` : ''].filter(Boolean).join(' ');
+    if (res.mult > 1) life.stats.localBonus = (life.stats.localBonus || 0) + 1;
+    const how = [res.mult > 1 ? `This town wants ${G[g].name.toLowerCase()}, so it pays ×${res.mult}.` : '', sold > 1 ? `${sum} = ${res.coins}.` : '', dropped ? 'Each one you sold made the next one a bit cheaper (more supply → lower price).' : '', why, sold < n ? `The market buys up to ${Town.SELL_MAX} at a time. You still have ${n - sold}.` : ''].filter(Boolean).join(' ');
     Life.earn(life, res.coins, 'soldCoins', G[g].icon, `Sold ${sold} ${G[g].name.toLowerCase()} at the market`, how); life.stats.sold += sold;
     // little kids get at least the usual price: the gap is a separate bonus (shared prices stay real), up to a daily limit
     if (R().fairPrice) {
@@ -587,17 +615,19 @@
     Sound.cash(); World.burst(World.pos().x, World.pos().y, 'coins', 10, 6); touch(); hud(); checkDream(); fact('supply'); if (G[g].seed) fact('profit');
     return how;
   }
-  function marketSheet(msg = '') {
-    marketMsg = msg;
-    sheet('🧺 Market', (body) => {
-      body.insertAdjacentHTML('beforeend', head('market', 'When lots of people sell something, its price goes down ▼. Prices slowly come back up when nobody sells.') + money());
+  let marketAt = 0;
+  function marketSheet(msg = '', at = marketAt) {
+    marketMsg = msg; marketAt = at || 0;
+    const D = at ? Town.district(at) : null, mult = (g) => Town.localMult(at, g), wanted = Town.SELLABLE.filter(g => mult(g) > 1);
+    sheet(D ? `🛒 ${D.name} Market` : '🧺 Market', (body) => {
+      body.insertAdjacentHTML('beforeend', head(D ? 'mart' : 'market', D ? `${D.icon} ${D.kindName} wants: ${wanted.map(g => `${G[g].icon} ×${mult(g)}`).join(' ') || '·'}. Sell things where people want them!` : 'When lots of people sell something, its price goes down ▼. Prices slowly come back up when nobody sells.') + money());
       if (msg) note(body, msg);
       // shown = what the tile promised, so we can explain if the town pays less
       const sell = async (g, n, shown) => {
         if ((life.bag[g] || 0) < n || !n || selling) return;
         selling = true;
         Life.takeItem(life, g, n);   // held for the sale; back in the bag if the market says no
-        const res = await act({ type: 'sell', g, n });
+        const res = await act({ type: 'sell', g, n, at: marketAt || undefined });
         selling = false;
         if (!res.ok) { if (!res.slow) Life.addItem(life, g, n); return marketSheet(`⚠️ ${esc(res.msg)}`); }
         const how = afterSell(g, n, res, shown);
@@ -606,16 +636,16 @@
       const have = Town.SELLABLE.filter(g => life.bag[g]);
       if (life.band === 1) {   // little kids: only what you have, and one big button that sells it all
         if (!have.length) { body.append(tiles(tile('🧺', '→ 🌾', '', () => { const w = placeFor('townfarm'); guide = w && { ...w, icon: '🧺' }; closeSheet(); }, { cls: 'big' }))); return; }
-        const fair = (g) => { const real = Town.sellPreview(town, g, life.bag[g]).reduce((a, b) => a + b, 0), gap = Math.max(0, Town.usual(g) * Math.min(Town.SELL_MAX, life.bag[g]) - real); return real + Math.min(gap, Math.max(0, R().caps.fair - (life.today.bonus.fair || 0))); };
+        const fair = (g) => { const real = Town.sellPreview(town, g, life.bag[g]).reduce((a, b) => a + Math.round(b * mult(g)), 0), gap = Math.max(0, Town.usual(g) * Math.min(Town.SELL_MAX, life.bag[g]) - real); return real + Math.min(gap, Math.max(0, R().caps.fair - (life.today.bonus.fair || 0))); };
         body.append(tiles(have.map(g => tile(G[g].icon, `×${life.bag[g]}`, `${fair(g)}🪙`, () => sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g))))));
         const total = have.reduce((a, g) => a + fair(g), 0);
         body.append(button(`✓ ${coin(total)}`, async () => { for (const g of have) if (life.bag[g]) await sell(g, Math.min(Town.SELL_MAX, life.bag[g]), fair(g)); }, 'big-btn small'));
         return;
       }
       body.append(tiles(Town.SELLABLE.map(g => {
-        const n = life.bag[g] || 0, tr = Town.trend(town, g), p = Town.price(town, g);
-        const all = n > 1 ? Town.sellPreview(town, g, n).reduce((a, b) => a + b, 0) : 0;
-        const t = tile(G[g].icon, `${p}🪙 <i class="${tr}">${tr === 'up' ? '▲' : tr === 'down' ? '▼' : ''}</i>`, `${n ? `×${n}` : ''}${tr !== 'same' ? ` <span class="usual">usually ${Town.usual(g)}</span>` : ''}`, () => sell(g, 1, p), { disabled: !n, badge: n > 1 ? `${n > Town.SELL_MAX ? Town.SELL_MAX : 'all'} → ${all}🪙` : '' });
+        const n = life.bag[g] || 0, tr = Town.trend(town, g), m = mult(g), p = Math.round(Town.price(town, g) * m);
+        const all = n > 1 ? Town.sellPreview(town, g, n).reduce((a, b) => a + Math.round(b * m), 0) : 0;
+        const t = tile(G[g].icon, `${p}🪙 <i class="${tr}">${tr === 'up' ? '▲' : tr === 'down' ? '▼' : ''}</i>`, `${n ? `×${n}` : ''}${m > 1 ? ` <span class="usual wanted">wanted ×${m}</span>` : tr !== 'same' ? ` <span class="usual">usually ${Town.usual(g)}</span>` : ''}`, () => sell(g, 1, p), { disabled: !n, badge: n > 1 ? `${n > Town.SELL_MAX ? Town.SELL_MAX : 'all'} → ${all}🪙` : '', cls: m > 1 ? 'wanted' : '' });
         const b = t.querySelector('.tile-badge'); if (b) b.addEventListener('click', (e) => { e.stopPropagation(); sell(g, Math.min(Town.SELL_MAX, life.bag[g]), all); });
         return t;
       })));
@@ -629,6 +659,7 @@
         if (!Life.spend(life, res.cost, '🪵', `Bought ${n} log${n > 1 ? 's' : ''} at the sawmill`, `${(res.each || []).join(' + ')} = ${res.cost}. The sawmill sells for a bit more than it buys (that is its profit). Each log bought makes the next one a little pricier.`)) return marketSheet(needCoins(res.cost));
         Life.addItem(life, 'log', n); Sound.cash(); touch(); hud(); marketSheet(`✓ 🪵×${n}: ${(res.each || []).join(' + ')} = −${coin(res.cost)}`);
       };
+      if (at) return;   // logs are sold at the sawmill in Small Town
       body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🪚 Buy logs</h4>');
       body.append(tiles(tile('🪵', `${cost(1)[0]}🪙`, '×1', () => buyLogs(1)), tile('🪵', `${cost(5).reduce((a, b) => a + b, 0)}🪙`, '×5', () => buyLogs(5))));
     });
@@ -858,16 +889,18 @@
     });
   }
   function funSheet(type) {
-    const P = placeInfo(type), cost = { cafe: 3, arcade: 2, hotel: 10 }[type] || 0;
+    const P = placeInfo(type), F = FUN[type] || {}, cost = F.cost || 0;
     sheet(`${P.icon || ''} ${P.name || ''}`, (body) => {
       body.insertAdjacentHTML('beforeend', head(type, HELLO[type] || '👋'));
       if (cost && life.coins < cost) note(body, needCoins(cost));
       body.append(tiles(tile(P.icon, cost ? coin(cost) : 'Visit', type === 'arcade' ? 'right answer → win 5🪙' : '', () => {
         if (cost && life.coins < cost) return;
-        if (cost) Life.spend(life, cost, P.icon, ({ cafe: 'Hot cocoa at the Cafe', arcade: 'Arcade game', hotel: 'A night at the Hotel' })[type] || P.name, 'Fun costs a little. You get a nice memory!');
+        if (cost) Life.spend(life, cost, P.icon, F.why || P.name, 'Fun costs a little. You get a nice memory!');
         if (!life.today.count['visit:' + type]) { life.today.count['visit:' + type] = 1; life.xp += 1; }
         memory(type); World.mood('love', 2); Sound.chord(4, 'kalimba');
-        if (type === 'museum') { const f = (typeof FACTS !== 'undefined') ? FACTS[Math.floor(Math.random() * FACTS.length)] : null; if (f) toast(`<span class="t-small">🦕 ${esc(f.title)}</span>${esc(f.text)}`, { life: 7 }); }
+        if (type === 'concert') [0, 2, 4, 7, 9, 7, 4, 2].forEach((n, i) => setTimeout(() => Sound.note(n + 3, 'kalimba'), 300 + i * 220));
+        if (type === 'observatory') memory('stars');
+        if (type === 'museum' || F.fact) { const f = (typeof FACTS !== 'undefined') ? FACTS[Math.floor(Math.random() * FACTS.length)] : null; if (f) toast(`<span class="t-small">🦕 ${esc(f.title)}</span>${esc(f.text)}`, { life: 7 }); }
         if (type === 'arcade') { closeSheet(); const kid = life.band === 1; quiz('🕹️', [kid ? makePictureMath(Math.random) : makeMathQuestion(Math.random, life.band * 2)], (s) => {
           if (s === null) return;
           const why = `Arcade prizes are at most ${R().caps.arcade} coins a day.`;
@@ -878,6 +911,45 @@
         }); return; }
         if (cost) toast(`${P.icon} ❤️ −${coin(cost)}`);
         touch(); hud(); closeSheet();
+      })));
+    });
+  }
+
+  /* ---------------- the Stock Exchange ---------------- */
+  function exchangeSheet(msg = '') {
+    const day = Life.dayOf(now());
+    sheet('📈 Stock Exchange', (body) => {
+      body.insertAdjacentHTML('beforeend', head('exchange', 'A share is a tiny piece of a company. Buy low, sell high. Prices change every morning, and nobody knows for sure where they go.') + money());
+      if (msg) note(body, msg);
+      if (!R().loans) { note(body, '📈 🔒 9+'); return; }
+      Object.entries(Town.STOCKS).forEach(([sym, S]) => {
+        const p = Town.stockPrice(town, sym, day), y = Town.stockPrice(town, sym, day - 1), h = life.shares[sym] || { n: 0, paid: 0 }, ch = p - y;
+        const hist = Array.from({ length: 7 }, (_, i) => Town.stockPrice(town, sym, day - 6 + i)), lo = Math.min(...hist), hi = Math.max(...hist);
+        const spark = hist.map((v, i) => `${i * 14},${24 - Math.round((v - lo) / Math.max(1, hi - lo) * 22)}`).join(' ');
+        const c = card(`<h3>${S.icon} ${S.name} <b>${coin(p)}</b> <small class="${ch >= 0 ? 'pos' : 'neg'}">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch)}</small></h3>
+          <svg class="spark" viewBox="0 0 84 26" aria-hidden="true"><polyline points="${spark}" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <p class="small">${esc(S.blurb)}${h.n ? `<br>You own ${h.n} · worth ${coin(h.n * p)} · you paid ${coin(Math.round(h.paid))} → <b class="${h.n * p >= h.paid ? 'pos' : 'neg'}">${h.n * p >= h.paid ? '+' : '−'}${Math.abs(Math.round(h.n * p - h.paid))}</b>` : ''}</p>`);
+        const doIt = (what, n) => { const r = Life.trade(life, town, what, sym, n, day); if (!r.ok) return exchangeSheet(`⚠️ ${esc(r.why)}`); Sound.cash(); if (what === 'buy') memory('shares'); touch(); hud(); checkDream(); exchangeSheet(what === 'buy' ? `✓ ${S.icon} +${n}` : `✓ ${r.gain >= 0 ? '📈 +' : '📉 −'}${coin(Math.abs(r.gain))}`); };
+        c.append(row(button(`+1 · ${coin(p)}`, () => doIt('buy', 1), 'choice', life.coins < p), button(`+5 · ${coin(p * 5)}`, () => doIt('buy', 5), 'choice', life.coins < p * 5),
+          button('Sell 1', () => doIt('sell', 1), 'choice alt', !h.n), button('Sell all', () => doIt('sell', h.n), 'choice alt', !h.n)));
+        body.append(c);
+      });
+    });
+  }
+  // the University: pass a hard exam, get a degree (+10% on every wage)
+  function universitySheet(msg = '') {
+    sheet('🎓 University', (body) => {
+      body.insertAdjacentHTML('beforeend', head('university', 'Pass the big exam to earn a degree: every wage goes up 10%.'));
+      if (msg) note(body, msg);
+      if (life.badges.degree) { note(body, '🎓 ✓ +10%'); return; }
+      if (Life.certCount(life) < 2) { note(body, `🎓🎓 first (School) · ${Life.certCount(life)}/2`); return; }
+      body.append(tiles(tile('📝', 'Exam', '4 questions · 3 right', () => {
+        const S = ['money', 'math', 'science', 'civics'], qs = S.map(s => classQuestions(s, Math.min(3, life.band + 1), 1)[0]).filter(Boolean);
+        quiz('🎓 Exam', qs, (score) => {
+          if (score === null) return;
+          if (score >= 3 || (R().quiz.retry)) { life.badges.degree = 1; Life.addStars(life, 5); memory('graduate'); Sound.chord(8, 'bell'); World.celebrate(12); touch(); checkDream(); universitySheet('🎓 🎉 +10%'); }
+          else universitySheet(`${score}/4 · 🔁`);
+        }, { retry: R().quiz.retry });
       })));
     });
   }
@@ -1094,6 +1166,30 @@
     else toast(`🧺 ❤️ Your share is used up for today.${shifts ? ' A Farmhand job 💼 pays for picking.' : ' Come back tomorrow.'}`, { life: 5 });
     if (!keep && shifts && life.band > 1) { const k = keeper('jobs'); if (k) guide = { x: k.x, y: k.y, h: 13, icon: '💼' }; }
     touch(); hud(); checkDream();
+  }
+
+  const GATHER = { cow: { icon: '🐄', label: 'Milk' }, hen: { icon: '🐔', label: 'Eggs' }, apple: { icon: '🍎', label: 'Pick' }, ore: { icon: '⛏️', label: 'Dig' } };
+  async function gather(w) {
+    const res = await act({ type: 'gather', spot: w.id });
+    if (!res.ok) return toast(`⚠️ ${esc(res.msg)}`);
+    gatherDone(w, res);
+  }
+  function gatherDone(w, res) {
+    const g = res.item; Life.addItem(life, g); life.stats.gathered[g] = (life.stats.gathered[g] || 0) + 1;
+    World.floatText(w.x, w.y, `+1 ${G[g].icon}`); World.burst(w.x, w.y, w.type === 'ore' ? 'dust' : 'leaves', 10, 2);
+    w.type === 'ore' ? [0, 200].forEach(ms => setTimeout(() => Sound.hammer(), ms)) : Sound.pop();
+    memory({ cow: 'milk', hen: 'milk', apple: 'apple', ore: 'ore' }[w.type]); if (g === 'gem') memory('gem');
+    if (life.shift && Life.WORK_JOB[w.type] === life.shift.job) workStep();
+    touch(); hud(); checkDream();
+  }
+  // the ranch, the orchard and the mine: a job, and what is ready now
+  function workPlaceSheet(type) {
+    const P = placeInfo(type), job = Object.entries(Life.JOBS).find(([, j]) => j.place === type), t = now();
+    const list = Town.workOf(town).filter(w => w.place === type && Math.abs(w.x - World.pos().x) < 1200);
+    sheet(`${P.icon} ${P.name}`, (body) => {
+      body.insertAdjacentHTML('beforeend', head(type, HELLO[type]) + `<p class="sheet-sub">${list.map(w => (t - (town.work[w.id] || 0) >= Town.WORK_REGROW ? GATHER[w.type].icon : '⏳')).join(' ')} → ${[...new Set(list.map(w => G[Town.WORK_ITEM[w.type]].icon))].join(' ')} → 🛒</p>`);
+      if (job) { const [id, j] = job, can = Life.canTake(life, id, town), w = Life.wageOf(life, id); body.append(tiles(tile(j.icon, life.band === 1 ? coin(w) : j.name, life.band === 1 ? '' : `${coin(w)} · ${esc(j.how)}`, () => startShift(id), { disabled: !can.ok || !!life.shift, on: life.shift && life.shift.job === id }))); }
+    });
   }
 
   /* ---------------- nature spots: fish, photos, views, campfires ---------------- */
@@ -1592,8 +1688,10 @@
     x.strokeStyle = '#e9d9b0'; x.lineCap = 'round'; x.lineWidth = Math.max(3, 80 * k);
     const roads = Town.ROADS.concat(...Town.districtsOf(town).map(d => d.roads));
     roads.forEach(([ax, ay, bx, by]) => { x.beginPath(); x.moveTo(X(Math.max(ax, B.x0)), Y(ay)); x.lineTo(X(bx), Y(by)); x.stroke(); });
+    const TINT = { downtown: '#cfcac0', uptown: '#c9e6a8', rural: '#d7e79a', beach: '#f1e2b3', mountain: '#b7cf9a', college: '#c8dfa5', oldtown: '#d5ccbc', lake: '#b7deb8', desert: '#e8c79a', forest: '#93bf73' };
+    Town.districtsOf(town).forEach(d => { x.fillStyle = TINT[d.kind] || '#b4dc7a'; x.fillRect(X(d.x0), Y(B.y0), 2000 * k, (B.y1 - B.y0) * k); const G2 = d.garden; x.fillStyle = '#8cc45e'; x.fillRect(X(G2.x - G2.w / 2), Y(G2.y - G2.h / 2), G2.w * k, G2.h * k); });
     Town.districtsOf(town).forEach(d => {
-      const n = d.nat; x.fillStyle = { lake: '#7fd0ea', beach: '#f4e3b5', hills: '#a8d46c', stars: '#9ccb78', grove: '#8cc45e', meadow: '#c3e58f' }[d.nature];
+      const n = d.nat; x.fillStyle = { lake: '#7fd0ea', beach: '#f4e3b5', hills: '#a8d46c', stars: '#9ccb78', grove: '#8cc45e', meadow: '#c3e58f', canyon: '#d98b5f' }[d.nature];
       x.beginPath(); x.ellipse(X(n.x), Y(n.y), 300 * k, 260 * k, 0, 0, 7); x.fill();
     });
     x.fillStyle = '#efe3c4'; x.beginPath(); x.arc(X(Town.PLAZA.x), Y(Town.PLAZA.y), Town.PLAZA.r * k, 0, 7); x.fill();
@@ -1611,6 +1709,7 @@
       x.fillRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k); x.strokeRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k);
       x.font = `${Math.max(10, 70 * k)}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(b.icon, X(b.x), Y(b.y - 110));
     });
+    if (big) Town.districtsOf(town).forEach(d => { x.font = `bold ${Math.max(11, 90 * k)}px sans-serif`; x.textAlign = 'center'; x.fillStyle = '#34233f'; x.fillText(`${d.icon} ${d.name}`, X(d.x0 + 1000), Y(B.y0 + 330)); });
     x.textBaseline = 'alphabetic';
     mapMarks.forEach(m => { x.fillStyle = '#ffd23f'; x.strokeStyle = '#34233f'; x.lineWidth = 1.5; x.beginPath(); const px = X(m.x), py = Y(m.y), r = Math.max(4, 40 * k); x.moveTo(px, py - r); x.lineTo(px + r * 0.7, py); x.lineTo(px, py + r); x.lineTo(px - r * 0.7, py); x.closePath(); x.fill(); x.stroke(); });
     Net.others.forEach(o => { if (o.x == null || o.x > 20000) return; x.fillStyle = o.color; x.strokeStyle = '#fff8e8'; x.lineWidth = 2; x.beginPath(); x.arc(X(o.tx ?? o.x), Y(o.ty ?? o.y), Math.max(3.5, 40 * k), 0, 7); x.fill(); x.stroke(); });
@@ -1624,7 +1723,7 @@
       const wrap = document.createElement('div'); wrap.className = 'map-wrap'; wrap.append(c); body.append(wrap);
       drawMap(c, true);
       body.append(tiles(places().map(b => tile(b.icon, '', '', () => { const k = keeper(b.id); if (k) guide = { x: k.x, y: k.y, h: 13, icon: b.icon }; closeSheet(); })),
-        Town.districtsOf(town).map(d => tile({ lake: '🏞️', hills: '⛰️', beach: '🏖️', stars: '🔭', grove: '🍄', meadow: '🦋' }[d.nature], '', '', () => { guide = { ...d.nat, h: 8, icon: '🌲' }; closeSheet(); })),
+        Town.districtsOf(town).map(d => tile(d.icon, '', life.band === 1 ? '' : esc(d.name), () => { guide = { x: d.gate.x + 200, y: d.gate.y - 60, h: 12, icon: d.icon }; closeSheet(); })),
         tile('🌲', '', '', () => { guide = { x: 4130, y: 480, h: 12, icon: '🌲' }; closeSheet(); }), tile('🌾', '', '', () => { guide = { x: 5520, y: 470, h: 10, icon: '🌾' }; closeSheet(); })));
     });
   }
@@ -1728,6 +1827,7 @@
     if (a.type === 'farmwork') farmDone(a.i);
     if (a.type === 'replant') { const tr = Town.FOREST.find(x => x.id === a.tree); if (tr) replantDone(tr); }
     if (a.type === 'water') daily('water');
+    if (a.type === 'gather' && res.item) { const w = Town.workById(a.spot); if (w) gatherDone(w, res); }
     touch(); hud();
   });
   // the connection dropped while waiting: things held for a sale go back in the bag
@@ -1775,6 +1875,20 @@
     return h < 9 ? 'morning' : h < 17.5 ? 'day' : h < 20 ? 'evening' : 'night';
   }
 
+  // crossing into another town: its name, what it is, and a memory the first time you see its kind
+  let inTown = null;
+  function townTick() {
+    if (World.trip || !town) return;
+    const k = Town.districtAt(town, World.pos().x);
+    if (k === inTown) return;
+    const first = inTown === null; inTown = k;
+    if (first) return;
+    if (!k) { toast('<span class="t-small">🏡 Welcome back</span>Small Town', { big: true, life: 3 }); return; }
+    const D = Town.district(k);
+    toast(`<span class="t-small">${D.icon} ${esc(D.kindName)}</span>${esc(D.name)}${life.band === 1 ? '' : `<br><small>${esc(D.blurb)}</small>`}`, { big: true, life: 4 });
+    if (!life.kindsSeen[D.kind]) { life.kindsSeen[D.kind] = 1; memory('k_' + D.kind); checkDream(); touch(); }
+  }
+
   /* ---------------- the loop ---------------- */
   let hudT = 0, dayT = 0, mapT = 0, musicT = 0, lastKeeperSay = {}, rainWas = false, hillWas = false;
   function tick(dt) {
@@ -1789,6 +1903,7 @@
       if (k && (!lastKeeperSay[id] || performance.now() - lastKeeperSay[id] > 60000)) { lastKeeperSay[id] = performance.now(); World.say('npc:' + id, HELLO[k.type] || '👋', 3); }
     }
     if (guide && dist(World.pos(), guide) < 60) guide = null;
+    townTick();
     const st = World.state();
     if (!World.trip) pos = World.pos();
     if (online() && !World.trip) Net.state({ x: Math.round(pos.x), y: Math.round(pos.y), mood: sleeping ? 'sleepy' : st.mood, moving: st.moving, face: st.face, z: st.hop, title: Life.title(life), swimming: World.swimming, hat: life.hat || '' });

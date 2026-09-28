@@ -168,4 +168,33 @@ test('bills by age: band 1 pays no land tax or fuel, band 2 half', () => {
   assert.strictEqual(Life.effRate(b2, 15), 7.5);
 });
 
+test('the region: towns of every kind, nothing overlaps, ids are unique', () => {
+  const ids = new Set(), kinds = new Set();
+  for (let k = 1; k <= 40; k++) {
+    const d = Town.district(k); kinds.add(d.kind);
+    const boxes = d.landmarks.map(L => [L.x - L.w / 2, L.x + L.w / 2]).sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < boxes.length; i++) assert(boxes[i][0] >= boxes[i - 1][1], `landmarks overlap in ${d.name}`);
+    [...d.plots, ...d.work, ...d.landmarks].forEach(x => { assert(!ids.has(x.id), 'duplicate id ' + x.id); ids.add(x.id); });
+    d.plots.forEach(pl => assert(Town.plotById(pl.id) === pl));
+    const g = d.garden; d.plots.forEach(pl => assert(pl.x + pl.w <= g.x - g.w / 2 || pl.x >= g.x + g.w / 2 || pl.y + pl.h <= g.y - g.h / 2 || pl.y >= g.y + g.h / 2, 'garden on a plot'));
+  }
+  assert.strictEqual(kinds.size, 10);
+});
+
+test('gathering, local markets and shares', () => {
+  const t = Town.newTown(0); Town.grow(t, 5000, 0);
+  const w = Town.district(3).work[0];
+  const r1 = Town.act(t, { type: 'gather', spot: w.id }, { uid: 'u', name: 'U' }, 100000); assert(r1.ok && r1.item === 'milk');
+  assert(!Town.act(t, { type: 'gather', spot: w.id }, { uid: 'u', name: 'U' }, 110000).ok, 'regrows first');
+  const base = Town.act(Town.newTown(0), { type: 'sell', g: 'milk', n: 1 }, { uid: 'u' }, 0).coins;
+  const down = Town.act(t, { type: 'sell', g: 'milk', n: 1, at: 1 }, { uid: 'u' }, 200000);
+  assert(down.ok && down.mult === 1.5 && down.coins > base, 'downtown pays more for milk');
+  assert.strictEqual(Town.stockPrice(t, 'toy', 12), Town.stockPrice(t, 'toy', 12));
+  const l = Life.fresh(2); l.day = 1; l.coins = 500;
+  assert(!Life.trade(Life.fresh(1), t, 'buy', 'bake', 1, 1).ok, 'little kids do not trade');
+  assert(Life.trade(l, t, 'buy', 'bake', 10, 1).ok); const r = Life.trade(l, t, 'sell', 'bake', 10, 30);
+  assert(r.ok); assert.strictEqual(l.shares.bake.n, 0);
+  l.shares.bake = { n: 10, paid: 200 }; const m = Life.newDay(l, t, 'u', 2); assert(m.lines.some(x => /dividend/.test(x.label)));
+});
+
 console.log(`${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
