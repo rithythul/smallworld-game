@@ -117,7 +117,7 @@ Multiplayer needs a **Web Service** (a Static Site can't run the server). `rende
 
 1. Merge this branch into `main` (or use this branch directly).
 2. If you already have a Static Site called `noodle-universe`, delete it first (Settings → Delete) so the new service can keep the `noodle-universe.onrender.com` address.
-3. In the Render dashboard click **New +** → **Blueprint**, pick the `squarefaceguy` repo and branch, and click **Apply**. Render runs `npm install` and `npm start`.
+3. In the Render dashboard click **New +** → **Blueprint**, pick the `smallworld-game` repo and branch, and click **Apply**. Render runs `npm install` and `npm start`.
 4. Open `https://noodle-universe.onrender.com` and try **Play with friends**.
 
 Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Build Command `npm install`, Start Command `npm start`.
