@@ -81,40 +81,20 @@ Every town has a 🛒 local market that pays more for what that town wants (Down
 - **🪜 How to level up:** the ⭐ page lists every way to earn stars right now (rituals, today's challenges, noodle bricks, your dream's next step, a town you have not visited, classes, memories, noodles), how many stars each gives and whether it is open, done or later today. Tap one and the guide arrow takes you there.
 - **🍜 The noodle hunt (from Noodle Universe):** golden noodle bricks sit by the Small World Garden of every town and come back every morning. Walk into one to crunch it: a note in that town's instrument, a combo that climbs the scale, a few stars a day, and noodles for the 24-noodle Noodle-dex (one per kind of town, plus night glass, combos, rituals, wishes, waves and faces; 1 in 40 comes back golden).
 - **Leaderboard (🏆 in the ⋯ menu or on the ⭐ page):** every player has a record on the server. Boards: stars, stars this week, coins earned, memories, Perfect Days, kinds of towns and nights, for everyone or only your age group, plus "My records" with your place on every board. Every board counts something that only goes up, so spending or a bad day never drops you. A secret key on the device keeps a record yours, and the server limits how fast numbers can grow.
+- **☁️ Online saves:** ⋯ → ☁️ Save online, with a name and a 4-number PIN. It saves by itself every 2 minutes and when you leave. Load it on any phone or computer (☁️ on the title screen). If another device has more progress, you choose which game to keep. There is no way to get a lost PIN back.
 - **Rooms:** up to 8 players share one room and its town; there can be any number of rooms at once.
 - **Player cards:** walk up to a friend (the big button shows 👋 and their name), tap a name in the friends list, or open 🪪 My card from your life page. A card shows your Squareface, hat, dream, star level, memories, Perfect Days, nights slept, home and the kinds of towns you have visited. Cards hold no typed words, only numbers and things the game already knows, so they are safe for young kids. 👋 waves back.
 - **The Small World mark** is mown into the lawn beside the plaza.
 
 The 3D is made with [three.js](https://threejs.org) (MIT, bundled in `js/vendor/`). All models are built in code: no model files to download.
 
-## Classic: Noodle Universe
+## Noodle Universe lives on inside Small World
 
-The original 2D game is still here at `classic.html` (⋯ menu → 🍜 Classic Noodle Universe).
+Noodle Universe, the first Squareface game, is now part of Small World, so there is one game to play and to look after. What came along: the noodle hunt and the Noodle-dex (golden noodles too), crunching as music, Grandma's kitchen, Crunch Races and trophies, the Udon Snail's long walk, the morning swim / sunset sip / bedtime rituals, wonders, faces, hats and online saves with a name and PIN. The Endless Frontier became the endless region of towns.
 
-### What's in the classic game
+**Old progress comes along.** A Noodle Universe game on the same device is brought over the first time you play Small World: noodles, golden noodles and hats, plus up to 300 coins and 60 stars. A Noodle Universe online save works too: ⋯ → ☁️ Save online → Load a saved game (or ☁️ on the title screen). Coins and stars come over once per life; noodles and hats merge in any time. Old links to `classic.html` open Small World.
 
-- **Story (3 chapters so far):** the Pillow Note, pool tiles at dawn, the Backwards Willow and a noodle cipher; Crunch Canyon with the Echo Rock, the rhythm drum, the Mirror Pond and the Udon Snail; the Soba Peaks with the Face Statue. The journal's **Story** tab always shows the next step and where to look. Tap the goal for a yellow guide arrow.
-- **World:** Ramen Village, Crunch Meadow, Spaghetti Woods, Crunch Canyon, Soba Peaks, the Morning Pool (6–8 AM), day and night, storms.
-- **The Endless Frontier (Chapter 4):** after Chapter 3 the Cloud Gate east of the Soba Peaks opens, and the map keeps growing forever. Each new land (Candy Dunes, Mushroom Marsh, Crystal Tundra, Bamboo Breeze, Lava Ladle, Cloud Meadows, Coral Coast, Autumn Orchard, then *Whispering*, *Sparkly*… versions of them) has its own Keeper, bricks, food trees and a Map Stone missing 3 star shards: one in a crystal brick, one on a tall pillar (hop to grab it), one for answering the Keeper's science question. Restore the stone and the next land opens. Every land gets its own page on the world map.
-- **Physics and skills:** gravity and hopping; deep water needs swimming lessons (Coach Kombu), flying needs flight lessons (Captain Penne). After 3 lessons each skill keeps levelling forever.
-- **Food:** 10 kinds of trees; shake them for food, eat it, or cook 6 recipes with Grandma for special powers.
-- **Endless play:** 25 noodles, 3 new daily challenges every morning, stars and an endless Noodle Level, big challenges, space daydreams with Guide Stars and a space suit.
-- **Multiplayer:** type any room name (3 to 8 letters or numbers, like `67NM`) and tap Enter room. If it's new, you create it; friends type the same name or tap your shared invite link. Up to 8 players per room. *Team up* shares the Noodle-dex and fills a Team Pot that keeps growing; *Race* runs 2-minute Crunch Races for trophies. Players pick unique colors, see each other's faces and send emotes. When a new friend joins, everyone already in the room gets a pink arrow to them and a thank-you for going to say hi.
-- **Room chat and voice:** tap 💬 (or press `C`) to chat. Kids can send quick phrases like "Follow me!" or type up to 80 letters; words show in a bubble over their Squareface. Bad words, links, emails and phone numbers are hidden, messages are never stored, and any player can be hidden with one tap. **Join voice** talks over WebRTC, straight between players (up to 8), with a mute button and a green glow on whoever is speaking. Voice needs a grown-up's OK the first time on each device.
-- **The world is an instrument:** every brick plays a note (marimba in the meadow, drums in the canyon, bells in the snow, and a new instrument in every Frontier land). A combo climbs up the scale like a melody. Your antenna blinks on the beat: crunch in time for harmony and "In the groove!". In a room you hear your friends' crunches as music, and crunching together makes ♪ HARMONY ♪.
-- **Faces:** tap 😊 (or press 1 to 6) to show a face on Squareface's screen: love, laugh, wow, cool, silly, sad. Friends see it right away, no reading needed. Typed chat and voice are still there with 💬.
-- **Wonders:** rare surprises that everyone playing sees at the same moment: Noodle Rain, the Sky Whale, the Giggle Brick, the Noodle Rainbow and Shooting Stars. They never run out, and your journal remembers every one you saw.
-- **Rituals:** a morning swim when the pool opens, a sunset sip from the stream, and going home at night. Each gives ⭐ +1 once a day.
-- **Grandma's shop:** spend coins on hats (friends see them), rocket fuel, Fortune Crackers and broth; sell the food you pick for coins.
-- **Rewards:** every Noodle Level gives something (coins, hats, sparkle trails, a golden antenna, a crown), forever. 1 in 40 finds turns a noodle golden (shiny).
-- **Live map:** always on screen (top-right on phones and tablets, bottom-left on computers), zoomed in around you with your friends and a ⭐ pointing to your goal. Tap it for the full map.
-- **World map:** press M or tap 🗺️. Explored areas reveal themselves, landmarks appear once found, the goal is starred, and you can drop a pin to follow.
-- **The Udon Snail's trip:** after Chapter 2 the snail walks to the Soba Peaks over 7 real days and brings a gift.
-- **Healthy play for kids:** grown-up settings (⋯ menu → 🔒) for breaks, play time, chat and voice; a 5-minute break after 20 minutes of play, 60 minutes of play per day, and grown-up settings behind a math question. "Going to eat" pauses the game; in team rooms friends see you are away and earn you thank-you coins.
-- **Leaderboard:** coins, noodles, stars and trophies across everyone playing online.
-- **Online saves:** save with a name and a 4-digit PIN, load it on any device. There is no recovery: forget the PIN and you start a new game.
-
-See [GAME_DESIGN.md](GAME_DESIGN.md) for the original design.
+The original design notes are in [GAME_DESIGN.md](GAME_DESIGN.md).
 
 ## Deploy on KOOMPI Cloud (Docker)
 
@@ -155,15 +135,13 @@ When the container is stopped (for example on a redeploy) the server saves towns
 | `js/life.js` | Your life's rules: the rulebook by age, money, jobs and wages, certificates, bank, vehicles, companies, channel, memories, morning bills, rituals, stars, daily challenges, dreams |
 | `test/life.test.js` | `npm test`: checks the rules, like "a 6-year-old's coins only go down when they tap Buy" |
 | `js/music.js` | Background music made with WebAudio |
-| `classic.html` | The classic 2D Noodle Universe |
-| `js/data.js` | Noodles, map layout, clues, riddles |
-| `js/art.js` | All drawing (characters, world, icons), no image files |
+| `js/art.js` | 2D drawing for the screens: Squareface faces and Noodle-dex icons |
+| `js/noodles.js` | The Noodle-dex and Grandma's recipes |
+| `js/learn.js` | Science facts, class and quiz questions |
 | `js/audio.js` | Synthesized sound effects |
-| `js/ui.js` | HUD, dialogue, Noodle-dex, journal |
-| `js/game.js` | Game loop, movement, physics, rules, story, hints |
 | `js/net.js` | Multiplayer connection |
-| `js/space.js` | Space daydreams |
 | `js/care.js` | Breaks, daily play time and grown-up settings |
-| `js/lands.js` | The Endless Frontier: lands made from their number, their Keepers and drawings |
 | `js/talk.js` | Room chat, quick phrases and WebRTC voice |
-| `server.js` | Node server: static files, rooms, shared Small World towns, leaderboard, online saves |
+| `server.js` | Node server: static files, rooms, shared towns, Crunch Races, the leaderboard, online saves |
+| `classic.html` | Sends old Noodle Universe links to the game |
+| `Dockerfile` | The container for KOOMPI Cloud (or any Docker host) |

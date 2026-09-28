@@ -3756,6 +3756,9 @@ function rebuildMe() {
   if (sleeping) { sf.moodOverride = 'sleepy'; sf.moodUntil = Infinity; }
 }
 
+// Townsfolk far from you keep walking their routes (cheap), but are hidden and skip the costly animation,
+// so a region with many towns runs as smoothly as one town. Well outside the camera's view on any screen.
+const NPC_FAR = 240;   // world units (a town is 200 wide); beyond the farthest ground a zoomed-out phone can see
 function updateNpcs(dt, t) {
   for (const n of npcs) {
     const sf = n.sf;
@@ -3765,6 +3768,8 @@ function updateNpcs(dt, t) {
       let d = n.d, k = 0; while (k < n.segs.length - 1 && d > n.segs[k]) { d -= n.segs[k]; k++; }
       const a = n.pts[k], b = n.pts[k + 1], f = d / n.segs[k];
       const x = a.x + (b.x - a.x) * f, z = a.y + (b.y - a.y) * f;
+      if (Math.abs(x - player.x) > NPC_FAR || Math.abs(z - player.z) > NPC_FAR) { sf.root.visible = false; sf.root.position.x = x; sf.root.position.z = z; continue; }
+      sf.root.visible = true;
       // step aside if the player is in the way
       const px = player.x - x, pz = player.z - z, pd = Math.hypot(px, pz);
       const near = pd < 5;
@@ -3774,6 +3779,8 @@ function updateNpcs(dt, t) {
       else sf.targetFace = Math.atan2(b.x - a.x, b.y - a.y);
     } else {
       const px = player.x - n.x, pz = player.z - n.z, pd = Math.hypot(px, pz);
+      if (Math.abs(px) > NPC_FAR || Math.abs(pz) > NPC_FAR) { sf.root.visible = false; continue; }
+      sf.root.visible = true;
       sf.targetFace = pd < 16 ? Math.atan2(px, pz) : 0;
       sf.speed = 0;
     }
@@ -3861,7 +3868,7 @@ function frame() {
   updateEffects(dt, t);
   stepBalls(dt); stepFalling(dt); stepRide(dt); updateGuide(t);
   stepRain(dt, !!(hooks.raining && hooks.raining()) && !onTrip);
-  player.sf.root.updateMatrixWorld(); npcs.forEach(n => n.sf.root.updateMatrixWorld()); others.forEach(r => r.sf.root.updateMatrixWorld());
+  player.sf.root.updateMatrixWorld(); npcs.forEach(n => { if (n.sf.root.visible) n.sf.root.updateMatrixWorld(); }); others.forEach(r => r.sf.root.updateMatrixWorld());
   updateLimbs();
   updateBlobs([player.sf, ...npcs.map(n => n.sf), ...[...others.values()].map(r => r.sf)].filter(sf => sf.root.visible));
   renderer.render(scene, camera);

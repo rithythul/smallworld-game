@@ -1,3 +1,5 @@
+> **Note:** this is the original design of Noodle Universe, the first Squareface game. It is now part of Small World (see the README); some things here, like the 2D map and story chapters, belong to that first game.
+
 # 🍜 Noodle Universe: Game Design
 
 > A cozy exploration game about a square-headed, smiley-faced little AI who collects every noodle in the universe, and uncovers a secret along the way.

@@ -1,9 +1,9 @@
 // Multiplayer connection. Talks to server.js over a WebSocket.
 const Net = (() => {
-  let ws = null, me = null, code = null, mode = null, scores = [];
+  let ws = null, me = null, code = null, scores = [];
   const others = new Map();     // id -> { name, color, x, y, tx, ty, mood, sw, mv, f, z, walk }
   const handlers = {};
-  let lastState = 0, lastScore = '', replaced = false, clockOffset = 0, rid = 0;
+  let lastState = 0, replaced = false, clockOffset = 0, rid = 0;
   const pending = new Map();      // town actions waiting for the server's answer
   const late = new Map();         // actions we stopped waiting for: if the answer still comes, the game can use it
 
@@ -61,7 +61,7 @@ const Net = (() => {
     if (!code && (m.t === 'town' || m.t === 'states' || m.t === 'player')) return;   // left the room: its news is no longer ours
     switch (m.t) {
       case 'joined':
-        me = m.you; code = m.code; mode = m.mode; others.clear();
+        me = m.you; code = m.code; others.clear();
         if (m.now) clockOffset = m.now - Date.now();   // one shared clock for the beat and the wonders
         m.players.forEach(p => { if (p.id !== me) others.set(p.id, { ...p, x: null, y: null }); });
         cardSent = ''; sendCard();
@@ -108,9 +108,7 @@ const Net = (() => {
     connect,
     on(evt, fn) { (handlers[evt] = handlers[evt] || []).push(fn); },
     onStatus(fn) { statusFn = fn; },
-    async create(name, color, roomMode, uid) { await connect(); send({ t: 'create', name, color, mode: roomMode, uid }); },
-    async join(roomCode, name, color, uid) { await connect(); send({ t: 'join', code: roomCode, name, color, uid }); },
-    async enter(roomCode, name, color, roomMode, uid) { await connect(); send({ t: 'enter', code: roomCode, name, color, mode: roomMode, uid }); },
+    async enter(roomCode, name, color, uid) { await connect(); send({ t: 'enter', code: roomCode, name, color, uid }); },
         startRound() { if (code) send({ t: 'round' }); },
     leave() { send({ t: 'leave' }); code = null; others.clear(); },
     state(p) {
@@ -134,12 +132,6 @@ const Net = (() => {
     crunch(id, n = 0, v = '') { if (code) send({ t: 'crunch', b: id, n, v }); },
     // milliseconds on the shared clock (the server's, once you are in a room)
     now() { return Date.now() + clockOffset; },
-    found(n) { if (code) send({ t: 'found', n }); },
-    score(found, coins, stars) {
-      const key = found + ':' + coins + ':' + stars;
-      if (!code || key === lastScore) return;
-      lastScore = key; send({ t: 'score', found, coins, stars });
-    },
     emote(e) { if (code) send({ t: 'emote', e }); },
     // my player card: numbers and ids only. Sent when it changes, at most once every few seconds.
     card(c) { card = c; sendCard(); },
@@ -151,7 +143,6 @@ const Net = (() => {
     rtc(to, data) { if (code) send({ t: 'rtc', to, data }); },
     get active() { return !!code; },
     get code() { return code; },
-    get mode() { return mode; },
     get me() { return me; },
     get scores() { return scores; },
     others,

@@ -41,7 +41,9 @@
   let solo = S && S.solo && S.solo.v === 1 ? S.solo : null;
   let pos = S && S.pos;
   let dirty = false;
+  let leaving = false;   // set when another game is being loaded: nothing may save this one over it on the way out
   function save() {
+    if (leaving) return;
     try { localStorage.setItem(KEY, JSON.stringify({ me, life, solo, pos: World.trip ? pos : (World.pos ? World.pos() : pos), lastRoom: S && S.lastRoom })); } catch (e) {}
     dirty = false;
   }
@@ -1623,7 +1625,8 @@
     closeSheet();
     const P = Town.PLAZA, a = Math.random() * 6.28;
     if (!World.riding) World.place(P.x + Math.cos(a) * 60, P.y + 170 + Math.sin(a) * 30);   // everyone starts together at the plaza
-    World.addPickups(raceSpots(m.no).map(([x, y], i) => ({ id: raceId(m.no, i), x, y, kind: 'brick', fixed: true })));
+    const gone = new Set(m.crunched || []);   // joined mid-race: bricks friends already crunched
+    World.addPickups(raceSpots(m.no).map(([x, y], i) => ({ id: raceId(m.no, i), x, y, kind: 'brick', fixed: true })).filter(q => !gone.has(q.id)));
     guide = { x: P.x, y: P.y, h: 8, icon: '🏁' };
     toast(`<span class="t-small">🏁 Crunch Race${m.by ? ` · ${esc(m.by)} started it` : ''}</span>3 · 2 · 1 · 🍜!`, { big: true, life: 3 });
     Sound.chord(8, 'bell'); raceBar();
@@ -2019,6 +2022,8 @@
   $('roomPill').addEventListener('click', () => { Sound.blip(); friendsSheet(); });
   $('helpBtn').addEventListener('click', () => { $('menuPop').hidden = true; helpSheet(); });
   $('boardBtn').addEventListener('click', () => { $('menuPop').hidden = true; boardSheet(); });
+  $('cloudBtn').addEventListener('click', () => { $('menuPop').hidden = true; accountSheet(); });
+  $('loadBtn').addEventListener('click', () => { Sound.blip(); accountSheet(); });
   function helpSheet() {
     sheet('❓', (body) => {
       body.insertAdjacentHTML('beforeend', `<div class="help-grid">
@@ -2046,7 +2051,7 @@
     if (code.length < 3 || code.length > 8) { const m = $('roomMsg'); if (m) m.textContent = '3–8 letters or numbers'; return false; }
     const m = $('roomMsg'); if (m) m.textContent = '⏳';
     Net.onStatus((s) => { const el = $('roomMsg'); if (el) el.textContent = `⏳ ${s}s`; });
-    try { if (World.trip) endTrip(); await Net.enter(code, me.name, me.color, 'team', me.uid); S = S || {}; S.lastRoom = code; return true; }
+    try { if (World.trip) endTrip(); await Net.enter(code, me.name, me.color, me.uid); S = S || {}; S.lastRoom = code; return true; }
     catch (e) { const el = $('roomMsg'); if (el) { el.textContent = e.code === 'offline' ? '📡 ✕ (online version only)' : '📡 ✕ · 🔁'; el.classList.add('err'); } return false; }
   }
   function friendsSheet() {
@@ -2146,6 +2151,117 @@
       }).catch(() => { if (list.isConnected) list.innerHTML = '<p class="small">📡 ✕ · Could not load the leaderboard. Try again soon.</p>'; });
     });
   }
+  /* ---------------- online save: a name and a 4-digit PIN, the same game on any device ---------------- */
+  // Uses the server's /api/save and /api/load. The PIN stays on this device; the server keeps only a salted hash.
+  let cloudSent = '', cloudBusy = false;
+  const progressOf = () => life ? life.xp * 100 + Math.round(life.stats.earned || 0) : 0;
+  function api(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(d.error || 'Something went wrong. Try again.'); e.status = r.status; e.data = d; throw e; }
+      return d;
+    });
+  }
+  const saveBlob = () => { const m = { ...me }; delete m.account; delete m.pendingClassic; return { sw: 1, me: m, life, solo }; };
+  // again: send even if nothing changed. overwrite: replace an online game that has more progress (the player chose this).
+  function cloudSave({ again = false, overwrite = false } = {}) {
+    const a = me.account; if (!a || !onServer || !life || cloudBusy) return Promise.resolve();
+    if (a.conflict && !overwrite) return Promise.resolve();   // wait for the player to choose which game to keep
+    const blob = saveBlob(), key = JSON.stringify(blob); if (key === cloudSent && !again && !overwrite) return Promise.resolve();
+    cloudBusy = true;
+    return api('api/save', { name: a.name, pin: a.pin, save: blob, progress: progressOf(), force: !!overwrite })
+      .then(() => { cloudSent = key; a.at = Date.now(); a.conflict = null; a.bad = null; save(); })
+      .catch(e => { if (e.status === 409) a.conflict = e.data || {}; else if (e.status === 403) a.bad = e.message; })
+      .finally(() => { cloudBusy = false; });
+  }
+  setInterval(() => { if (playing) cloudSave(); }, 120000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && playing) cloudSave(); });
+  function pinInput(id) { return `<input id="${id}" class="pin-in" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="PIN ••••" aria-label="4-number PIN">`; }
+  function accountSheet(msg = '') {
+    const a = me.account;
+    sheet('☁️', (body) => {
+      if (msg) body.insertAdjacentHTML('beforeend', `<p class="sheet-sub ${/^⚠️/.test(msg) ? 'bad' : ''}">${esc(msg)}</p>`);
+      if (!onServer) { body.insertAdjacentHTML('beforeend', '<p class="sheet-sub">Online saves live on the online server.</p>'); return; }
+      if (a && life) {
+        const c = card(`<h3>☁️ ${esc(a.name)}</h3><p class="small">${a.at ? `Saved online ${new Date(a.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. It saves by itself every 2 minutes.` : 'Not saved yet.'}</p>`);
+        if (a.bad) c.insertAdjacentHTML('beforeend', `<p class="small bad">⚠️ ${esc(a.bad)}</p>`);
+        c.append(row(button('☁️ Save now', () => cloudSave({ again: true }).then(() => accountSheet(a.conflict || a.bad ? '' : '✓ Saved')), 'choice', !!a.conflict),
+          button('Use another name', () => { me.account = null; save(); accountSheet(); }, 'choice alt')));
+        body.append(c);
+        if (a.conflict) {
+          const k = card('<h3>⚠️ Your online game has more progress</h3><p class="small">It was played on another device. Which one do you want to keep?</p>');
+          k.append(row(button('☁️ Load the online game', () => loadCloud(a.name, a.pin, true), 'choice'),
+            button('📱 Keep this one', (b) => { if (!sure(b, 'Tap again: the online game is replaced')) return; cloudSave({ overwrite: true }).then(() => accountSheet(a.conflict ? '' : '✓ Saved')); }, 'choice alt')));
+          body.append(k);
+        }
+        return;
+      }
+      if (life) {
+        const c = card(`<h3>☁️ Save my game online</h3><p class="small">Pick a name and a 4-number PIN you will remember. Use them to play the same game on another phone or computer. There is no way to get a lost PIN back.</p>
+          <div class="acct-row"><input id="acctName" maxlength="14" autocomplete="off" placeholder="Name" value="${esc(me.name || '')}">${pinInput('acctPin')}</div>`);
+        c.append(button('☁️ Save', () => {
+          const name = $('acctName').value.trim(), pin = $('acctPin').value.trim();
+          if (!/^\d{4}$/.test(pin)) return accountSheet('⚠️ The PIN is 4 numbers, like 2468.');
+          api('api/save', { name, pin, save: saveBlob(), progress: progressOf() }).then(() => { me.account = { name, pin, at: Date.now() }; cloudSent = JSON.stringify(saveBlob()); save(); Sound.chord(5, 'bell'); accountSheet('✓ Saved online'); })
+            .catch(e => { if (e.status === 409) { me.account = { name, pin, conflict: e.data || {} }; save(); accountSheet(); } else accountSheet('⚠️ ' + e.message); });
+        }, 'big-btn small'));
+        body.append(c);
+      }
+      const l = card(`<h3>📥 Load a saved game</h3><p class="small">Small World and Noodle Universe saves both work.</p><div class="acct-row"><input id="loadName" maxlength="14" autocomplete="off" placeholder="Name">${pinInput('loadPin')}</div>`);
+      l.append(button('📥 Load', () => loadCloud($('loadName').value.trim(), $('loadPin').value.trim()), 'choice'));
+      body.append(l);
+    });
+  }
+  function loadCloud(name, pin, replace) {
+    if (!/^\d{4}$/.test(pin)) return accountSheet('⚠️ The PIN is 4 numbers, like 2468.');
+    api('api/load', { name, pin }).then(d => {
+      const blob = d.save || {};
+      if (blob.sw === 1 && blob.life) {
+        const apply = () => {
+          const m = { ...(blob.me || {}), account: { name, pin, at: Date.now() } };
+          leaving = true; playing = false;
+          try { localStorage.setItem(KEY, JSON.stringify({ me: m, life: blob.life, solo: blob.solo, pos: null, lastRoom: S && S.lastRoom })); } catch (e) {}
+          location.reload();
+        };
+        if (!life || replace) return apply();
+        // this device already has a game: say what will happen, and ask for a second tap
+        return sheet('📥', (body) => {
+          const L = Life.repair(blob.life);
+          body.append(card(`<h3>📥 ${esc(d.name || name)}</h3><p class="small">⭐ ${L.xp} · Lv ${Life.starLevel(L.xp)} · 🪙 ${L.coins}. Loading it replaces the game on this phone or computer (⭐ ${life.xp}).</p>`));
+          body.append(row(button('📥 Load it', (b) => { if (sure(b, 'Tap again to load')) apply(); }, 'choice'), button('✕', () => accountSheet(), 'choice alt')));
+        });
+      }
+      // a Noodle Universe save: its noodles, hats, coins and stars come along into Small World
+      if (life) { const had = !!life.classic; importClassic(blob); accountSheet(had ? '✓ Your Noodle Universe noodles and hats are here. Its coins and stars already came over once.' : ''); }
+      else { me.pendingClassic = blob; if (!me.name) { me.name = d.name || name; const n = $('nameIn'); if (n) n.value = me.name; } save(); accountSheet('✓ Found your Noodle Universe game. Pick your age and start: your noodles, hats and coins come along.'); }
+    }).catch(e => accountSheet('⚠️ ' + e.message));
+  }
+  // Noodle Universe is part of Small World now. Its noodles and hats always merge in (they cannot be farmed);
+  // its coins and stars come over only once per life, whichever save (this device's or an online one) comes first.
+  function importClassic(G) {
+    if (!life || !G || typeof G !== 'object') return false;
+    const rewards = !life.classic; life.classic = life.classic || Date.now();
+    let noodles = 0;
+    (Array.isArray(G.found) ? G.found : []).forEach(id => { if (NOODLE_BY_ID[id] && !life.noodles[id]) { life.noodles[id] = Date.now(); noodles++; } });
+    Object.keys(G.shiny || {}).forEach(id => { if (life.noodles[id]) life.shiny[id] = Date.now(); });
+    const hats = Object.keys(G.hats || {}).filter(h => HAT_ICON[h]); hats.forEach(h => { life.hats[h] = 1; });
+    if (G.hat && HAT_ICON[G.hat]) { life.hat = G.hat; World.setMe({ color: me.color, hat: life.hat }); }
+    const coins = rewards ? Math.min(300, Math.max(0, Math.round(+G.coins || 0))) : 0;
+    if (coins) Life.earn(life, coins, null, '🍜', 'Coins from Noodle Universe', 'Noodle Universe is part of Small World now, so your coins came with you (up to 300).');
+    const stars = rewards ? Math.min(60, (Array.isArray(G.found) ? G.found.length : 0) * 2 + Object.keys(G.lessons || {}).length + Object.keys(G.challenges || {}).length) : 0;
+    if (stars) Life.addStars(life, stars);
+    if (noodles || hats.length || coins || stars) later(() => { toast(`<span class="t-small">🍜 Welcome from Noodle Universe!</span>${noodles ? `🍜×${noodles} ` : ''}${hats.map(h => HAT_ICON[h]).join('')} ${coins ? `+${coins}🪙` : ''} ${stars ? `⭐+${stars}` : ''}`, { big: true, life: 6 }); World.celebrate(20); Sound.chord(7, 'bell'); });
+    touch(); hud(); save();
+    return true;
+  }
+  function classicCheck() {
+    if (!life) return;
+    if (me.pendingClassic) { const G = me.pendingClassic; delete me.pendingClassic; importClassic(G); return; }
+    if (life.classic) return;
+    let G = null; try { G = JSON.parse(localStorage.getItem('noodle-universe-save-v1')); } catch (e) {}
+    if (G && G.v === 1 && ((G.found && G.found.length) || G.coins)) importClassic(G);
+  }
+
   Net.on('emote', (m) => { if (m.id !== Net.me && Net.others.has(m.id)) World.say(m.id, m.e, 3); });
 
   function goSolo() {
@@ -2165,6 +2281,7 @@
     toast(`<span class="t-small">👥 ${esc(m.code)}</span>${m.created ? '🆕 🏙️' : '👋 🏙️'}`, { big: true, life: 4 });
     hud(); Talk.refresh();
     if (!life.day || life.day !== Life.dayOf(now())) dayTick();
+    if (m.round && m.round.no && m.round.secs > 3) raceStart({ ...m.round, joined: true });
   });
   Net.on('town', (m) => { if (online()) onTown(m.town); });
   // the town answered after we stopped waiting: still give the kid what they did
@@ -2315,7 +2432,7 @@
       if (pos && pos.x && pos.x < 20000) World.place(pos.x, pos.y);
       playing = true;
       goSolo();
-      dayTick(); syncDaily(); birthdayCheck();
+      dayTick(); syncDaily(); birthdayCheck(); classicCheck();
       save(); startMusic();
       if (fresh && life.band > 1) later(() => welcome());
       else if (!life.dream && (life.starter || 0) >= Life.STARTER.length && life.seen.pickedDream) later(() => { if (!life.dream) dreamPicker(true); });

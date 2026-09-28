@@ -422,3 +422,9 @@ button.sure { background: #ffe08a !important; }
 #raceBar i { font-style: normal; min-width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--ink); color: #fff; text-shadow: 0 1px 0 var(--ink); display: grid; place-items: center; font-size: 12px; }
 #raceBar.lead { background: #fff1a8; }
 .region-town .rt-snail { position: absolute; bottom: -8px; right: -4px; font-size: 18px; }
+
+/* online save */
+.acct-row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.acct-row input { flex: 1 1 120px; min-width: 0; border: 3px solid var(--ink); border-radius: 12px; padding: 8px 10px; font: inherit; font-weight: 700; }
+.acct-row .pin-in { flex: 0 0 110px; letter-spacing: 4px; text-align: center; }
+.sheet-sub.bad, .small.bad { color: #c0392b; }

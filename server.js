@@ -12,32 +12,20 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const MAX_PLAYERS = 8;
 const TICK_MS = 100;                 // how often positions are sent out
-const RESPAWN_MS = 15 * 60 * 1000;   // shared bricks grow back every 15 minutes
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
 };
-const PUBLIC = new Set(['index.html', 'classic.html', 'manifest.webmanifest', 'css', 'js', 'icons']);
+const PUBLIC = new Set(['index.html', 'classic.html', 'manifest.webmanifest', 'css', 'js', 'icons']);   // classic.html only sends old links to the game
 const ROUND_SECS = +process.env.ROUND_SECS || 120;               // one Crunch Race round
-const potNeed = (level) => 20 + level * 10; // team pot grows every time it fills
 
-/* ---------- leaderboard (saved to a JSON file) ---------- */
 // Everything the server remembers lives in DATA_DIR. In Docker it is /data: mount a volume there.
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
-const BOARD_FILE = process.env.LEADERBOARD_FILE || path.join(DATA_DIR, 'leaderboard.json');
 const SAVE_DIR = path.join(DATA_DIR, 'saves');
-let board = {};
-try { board = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8')) || {}; } catch (e) { board = {}; }
-let boardDirty = false;
-setInterval(() => {
-  if (!boardDirty) return;
-  boardDirty = false;
-  fs.mkdir(path.dirname(BOARD_FILE), { recursive: true }, () => fs.writeFile(BOARD_FILE, JSON.stringify(board), () => {}));
-}, 10000);
 const lastPost = new Map();
 
-/* ---------- Small World leaderboard: one record per player, many ways to shine ---------- */
+/* ---------- the leaderboard: one record per player, many ways to shine ---------- */
 // Every board counts something that only goes up, so nobody drops down for spending or for a bad day.
 const SW_BOARD_FILE = path.join(DATA_DIR, 'swboard.json');
 const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', noodles: 'noodles', trophies: 'race wins', perfect: 'perfect days', kinds: 'kinds of towns', nights: 'nights', week: 'stars this week' };
@@ -105,11 +93,6 @@ function readBody(req, cb, limit = 2000) {
   req.on('data', (c) => { data += c; if (data.length > limit) req.destroy(); });
   req.on('end', () => { try { cb(JSON.parse(data)); } catch (e) { cb(null); } });
 }
-function topList(by) {
-  const key = ['coins', 'found', 'stars', 'trophies'].includes(by) ? by : 'coins';
-  return Object.values(board).sort((a, b) => (b[key] || 0) - (a[key] || 0) || (b.coins || 0) - (a.coins || 0)).slice(0, 50)
-    .map(e => ({ id: e.id, name: e.name, color: e.color, coins: e.coins, found: e.found, stars: e.stars, trophies: e.trophies || 0 }));
-}
 function handleApi(req, res, urlPath, query) {
   const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
   if (urlPath === '/api/ice' && req.method === 'GET') {
@@ -119,27 +102,8 @@ function handleApi(req, res, urlPath, query) {
     if (process.env.TURN_URL) ice.push({ urls: process.env.TURN_URL.split(','), username: process.env.TURN_USER || '', credential: process.env.TURN_PASS || '' });
     return json(200, { iceServers: ice });
   }
-  if (urlPath === '/api/leaderboard' && req.method === 'GET') {
-    const by = new URLSearchParams(query).get('by');
-    return json(200, { list: topList(by), total: Object.keys(board).length });
-  }
   if (urlPath === '/api/sw/board' && req.method === 'GET') return swBoardList(new URLSearchParams(query), json);
   if (urlPath === '/api/sw/score' && req.method === 'POST') return readBody(req, (m) => swScore(m, json));
-  if (urlPath === '/api/score' && req.method === 'POST') {
-    return readBody(req, (m) => {
-      if (!m || typeof m.id !== 'string' || !/^[a-z0-9]{8,24}$/.test(m.id)) return json(400, { error: 'bad request' });
-      const t = Date.now();
-      if (t - (lastPost.get(m.id) || 0) < 8000) return json(429, { error: 'slow down' });
-      lastPost.set(m.id, t);
-      const prev = board[m.id] || { id: m.id };
-      board[m.id] = { ...prev, id: m.id, name: safeName(m.name) || 'Squareface', color: COLORS.includes(m.color) ? m.color : COLORS[0],
-        coins: num(m.coins, 0, 1e7), found: num(m.found, 0, 999), stars: num(m.stars, 0, 1e5), trophies: prev.trophies || 0, updated: t };
-      boardDirty = true;
-      const key = 'coins';
-      const rank = Object.values(board).filter(e => (e[key] || 0) > board[m.id][key]).length + 1;
-      json(200, { rank, total: Object.keys(board).length });
-    });
-  }
   if ((urlPath === '/api/save' || urlPath === '/api/load') && req.method === 'POST') {
     return readBody(req, (m) => handleAccount(urlPath, m, req, json), 300000);
   }
@@ -260,12 +224,6 @@ function cleanAction(a) {
 
 /* ---------- rooms ---------- */
 const rooms = new Map();
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O, easy to read out loud
-function newCode() {
-  let code;
-  do { code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join(''); } while (rooms.has(code));
-  return code;
-}
 const BLOCK = ['fuck', 'shit', 'bitch', 'cunt', 'dick', 'cock', 'pussy', 'slut', 'whore', 'nigg', 'fag', 'rape', 'nazi', 'porn', 'piss', 'bastard'];
 const clean = (s, n) => String(s || '').replace(/[<>&"'`]/g, '').trim().slice(0, n);
 const safeName = (s) => { const c = clean(s, 14), flat = c.toLowerCase().replace(/[^a-z]/g, ''); return BLOCK.some(w => flat.includes(w)) ? 'Squareface' : c; };
@@ -290,7 +248,7 @@ const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, 
 const COLORS = ['#2fa4b5', '#e4572e', '#8cbf5a', '#b98cff', '#f4b942', '#ff8fb1', '#5b7cfa', '#9a7b5b'];
 
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, host: p.host, voice: p.voice || 0, card: p.card || null };
+  return { id: p.id, name: p.name, color: p.color, trophies: p.trophies, host: p.host, voice: p.voice || 0, card: p.card || null };
 }
 // A player card holds no words anyone typed: only numbers and ids the game already knows (the client ignores ids it does not know).
 const cardId = (v) => typeof v === 'string' && /^[a-z0-9_]{1,24}$/.test(v) ? v : '';
@@ -306,30 +264,29 @@ function broadcast(room, msg, except) {
   for (const p of room.players.values()) if (p.ws !== except && p.ws.readyState === 1) p.ws.send(data);
 }
 function scores(room) {
-  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, found: p.found, coins: p.coins, stars: p.stars, trophies: p.trophies, round: p.round }))
-    .sort((a, b) => b.found - a.found || b.stars - a.stars || b.coins - a.coins);
+  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, trophies: p.trophies, round: p.round }))
+    .sort((a, b) => b.round - a.round || b.trophies - a.trophies);
 }
 
 function joinRoom(ws, room, name, color, uid) {
   if (room.players.size >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `Room ${room.code} is full (${MAX_PLAYERS} players).` });
   const used = new Set([...room.players.values()].map(p => p.color));
   const pick = COLORS.includes(color) && !used.has(color) ? color : (COLORS.find(c => !used.has(c)) || COLORS[0]);
-  const p = { id: ++room.nextId, ws, name: safeName(name) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, found: 0, coins: 0, stars: 0, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
+  const p = { id: ++room.nextId, ws, name: safeName(name) || 'Squareface', color: pick, host: room.players.size === 0, x: 0, y: 0, s: {}, trophies: 0, round: 0, uid: /^[a-z0-9]{8,24}$/.test(uid || '') ? uid : null };
   room.players.set(p.id, p);
   ws.room = room; ws.player = p;
-  send(ws, { t: 'joined', now: Date.now(), town: townFor(room.code).town, you: p.id, created: room.players.size === 1, code: room.code, mode: room.mode, players: [...room.players.values()].map(publicPlayer), crunched: [...room.crunched], teamFound: [...room.teamFound], pot: room.pot, round: roundInfo(room) });
+  send(ws, { t: 'joined', now: Date.now(), town: townFor(room.code).town, you: p.id, created: room.players.size === 1, code: room.code, players: [...room.players.values()].map(publicPlayer), round: roundInfo(room) });
   broadcast(room, { t: 'player', p: publicPlayer(p) }, ws);
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
-function roundInfo(room) { return room.roundEnd ? { secs: Math.max(0, Math.round((room.roundEnd - Date.now()) / 1000)) } : null; }
+function roundInfo(room) { return room.roundEnd ? { no: room.roundNo, secs: Math.max(0, Math.round((room.roundEnd - Date.now()) / 1000)), crunched: [...room.crunched] } : null; }   // so someone joining mid-race can join in
 function startRound(room, by) {
   if (room.roundEnd) return;
   room.roundEnd = Date.now() + ROUND_SECS * 1000;
   room.roundNo = (room.roundNo || 0) + 1;
   room.players.forEach(p => { p.round = 0; });
   room.crunched.clear();
-  broadcast(room, { t: 'respawn' });
   broadcast(room, { t: 'round', state: 'start', secs: ROUND_SECS, no: room.roundNo, by: by || '' });
   room.roundTimer = setTimeout(() => endRound(room), ROUND_SECS * 1000);
 }
@@ -342,7 +299,6 @@ function endRound(room) {
   winners.forEach(w => {
     const p = room.players.get(w.id); if (!p) return;
     p.trophies++;
-    if (p.uid && board[p.uid]) { board[p.uid].trophies = (board[p.uid].trophies || 0) + 1; boardDirty = true; }
     if (p.uid && swBoard[p.uid]) { swBoard[p.uid].trophies = (swBoard[p.uid].trophies || 0) + 1; swDirty = true; }   // the server saw the win, so it counts
   });
   broadcast(room, { t: 'round', state: 'end', no: room.roundNo, list, winners: winners.map(w => w.id), valid: scored >= 2 });
@@ -365,7 +321,7 @@ function leave(ws) {
   if (!room || !p) return;
   room.players.delete(p.id);
   ws.room = null; ws.player = null;
-  if (!room.players.size) { clearInterval(room.respawn); clearTimeout(room.roundTimer); rooms.delete(room.code); return; }
+  if (!room.players.size) { clearTimeout(room.roundTimer); rooms.delete(room.code); return; }
   if (p.host) { const next = room.players.values().next().value; next.host = true; broadcast(room, { t: 'player', p: publicPlayer(next) }); }
   broadcast(room, { t: 'left', id: p.id, name: p.name });
   broadcast(room, { t: 'scores', list: scores(room) });
@@ -388,24 +344,9 @@ wss.on('connection', (ws) => {
       dropOldCopy(rooms.get(code), m.uid, ws);
       let r = rooms.get(code);
       if (!r) {
-        r = { code, mode: m.mode === 'race' ? 'race' : 'team', players: new Map(), crunched: new Set(), teamFound: new Set(), nextId: 0, pot: { level: 1, fill: 0, need: potNeed(1) }, roundEnd: null };
-        r.respawn = setInterval(() => { r.crunched.clear(); broadcast(r, { t: 'respawn' }); }, RESPAWN_MS);
+        r = { code, players: new Map(), crunched: new Set(), nextId: 0, roundEnd: null };
         rooms.set(code, r);
       }
-      return joinRoom(ws, r, m.name, m.color, m.uid);
-    }
-    if (m.t === 'create') {
-      if (room) leave(ws);
-      const r = { code: newCode(), mode: m.mode === 'race' ? 'race' : 'team', players: new Map(), crunched: new Set(), teamFound: new Set(), nextId: 0, pot: { level: 1, fill: 0, need: potNeed(1) }, roundEnd: null };
-      r.respawn = setInterval(() => { r.crunched.clear(); broadcast(r, { t: 'respawn' }); }, RESPAWN_MS);
-      rooms.set(r.code, r);
-      return joinRoom(ws, r, m.name, m.color, m.uid);
-    }
-    if (m.t === 'join') {
-      if (room) leave(ws);
-      dropOldCopy(rooms.get(clean(m.code, 4).toUpperCase()), m.uid, ws);
-      const r = rooms.get(clean(m.code, 4).toUpperCase());
-      if (!r) return send(ws, { t: 'error', msg: 'No room with that code. Check the letters and try again.' });
       return joinRoom(ws, r, m.name, m.color, m.uid);
     }
     if (!room || !p) return;
@@ -422,26 +363,8 @@ wss.on('connection', (ws) => {
         // n and v are the musical note and instrument, so friends hear each other's crunches as music
         broadcast(room, { t: 'crunch', b: id, by: p.id, n: Math.round(num(m.n, 0, 40)), v: clean(m.v, 8) }, ws);
         if (room.roundEnd) { p.round++; broadcast(room, { t: 'scores', list: scores(room) }); }
-        if (room.mode === 'team') room.players.forEach(q => { if (q !== p && q.away) q.helped = (q.helped || 0) + 1; });
-        if (room.mode === 'team' && room.players.size >= 2) {
-          room.pot.fill++;
-          if (room.pot.fill >= room.pot.need) {
-            room.pot.level++; room.pot.fill = 0; room.pot.need = potNeed(room.pot.level);
-            broadcast(room, { t: 'pot', pot: room.pot, up: true });
-          } else broadcast(room, { t: 'pot', pot: room.pot });
-        }
         break;
       }
-      case 'found': {
-        const n = clean(m.n, 16);
-        if (room.mode === 'team') room.teamFound.add(n);
-        broadcast(room, { t: 'found', n, by: p.id, name: p.name }, ws);
-        break;
-      }
-      case 'score':
-        p.found = num(m.found, 0, 999); p.coins = num(m.coins, 0, 1e6); p.stars = num(m.stars, 0, 999);
-        broadcast(room, { t: 'scores', list: scores(room) });
-        break;
       case 'color': {
         const taken = [...room.players.values()].some(o => o !== p && o.color === m.color);
         if (!COLORS.includes(m.color)) return;
@@ -457,7 +380,6 @@ wss.on('connection', (ws) => {
         break;
       case 'away':
         p.away = !!m.on;
-        if (!p.away && p.helped) { send(ws, { t: 'helped', n: p.helped }); p.helped = 0; }
         broadcast(room, { t: 'emote', id: p.id, e: p.away ? '🍽️' : '👋' });
         break;
       case 'emote':
@@ -537,7 +459,6 @@ server.listen(PORT, () => console.log(`Small World running at http://localhost:$
 function shutdown() {
   try {
     if (swDirty) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(SW_BOARD_FILE, JSON.stringify(swBoard)); }
-    if (boardDirty) { fs.mkdirSync(path.dirname(BOARD_FILE), { recursive: true }); fs.writeFileSync(BOARD_FILE, JSON.stringify(board)); }
     for (const [code, t] of towns) if (t.dirty) { fs.mkdirSync(TOWN_DIR, { recursive: true }); fs.writeFileSync(path.join(TOWN_DIR, code + '.json'), JSON.stringify(t.town)); }
   } catch (e) { console.error('Could not save on shutdown:', e.message); }
   process.exit(0);
