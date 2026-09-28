@@ -9,7 +9,7 @@ import * as THREE from './vendor/three.module.min.js';
 // ground curves away to the horizon. Only for the game's own camera: a perspective camera whose near plane is past
 // 1 unit (the game uses 2). Shadows (orthographic) stay flat, and so does anything else three.js draws on the
 // page, like the planet view's globe (near 0.01). near = P[3][2] / (P[2][2] - 1) for a perspective matrix.
-const BEND_K = 1 / 1800, BEND_OFF = 95;   // a 900 m bend radius for the eye; the view centre sits BEND_OFF in front of the camera
+const BEND_K = 1 / 6000, BEND_OFF = 95;   // a gentle 3 km bend radius for the eye; the view centre sits BEND_OFF in front of the camera
 THREE.ShaderChunk.project_vertex = `
 vec4 bwp = vec4( transformed, 1.0 );
 #ifdef USE_BATCHING
@@ -3670,7 +3670,7 @@ function wildRegion() {
   if (r.x0 === WR.x0 && r.x1 === WR.x1 && r.z0 === WR.z0 && r.z1 === WR.z1 && PL.regionDist(0, 0) === 0) return false;
   WR = r; PL.setRegion(r); return true;
 }
-function wildReset() { wild.forEach(dropChunk); wild.clear(); wildQueue = []; wildVersion++; }
+function wildReset() { wild.forEach(dropChunk); wild.clear(); wildQueue = []; wildVersion++; itemsDirty = true; }
 function dropChunk(c) {
   if (!c.group) return;
   wildGroup.remove(c.group);
@@ -3685,7 +3685,25 @@ function wildKits() {
   const tuft = new Builder();
   [[0, 0, 0], [0.3, 0.1, 0.5], [-0.3, -0.1, -0.5]].forEach(([dx, dz, rz]) => tuft.add(GEO.cone(0.18, 1.0, 3), M(dx, 0.45, dz, 0, 0, rz), '#98c965', { ol: 0 }));
   const lily = new Builder(); lily.add(GEO.ico(1.1, 1), M(0, 0.7, 0), '#6fb84a', { ol: 0.07 });
-  Object.entries({ oak: TK.oak, pine: TK.pine, snowpine: TK.snowpine, cactus: TK.cactus, palm: TK.palm, shroom: TK.shroom, flower: TK.fl, tuft, bush: lily })
+  const birch = new Builder();
+  birch.add(GEO.cyl(0.35, 0.45, 5.2, 7), M(0, 2.6, 0), '#f4f1ea', { ol: 0.08 });
+  [1.2, 2.4, 3.6].forEach((y, i) => birch.add(GEO.box(0.75, 0.16, 0.2), M(0, y, 0.36, i), '#34233f', { ol: 0 }));
+  birch.add(GEO.ico(2.2, 1), M(0, 6, 0, 0, 0, 0, 1, 1.3, 1), '#b9dd6a', { ol: 0.1 }); birch.add(GEO.ico(1.4, 1), M(0.9, 7.6, 0.3), '#c9e67c', { ol: 0.08 });
+  const autumn = new Builder();
+  autumn.add(GEO.cyl(0.55, 0.8, 3.4, 7), M(0, 1.7, 0), '#8a5a34', { ol: 0.1 });
+  autumn.add(GEO.ico(2.8, 1), M(0, 5.3, 0), '#f08a3c', { ol: 0.13 }); autumn.add(GEO.ico(2, 1), M(1.8, 4.6, 0.6), '#e4572e', { ol: 0.12 }); autumn.add(GEO.ico(1.8, 1), M(-1.7, 4.8, -0.3), '#f4b942', { ol: 0.12 });
+  const bamboo = new Builder();
+  [[0, 0, 7], [0.9, 0.4, 5.5], [-0.8, 0.5, 6.3], [0.3, -0.9, 4.8]].forEach(([dx, dz, h]) => { bamboo.add(GEO.cyl(0.22, 0.25, h, 6), M(dx, h / 2, dz), '#8cc45e', { ol: 0.05 }); for (let y = 1.2; y < h; y += 1.4) bamboo.add(GEO.cyl(0.27, 0.27, 0.12, 6), M(dx, y, dz), '#6fa84a', { ol: 0 }); bamboo.add(GEO.cone(0.7, 1.4, 4), M(dx + 0.4, h - 0.3, dz, 0, 0, 1), '#9dd46e', { ol: 0.03 }); });
+  const dead = new Builder();
+  dead.add(GEO.cyl(0.35, 0.5, 4, 6), M(0, 2, 0), '#9a7b5b', { ol: 0.08 });
+  [[0.8, 3, 0.6], [-0.9, 2.6, -0.8], [0.3, 3.8, -0.5]].forEach(([dx, y, r]) => dead.add(GEO.cyl(0.12, 0.2, 1.8, 5), M(dx, y + 0.5, 0, 0, 0, r), '#9a7b5b', { ol: 0.05 }));
+  const spike = new Builder();
+  [[0, 0, 3.4], [0.9, 0.5, 2.2], [-0.8, 0.4, 2.6], [0.3, -0.8, 1.8]].forEach(([dx, dz, h]) => spike.add(GEO.cone(0.55, h, 5), M(dx, h / 2, dz, dx), '#bfe9ff', { ol: 0.06 }));
+  const reeds = new Builder();
+  for (let i = 0; i < 7; i++) { const a = i * 0.9, h = 1.8 + (i % 3) * 0.5; reeds.add(GEO.cyl(0.06, 0.06, h, 3), M(Math.cos(a) * 0.5, h / 2, Math.sin(a) * 0.5), '#7fa35a', { ol: 0 }); if (i % 2) reeds.add(GEO.capsule(0.13, 0.5), M(Math.cos(a) * 0.5, h, Math.sin(a) * 0.5), '#8a5a34', { ol: 0 }); }
+  const sunfl = new Builder(); sunflower(sunfl, 0, 0, 2.6); sunflower(sunfl, 0.9, 0.5, 2.1);
+  const starfish = new Builder(); starfish.add(GEO.star(0.7, 0.28, 0.14), M(0, 0.08, 0, 0, -Math.PI / 2), '#ff9f43', { ol: 0.03 });
+  Object.entries({ oak: TK.oak, pine: TK.pine, snowpine: TK.snowpine, cactus: TK.cactus, palm: TK.palm, shroom: TK.shroom, flower: TK.fl, tuft, bush: lily, birch, autumn, bamboo, dead, spike, reeds, sunfl, starfish })
     .forEach(([k, b]) => { const g = b.geometries(); WK[k] = g; });
 }
 const keepGeo = (m) => { m.userData.keepGeo = true; return m; };
@@ -3706,8 +3724,8 @@ function wildInstances(group, kind, list, tintK) {
 }
 // what the Wild's discoveries look like; sw.js knows their names and what finding one gives
 const WILD_KINDS = {
-  meadow: ['stones', 'ruins', 'well', 'camp', 'statue', 'tower'], forest: ['bigshroom', 'camp', 'ruins', 'tower'], taiga: ['camp', 'tower', 'stones'],
-  snow: ['igloo', 'crystal', 'stones'], rock: ['crystal', 'tower', 'stones'], desert: ['arch', 'mesa', 'ruins'], jungle: ['ruins', 'bigshroom', 'statue'], beach: ['lighthouse', 'camp'],
+  meadow: ['stones', 'ruins', 'well', 'camp', 'statue', 'tower', 'totem', 'scarecrow'], forest: ['bigshroom', 'camp', 'ruins', 'tower', 'bigtree', 'totem'], taiga: ['camp', 'tower', 'stones', 'cabin'],
+  snow: ['igloo', 'crystal', 'stones', 'snowman'], rock: ['crystal', 'tower', 'stones', 'cabin'], desert: ['arch', 'mesa', 'ruins', 'pyramid'], jungle: ['ruins', 'bigshroom', 'statue', 'temple'], beach: ['lighthouse', 'camp', 'shipwreck'],
 };
 function wildLandmark(B, type, x, z, seed) {
   const r = rng(seed);
@@ -3732,10 +3750,95 @@ function wildLandmark(B, type, x, z, seed) {
     case 'mesa': mesa(B, x, z, 6 + r() * 3, 9 + r() * 5, seed % 7); break;
     case 'lighthouse': for (let i = 0; i < 5; i++) B.add(GEO.cyl(2.3 - i * 0.25, 2.5 - i * 0.25, 2.6, 14), M(x, 1.3 + i * 2.6, z), i % 2 ? '#e4572e' : '#ffffff', { ol: 0.08 });
       B.add(GEO.cyl(1.4, 1.4, 1.8, 10), M(x, 14.4, z), COL.yellow, { ol: 0.07 }); B.add(GEO.cone(1.9, 1.8, 10), M(x, 16.2, z), '#9a3b2a', { ol: 0.07 }); addCircleSolid(x, z, 2.6); break;
+    case 'shipwreck': B.add(GEO.rbox(6, 3.4, 15, 1.2, 1), M(x, 1.2, z, 0.5, 0, 0.35), '#8a5a34', { ol: 0.1, ao: 0.2 });
+      B.add(GEO.cyl(0.35, 0.4, 9, 6), M(x + 0.8, 5, z + 0.5, 0.5, 0, 0.5), '#6b4a2e', { ol: 0.05 }); B.add(GEO.box(0.2, 4, 3.4), M(x + 2.6, 7.4, z + 1.4, 0.5, 0, 0.5), '#f1e6cf', { ol: 0.05 });
+      B.add(GEO.rbox(1.6, 1.2, 1.2, 0.2, 1), M(x - 5, 0.6, z + 3), '#c98a52', { ol: 0.06 }); B.add(GEO.ico(0.3, 0), M(x - 5, 1.35, z + 3), COL.yellow, { ol: 0 }); addCircleSolid(x, z, 4.5); break;
+    case 'pyramid': for (let i = 0; i < 5; i++) { const w = 18 - i * 3.6; B.add(GEO.box(w, 2.4, w), M(x, 1.2 + i * 2.4, z), i % 2 ? '#e6c98a' : '#ecd29a', { ol: 0.1, ao: 0.15 }); }
+      B.add(GEO.box(2.4, 3.2, 0.4), M(x, 1.6, z + 9.05), '#34233f', { ol: 0 }); addCircleSolid(x, z, 9); break;
+    case 'temple': B.add(GEO.box(14, 1.6, 14), M(x, 0.8, z), '#9aa58a', { ol: 0.1 }); B.add(GEO.box(10, 1.6, 10), M(x, 2.4, z), '#a8b394', { ol: 0.1 }); B.add(GEO.box(6, 3.4, 6), M(x, 4.9, z), '#9aa58a', { ol: 0.1 });
+      B.add(GEO.box(2, 2.4, 0.3), M(x, 4.4, z + 3.05), '#34233f', { ol: 0 }); for (let i = 0; i < 6; i++) B.add(GEO.ico(0.9, 1), M(x - 6 + i * 2.4, 1.8, z + 6.8), '#6fb84a', { ol: 0.05 }); addCircleSolid(x, z, 7.2); break;
+    case 'cabin': B.add(GEO.box(8, 4.4, 6), M(x, 2.2, z), '#b07a4a', { ol: 0.1, ao: 0.15 }); for (let y = 0.5; y < 4.4; y += 0.9) B.add(GEO.cyl(0.32, 0.32, 8.4, 6), M(x, y, z + 3.05, 0, 0, Math.PI / 2), '#9a6a44', { ol: 0.03 });
+      B.add(GEO.prism(9, 3, 7), M(x, 5.9, z), '#5f7a5a', { ol: 0.09 }); B.add(GEO.box(1.4, 2.6, 0.2), M(x, 1.3, z + 3.2), '#6b4a2e', { ol: 0.03 }); B.add(GEO.box(1, 3, 1), M(x + 2.6, 6.4, z - 1), '#9a8f86', { ol: 0.06 }); addBoxSolid(x - 4.2, z - 3.2, x + 4.2, z + 3.2); break;
+    case 'bigtree': B.add(GEO.cyl(2.2, 3.2, 12, 10), M(x, 6, z), '#8a5a34', { ol: 0.12, ao: 0.2 }); [[0, 15, 0, 7], [5, 13, 2, 5], [-5, 13.5, -1, 5.2], [1, 18, -2, 4.4], [-2, 12, 5, 4.2]].forEach(([dx, y, dz, r]) => B.add(GEO.ico(r, 1), M(x + dx, y, z + dz), '#7fbb52', { ol: 0.16 }));
+      B.add(GEO.rbox(1.6, 2.2, 0.3, 0.3, 1), M(x, 1.2, z + 2.5), '#34233f', { ol: 0 }); addCircleSolid(x, z, 3); break;
+    case 'snowman': [[0, 2.2, 2.2], [0, 5.2, 1.6], [0, 7.6, 1.1]].forEach(([dx, y, r]) => B.add(GEO.sph(r, 16, 12), M(x + dx, y, z), '#f7fbff', { ol: 0.08 }));
+      B.add(GEO.cone(0.22, 1.2, 8), M(x, 7.6, z + 1.5, 0, Math.PI / 2), '#ff9f43', { ol: 0.03 }); [-0.45, 0.45].forEach(dx => B.add(GEO.ico(0.14, 0), M(x + dx, 8, z + 1), '#34233f', { ol: 0 }));
+      B.add(GEO.cyl(0.9, 0.9, 1.4, 12), M(x, 9, z), '#34233f', { ol: 0.04 }); B.add(GEO.cyl(1.3, 1.3, 0.12, 12), M(x, 8.3, z), '#34233f', { ol: 0 }); B.add(GEO.torus(1.3, 0.25, 14), M(x, 6.5, z), '#e4572e', { ol: 0 }); addCircleSolid(x, z, 2.2); break;
+    case 'totem': ['#e4572e', '#5b7cfa', '#8cbf5a', '#f4b942'].forEach((c, i) => { B.add(GEO.rbox(2.2, 2.4, 2.2, 0.3, 1), M(x, 1.2 + i * 2.4, z), c, { ol: 0.07 }); [-0.5, 0.5].forEach(dx => B.add(GEO.ico(0.24, 0), M(x + dx, 1.5 + i * 2.4, z + 1.12), '#fff8e8', { ol: 0 })); });
+      B.add(GEO.box(5, 0.5, 1), M(x, 8.6, z), '#9a6a44', { ol: 0.05 }); addCircleSolid(x, z, 1.4); break;
+    case 'scarecrow': B.add(GEO.cyl(0.18, 0.18, 6, 5), M(x, 3, z), '#8a5a34', { ol: 0.03 }); B.add(GEO.cyl(0.14, 0.14, 4.6, 5), M(x, 4.2, z, 0, 0, Math.PI / 2), '#8a5a34', { ol: 0.03 });
+      B.add(GEO.rbox(1.8, 2.2, 1, 0.3, 1), M(x, 4, z), '#5b7cfa', { ol: 0.05 }); B.add(GEO.sph(0.8, 12, 10), M(x, 5.8, z), '#f1d3a0', { ol: 0.05 }); B.add(GEO.cone(1.4, 1.2, 10), M(x, 6.8, z), '#e8c079', { ol: 0.04 });
+      for (let i = 0; i < 5; i++) B.add(GEO.cyl(1.2, 1.2, 1.6, 10), M(x - 5 + i * 2.6, 0.8, z + 4 + (i % 2), 0, 0, Math.PI / 2), '#e8c079', { ol: 0.04 }); addCircleSolid(x, z, 0.6); break;
     case 'pole': B.add(GEO.cyl(0.35, 0.35, 12, 8), M(x, 6, z), '#ffffff', { ol: 0.06 });
       for (let i = 0; i < 6; i++) B.add(GEO.cyl(0.37, 0.37, 1, 8), M(x, 1 + i * 2, z), '#e4572e', { ol: 0 });
       B.add(GEO.box(4, 2.4, 0.15), M(x + 2.2, 10.6, z), '#5b7cfa', { ol: 0.05 }); B.add(GEO.ico(0.6, 1), M(x, 12.4, z), COL.yellow, { ol: 0.04 }); addCircleSolid(x, z, 0.8); break;
   }
+}
+/* things to pick in the Wild (they grow back every day) and animals that wander about */
+const ITEM_GOODS = { meadow: ['berry', 'flower', 'honey'], forest: ['mushroom', 'berry', 'mushroom'], taiga: ['mushroom', 'berry'], snow: ['gem'], rock: ['gem', 'ore'],
+  desert: ['gem', 'ore'], jungle: ['coconut', 'flower', 'coconut'], beach: ['shell', 'coconut', 'shell'] };
+const ANIMALS = { meadow: ['sheep', 'rabbit', 'deer'], forest: ['deer', 'fox', 'rabbit'], taiga: ['fox', 'deer'], snow: ['penguin'], rock: ['sheep'], desert: ['camel'], jungle: ['parrot'], beach: ['crab'] };
+const IK = {}, AK = {};
+function itemKits() {
+  if (IK.berry) return;
+  const ps = curSolids; curSolids = [];   // kits are drawn at the origin; their solids are not needed
+  const b = {}; ['berry', 'mushroom', 'coconut', 'flower', 'honey', 'shell', 'gem', 'ore'].forEach(k => { b[k] = new Builder(); });
+  berryBush(b.berry, 0, 0);
+  [[0, 0, 1], [0.9, 0.5, 0.7], [-0.7, 0.6, 0.8]].forEach(([dx, dz, k]) => { b.mushroom.add(GEO.cyl(0.25 * k, 0.32 * k, 1 * k, 8), M(dx, 0.5 * k, dz), '#fff3d6', { ol: 0.04 }); b.mushroom.add(GEO.sph(0.9 * k, 12, 6, true), M(dx, 0.9 * k, dz, 0, 0, 0, 1, 0.75, 1), '#e4572e', { ol: 0.06 }); b.mushroom.add(GEO.ico(0.12 * k, 0), M(dx + 0.3 * k, 1.45 * k, dz), '#fff8e8', { ol: 0 }); });
+  [[0, 0], [0.7, 0.3], [0.2, -0.7]].forEach(([dx, dz]) => b.coconut.add(GEO.sph(0.55, 12, 10), M(dx, 0.5, dz), '#8a5a34', { ol: 0.05 })); b.coconut.add(GEO.box(0.5, 0.12, 2.4), M(-0.8, 0.1, 0.4, 0.6), '#6fb84a', { ol: 0.02 });
+  for (let i = 0; i < 6; i++) { const a = i * 1.05, r = 0.4 + (i % 2) * 0.5, x = Math.cos(a) * r, z = Math.sin(a) * r; b.flower.add(GEO.cyl(0.06, 0.06, 1.2, 4), M(x, 0.6, z), '#6fb84a', { ol: 0 }); b.flower.add(GEO.ico(0.42, 1), M(x, 1.3, z), i % 2 ? '#ff8fb1' : '#ffffff', { ol: 0.03 }); b.flower.add(GEO.ico(0.16, 0), M(x, 1.42, z + 0.3), COL.yellow, { ol: 0 }); }
+  b.honey.add(GEO.cyl(0.14, 0.14, 2.2, 5), M(0, 1.1, 0), '#8a5a34', { ol: 0.03 }); [[2.2, 0.9], [1.7, 1.6], [1.1, 2.2]].forEach(([y, r], i) => b.honey.add(GEO.cyl(r * 0.85, r, 0.6, 12), M(0, y, 0), i % 2 ? '#e8a43a' : '#f4c35a', { ol: 0.05 }));
+  b.honey.add(GEO.disc(0.25, 10), M(0, 2.3, 0.86, 0, Math.PI / 2), '#34233f', { ol: 0 }); [[1, 3, 0.5], [-0.9, 3.4, 0.2]].forEach(([dx, y, dz]) => b.honey.add(GEO.ico(0.18, 0), M(dx, y, dz), COL.yellow, { ol: 0.02 }));
+  b.shell.add(GEO.sph(0.7, 12, 8), M(0, 0.3, 0, 0.5, 0, 0, 1, 0.6, 1.3), '#ffc2d1', { ol: 0.04 }); b.shell.add(GEO.cone(0.35, 0.7, 8), M(0.8, 0.3, 0.4, 0, 0, 1.2), '#fff3d6', { ol: 0.03 });
+  crystals(b.gem, 0, 0); oreRock(b.ore, 0, 0, 3);
+  Object.entries(b).forEach(([k, B]) => { IK[k] = B.geometries(); });
+  // animals: little toy creatures, each facing +z
+  const a = {}; ['sheep', 'rabbit', 'deer', 'fox', 'penguin', 'camel', 'parrot', 'crab'].forEach(k => { a[k] = new Builder(); });
+  const legs = (B, c, w, d, h, col) => [[-w, -d], [w, -d], [-w, d], [w, d]].forEach(([dx, dz]) => B.add(GEO.cyl(0.14, 0.12, h, 5), M(dx, h / 2, dz), col, { ol: 0.02 }));
+  legs(a.sheep, 0, 0.5, 0.6, 0.8, '#34233f'); a.sheep.add(GEO.ico(1.1, 1), M(0, 1.5, 0, 0, 0, 0, 1, 0.85, 1.25), '#fbf7ee', { ol: 0.07 }); a.sheep.add(GEO.rbox(0.7, 0.8, 0.8, 0.25, 1), M(0, 1.8, 1.4), '#34233f', { ol: 0.04 });
+  a.rabbit.add(GEO.sph(0.6, 12, 10), M(0, 0.6, 0, 0, 0, 0, 1, 0.9, 1.2), '#e9e2d8', { ol: 0.05 }); a.rabbit.add(GEO.sph(0.42, 12, 10), M(0, 1.1, 0.6), '#e9e2d8', { ol: 0.05 }); [-0.18, 0.18].forEach(dx => a.rabbit.add(GEO.capsule(0.1, 0.6), M(dx, 1.7, 0.5), '#e9e2d8', { ol: 0.03 })); a.rabbit.add(GEO.ico(0.2, 1), M(0, 0.7, -0.7), '#ffffff', { ol: 0 });
+  legs(a.deer, 0, 0.45, 0.8, 1.6, '#9a6a44'); a.deer.add(GEO.capsule(0.6, 1.6), M(0, 2, 0, 0, Math.PI / 2), '#b07a4a', { ol: 0.06 }); a.deer.add(GEO.cyl(0.25, 0.3, 1.2, 6), M(0, 2.9, 1.1, 0, -0.5), '#b07a4a', { ol: 0.04 }); a.deer.add(GEO.rbox(0.6, 0.6, 0.9, 0.25, 1), M(0, 3.5, 1.5), '#b07a4a', { ol: 0.04 }); [-0.3, 0.3].forEach(dx => a.deer.add(GEO.cyl(0.06, 0.06, 1, 4), M(dx, 4.2, 1.3, 0, 0, dx), '#6b4a2e', { ol: 0 }));
+  legs(a.fox, 0, 0.35, 0.55, 0.7, '#34233f'); a.fox.add(GEO.capsule(0.45, 1.1), M(0, 1.05, 0, 0, Math.PI / 2), '#f08a3c', { ol: 0.05 }); a.fox.add(GEO.rbox(0.7, 0.6, 0.8, 0.25, 1), M(0, 1.4, 1), '#f08a3c', { ol: 0.04 }); [-0.22, 0.22].forEach(dx => a.fox.add(GEO.cone(0.16, 0.4, 4), M(dx, 1.9, 0.95), '#f08a3c', { ol: 0.02 })); a.fox.add(GEO.capsule(0.28, 0.9), M(0, 1.2, -1, 0, 1.1), '#f08a3c', { ol: 0.04 }); a.fox.add(GEO.ico(0.26, 1), M(0, 1.45, -1.55), '#ffffff', { ol: 0 });
+  a.penguin.add(GEO.capsule(0.7, 1.1), M(0, 1.3, 0), '#34233f', { ol: 0.05 }); a.penguin.add(GEO.sph(0.55, 12, 10), M(0, 1.2, 0.3, 0, 0, 0, 1, 1.3, 0.6), '#ffffff', { ol: 0 }); a.penguin.add(GEO.cone(0.14, 0.4, 6), M(0, 2, 0.7, 0, Math.PI / 2), '#ff9f43', { ol: 0.02 }); [-0.25, 0.25].forEach(dx => a.penguin.add(GEO.box(0.3, 0.1, 0.4), M(dx, 0.05, 0.25), '#ff9f43', { ol: 0 }));
+  legs(a.camel, 0, 0.5, 0.9, 2.2, '#c9a06a'); a.camel.add(GEO.capsule(0.75, 1.8), M(0, 2.8, 0, 0, Math.PI / 2), '#d9b27a', { ol: 0.06 }); a.camel.add(GEO.sph(0.7, 12, 8, true), M(0, 3.3, 0), '#d9b27a', { ol: 0.04 }); a.camel.add(GEO.cyl(0.25, 0.3, 1.6, 6), M(0, 3.7, 1.3, 0, -0.4), '#d9b27a', { ol: 0.04 }); a.camel.add(GEO.rbox(0.6, 0.6, 1, 0.25, 1), M(0, 4.5, 1.7), '#d9b27a', { ol: 0.04 });
+  a.parrot.add(GEO.sph(0.5, 12, 10), M(0, 0.6, 0, 0, 0, 0, 1, 1.2, 1), '#e4572e', { ol: 0.04 }); [-0.45, 0.45].forEach(dx => a.parrot.add(GEO.box(0.5, 0.14, 0.9), M(dx, 0.7, -0.1, 0, 0, dx * 1.4), '#5b7cfa', { ol: 0.02 })); a.parrot.add(GEO.cone(0.14, 0.35, 6), M(0, 0.85, 0.5, 0, Math.PI / 2), COL.yellow, { ol: 0.02 }); a.parrot.add(GEO.box(0.3, 0.1, 0.8), M(0, 0.3, -0.7, 0, 0.4), '#8cbf5a', { ol: 0.02 });
+  a.crab.add(GEO.sph(0.7, 12, 8), M(0, 0.4, 0, 0, 0, 0, 1.3, 0.5, 1), '#e4572e', { ol: 0.05 }); [-1, 1].forEach(sd => { a.crab.add(GEO.ico(0.3, 1), M(sd * 1.1, 0.5, 0.6), '#e4572e', { ol: 0.03 }); a.crab.add(GEO.ico(0.12, 0), M(sd * 0.25, 0.85, 0.5), '#34233f', { ol: 0 }); });
+  Object.entries(a).forEach(([k, B]) => { AK[k] = B.geometries(); });
+  curSolids = ps;
+}
+const itemMeshes = {}, pickedWild = new Set();
+let itemsDirty = false;
+function rebuildItems() {
+  itemsDirty = false; itemKits();
+  const by = {}; wild.forEach(c => (c.items || []).forEach(it => { if (!pickedWild.has(it.id)) (by[it.good] = by[it.good] || []).push(it); }));
+  Object.keys(IK).forEach(g => {
+    let K = itemMeshes[g];
+    if (!K) {
+      const { main, line } = IK[g], mesh = new THREE.InstancedMesh(main, toonMat, 400), out = line ? new THREE.InstancedMesh(line, outlineMat, 400) : null;
+      [mesh, out].forEach(m => { if (!m) return; m.frustumCulled = false; m.count = 0; scene.add(m); }); mesh.castShadow = true;
+      K = itemMeshes[g] = { mesh, out };
+    }
+    const list = (by[g] || []).slice(0, 400), m = new THREE.Matrix4();
+    list.forEach((it, i) => { m.compose(_p.set(it.x, it.y, it.z), _q.setFromEuler(_e.set(0, it.r * 6.28, 0)), _s.setScalar(1.3)); K.mesh.setMatrixAt(i, m); if (K.out) K.out.setMatrixAt(i, m); });
+    K.mesh.count = list.length; K.mesh.instanceMatrix.needsUpdate = true; if (K.out) { K.out.count = list.length; K.out.instanceMatrix.needsUpdate = true; }
+  });
+}
+function animalMesh(kind) {
+  const { main, line } = AK[kind], g = new THREE.Group(), m = keepGeo(new THREE.Mesh(main, toonMat)); m.castShadow = true; g.add(m);
+  if (line) g.add(keepGeo(new THREE.Mesh(line, outlineMat)));
+  g.scale.setScalar(kind === 'camel' || kind === 'deer' ? 1.2 : 1.3);
+  return g;
+}
+function stepAnimals(t) {
+  wild.forEach(c => (c.animals || []).forEach(an => {
+    if (Math.abs(an.hx - player.x) > 160 || Math.abs(an.hz - player.z) > 160) return;
+    const sp = an.kind === 'crab' || an.kind === 'penguin' ? 0.25 : 0.12, a = an.ph + t * sp * (an.dir || 1);
+    const x = an.hx + Math.cos(a) * an.r, z = an.hz + Math.sin(a) * an.r;
+    const hop = an.kind === 'rabbit' ? Math.abs(Math.sin(t * 5 + an.ph)) * 0.9 : an.kind === 'parrot' ? 3 + Math.sin(t * 2 + an.ph) * 0.8 : Math.abs(Math.sin(t * 3 + an.ph)) * 0.12;
+    an.obj.position.set(x, wildH(x, z) + hop, z);
+    an.obj.rotation.y = Math.atan2(-Math.sin(a) * (an.dir || 1), Math.cos(a) * (an.dir || 1));   // facing the way it walks (models face +z)
+    an.x = x; an.z = z;
+  }));
 }
 function buildWildChunk(cx, cz) {
   const x0 = cx * WCH, z0 = cz * WCH, x1 = x0 + WCH, z1 = z0 + WCH;
@@ -3775,7 +3878,7 @@ function buildWildChunk(cx, cz) {
         const kinds = WILD_KINDS[s.biome]; spot = { type: kinds[Math.floor(rs() * kinds.length)], x, z, biome: s.biome };
       }
       // plants and rocks, by biome
-      const r = rng(Math.imul(cxw + 1, 73856093) ^ Math.imul(cz + 7919, 19349663)), P = { oak: [], pine: [], snowpine: [], cactus: [], palm: [], shroom: [], flower: [], tuft: [], bush: [] };
+      const r = rng(Math.imul(cxw + 1, 73856093) ^ Math.imul(cz + 7919, 19349663)), P = { oak: [], pine: [], snowpine: [], cactus: [], palm: [], shroom: [], flower: [], tuft: [], bush: [], birch: [], autumn: [], bamboo: [], dead: [], spike: [], reeds: [], sunfl: [], starfish: [] };
       const FL = ['#ff8fb1', '#ffd23f', '#ffffff', '#b98cff', '#ff9f43'];
       for (let i = 0; i < 95; i++) {
         const x = x0 + r() * WCH, z = z0 + r() * WCH, q = r(), rr = r(), sc = 0.8 + r() * 0.5;
@@ -3786,17 +3889,32 @@ function buildWildChunk(cx, cz) {
         const tree = (k, rad = 0.9) => { P[k].push(it); c.solids.push({ type: 'circle', x, z, r: rad * sc }); };
         const rock = (red) => { base.makeTranslation(0, y - 0.2, 0); B.base = base; (red ? redRock : greyRock)(B, x, z, 0.8 + rr * 0.9, (i * 7 + cxw) | 0); B.base = null; };
         switch (s.biome) {
-          case 'meadow': if (q < 0.09) tree('oak'); else if (q < 0.34) P.flower.push({ ...it, s: 1.3, c: FL[i % FL.length] }); else if (q < 0.5) P.tuft.push(it); else if (q < 0.52) rock(); else if (q < 0.55) tree('bush', 1.2); break;
-          case 'forest': if (q < 0.42) tree(s.t < 0.5 ? 'pine' : 'oak'); else if (q < 0.56) P.shroom.push(it); else if (q < 0.66) P.tuft.push(it); else if (q < 0.7) tree('bush', 1.2); break;
-          case 'taiga': if (q < 0.42) tree('pine'); else if (q < 0.47) rock(); else if (q < 0.55) P.tuft.push(it); break;
-          case 'snow': if (q < 0.16) tree('snowpine'); else if (q < 0.21) rock(); break;
-          case 'rock': if (q < 0.2) rock(); else if (q < 0.26) tree('pine'); break;
-          case 'desert': if (q < 0.06) tree('cactus', 0.8); else if (q < 0.1) rock(true); break;
-          case 'jungle': if (q < 0.3) tree('palm', 0.8); else if (q < 0.5) tree('oak'); else if (q < 0.62) P.flower.push({ ...it, s: 1.5, c: FL[i % FL.length] }); else if (q < 0.7) tree('bush', 1.2); break;
-          case 'beach': if (q < 0.04) tree('palm', 0.8); break;
+          case 'meadow': if (q < 0.06) tree('oak'); else if (q < 0.09) tree('birch', 0.6); else if (q < 0.3) P.flower.push({ ...it, s: 1.3, c: FL[i % FL.length] }); else if (q < 0.34) P.sunfl.push(it); else if (q < 0.48) P.tuft.push(it); else if (q < 0.5) rock(); else if (q < 0.53) tree('bush', 1.2); break;
+          case 'forest': if (q < 0.42) tree(s.t < 0.5 ? 'pine' : rr < 0.25 ? 'autumn' : rr < 0.45 ? 'birch' : 'oak'); else if (q < 0.56) P.shroom.push(it); else if (q < 0.66) P.tuft.push(it); else if (q < 0.7) tree('bush', 1.2); break;
+          case 'taiga': if (q < 0.36) tree('pine'); else if (q < 0.42) tree('birch', 0.6); else if (q < 0.47) rock(); else if (q < 0.55) P.tuft.push(it); break;
+          case 'snow': if (q < 0.14) tree('snowpine'); else if (q < 0.19) rock(); else if (q < 0.23) tree('spike', 1.1); break;
+          case 'rock': if (q < 0.2) rock(); else if (q < 0.26) tree('pine'); else if (q < 0.29) tree('dead', 0.6); break;
+          case 'desert': if (q < 0.06) tree('cactus', 0.8); else if (q < 0.1) rock(true); else if (q < 0.12) tree('dead', 0.6); break;
+          case 'jungle': if (q < 0.26) tree('palm', 0.8); else if (q < 0.38) tree('bamboo', 1.2); else if (q < 0.5) tree('oak'); else if (q < 0.62) P.flower.push({ ...it, s: 1.5, c: FL[i % FL.length] }); else if (q < 0.7) tree('bush', 1.2); break;
+          case 'beach': if (q < 0.04) tree('palm', 0.8); else if (q < 0.08) P.starfish.push(it); else if (q < 0.12 && s.c < PL.SEA + 0.006) P.reeds.push(it); break;
         }
       }
-      Object.entries(P).forEach(([k, list]) => wildInstances(group, k, list, k === 'flower' ? 0 : 0.2));
+      Object.entries(P).forEach(([k, list]) => wildInstances(group, k, list, k === 'flower' || k === 'starfish' ? 0 : 0.2));
+      // things to pick (they grow back each day) and a few animals
+      itemKits();
+      const ri = rng(Math.imul(cxw + 11, 83492791) ^ Math.imul(cz + 3, 2971215073));
+      c.items = []; c.animals = [];
+      for (let n = 0, tries = 0; n < 4 && tries < 14; tries++) {
+        const x = x0 + 8 + ri() * (WCH - 16), z = z0 + 8 + ri() * (WCH - 16), s = PL.sample(x, z), goods = ITEM_GOODS[s.biome];
+        if (s.ocean || !goods || PL.regionDist(x, z) < 14 || (spot && Math.hypot(x - spot.x, z - spot.z) < 14)) continue;
+        c.items.push({ id: `i${cxw}_${cz}_${n}`, good: goods[Math.floor(ri() * goods.length)], x, z, y: wildH(x, z), r: ri() }); n++;
+      }
+      for (let n = 0, tries = 0; n < 2 && tries < 6; tries++) {
+        const x = x0 + 15 + ri() * (WCH - 30), z = z0 + 15 + ri() * (WCH - 30), s = PL.sample(x, z), kinds = ANIMALS[s.biome];
+        if (s.ocean || !kinds || PL.regionDist(x, z) < 20 || ri() < 0.35) continue;
+        const kind = kinds[Math.floor(ri() * kinds.length)], obj = animalMesh(kind);
+        group.add(obj); c.animals.push({ id: `a${cxw}_${cz}_${n}`, kind, obj, hx: x, hz: z, x, z, r: 3 + ri() * 5, ph: ri() * 6.28, dir: ri() < 0.5 ? -1 : 1 }); n++;
+      }
       if (spot) {
         const y = wildH(spot.x, spot.z);
         base.makeTranslation(0, y - 0.1, 0); B.base = base;
@@ -3813,6 +3931,7 @@ function buildWildChunk(cx, cz) {
 // which chunks should exist: a wide band in front of the camera (north, up the screen) and a little behind
 function wildTick(dt) {
   if (!started) return;
+  const onPlanet = !onTrip; Object.values(itemMeshes).forEach(K => { K.mesh.visible = onPlanet; if (K.out) K.out.visible = onPlanet; });
   if (onTrip) { wildGroup.visible = false; return; }
   wildGroup.visible = true;
   if ((wildT -= dt) <= 0) {
@@ -3821,7 +3940,7 @@ function wildTick(dt) {
     const pcx = Math.floor(player.x / WCH), pcz = Math.floor(player.z / WCH), want = [];
     for (let dz = -3; dz <= 1; dz++) for (let dx = -2; dx <= 2; dx++) want.push([pcx + dx, pcz + dz, dx * dx + (dz + 1) * (dz + 1)]);
     const keep = new Set(want.map(([x, z]) => x + ',' + z));
-    wild.forEach((c, k) => { if (Math.abs(c.cx - pcx) > 3 || c.cz - pcz < -4 || c.cz - pcz > 2) { dropChunk(c); wild.delete(k); wildVersion++; } });
+    wild.forEach((c, k) => { if (Math.abs(c.cx - pcx) > 3 || c.cz - pcz < -4 || c.cz - pcz > 2) { dropChunk(c); wild.delete(k); wildVersion++; itemsDirty = true; } });
     wildQueue = want.filter(([x, z]) => !wild.has(x + ',' + z)).sort((a, b) => a[2] - b[2]);
     void keep;
   }
@@ -3830,8 +3949,10 @@ function wildTick(dt) {
   while (wildQueue.length && performance.now() - t0 < 6) {
     const [x, z] = wildQueue.shift(), k = x + ',' + z;
     if (wild.has(k)) continue;
-    wild.set(k, buildWildChunk(x, z)); wildVersion++;
+    wild.set(k, buildWildChunk(x, z)); wildVersion++; itemsDirty = true;
   }
+  if (itemsDirty) rebuildItems();
+  stepAnimals(now);
 }
 function collideWild(p) {
   if (onTrip || !wild.size) return;
@@ -4294,6 +4415,10 @@ window.World = {
   planetAt: (gx, gy) => PL.sample(wx(gx), wz(gy)),
   wildSpots: () => { const out = []; wild.forEach(c => c.spots.forEach(q => out.push({ id: q.id, type: q.type, biome: q.biome, pole: q.pole, x: gxOf(q.x), y: gyOf(q.z) }))); return out; },
   get wildVersion() { return wildVersion; },
+  wildItems: () => { const out = []; wild.forEach(c => (c.items || []).forEach(it => { if (!pickedWild.has(it.id)) out.push({ id: it.id, good: it.good, x: gxOf(it.x), y: gyOf(it.z) }); })); return out; },
+  wildAnimals: () => { const out = []; wild.forEach(c => (c.animals || []).forEach(a => out.push({ id: a.id, kind: a.kind, x: gxOf(a.x), y: gyOf(a.z) }))); return out; },
+  setWildPicked(ids) { pickedWild.clear(); (ids || []).forEach(id => pickedWild.add(id)); itemsDirty = true; },
+  pickWild(id) { pickedWild.add(id); itemsDirty = true; },
   get wildChunks() { return wild.size; },
   // wonders
   rainbow(on, gx, gy) { setRainbow(on, gx, gy); },

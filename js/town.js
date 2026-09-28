@@ -95,15 +95,15 @@
   // mountain towns, a college town, an old town with a castle, lake towns, canyon towns and forest villages.
   const KINDS = {
     downtown: { name: 'Downtown', icon: '🏙️', suffix: 'City', nature: 'lake', pool: ['exchange', 'office', 'hotel', 'cafe', 'arcade'], lot: 1.6, farm: 1.3,
-      wants: { wheat: 1.4, carrot: 1.4, tomato: 1.4, corn: 1.4, milk: 1.5, egg: 1.5, apple: 1.4, berry: 1.3 }, blurb: 'Tall towers, busy offices, the stock exchange.' },
+      wants: { wheat: 1.4, carrot: 1.4, tomato: 1.4, corn: 1.4, milk: 1.5, egg: 1.5, apple: 1.4, berry: 1.3, honey: 1.5, mushroom: 1.3 }, blurb: 'Tall towers, busy offices, the stock exchange.' },
     uptown: { name: 'Uptown', icon: '🏛️', suffix: 'Heights', nature: 'meadow', pool: ['gallery', 'concert', 'museum', 'cafe', 'hotel'], lot: 2, farm: 1.5,
-      wants: { gem: 1.6, shell: 1.4, fish: 1.3, apple: 1.2 }, blurb: 'Big houses, gardens, art and music.' },
+      wants: { gem: 1.6, shell: 1.4, fish: 1.3, apple: 1.2, flower: 1.7, honey: 1.3 }, blurb: 'Big houses, gardens, art and music.' },
     rural: { name: 'Farm Valley', icon: '🌾', suffix: 'Farms', nature: 'meadow', pool: ['ranch', 'orchard', 'cafe'], lot: 0.8, farm: 0.7, farms: 8,
-      wants: { log: 1.4, ore: 1.4, gem: 1.2, fish: 1.2 }, blurb: 'Barns, cows, apple trees and cheap farmland.' },
+      wants: { log: 1.4, ore: 1.4, gem: 1.2, fish: 1.2, coconut: 1.4 }, blurb: 'Barns, cows, apple trees and cheap farmland.' },
     beach: { name: 'Beach Town', icon: '🏖️', suffix: 'Bay', nature: 'beach', pool: ['icecream', 'lighthouse', 'harbor', 'cafe'], lot: 1.2, farm: 1,
-      wants: { apple: 1.3, milk: 1.3, egg: 1.3, log: 1.3, corn: 1.2 }, blurb: 'Sand, surf, ice cream and a lighthouse.' },
+      wants: { apple: 1.3, milk: 1.3, egg: 1.3, log: 1.3, corn: 1.2, mushroom: 1.4 }, blurb: 'Sand, surf, ice cream and a lighthouse.' },
     mountain: { name: 'Mountain Town', icon: '⛰️', suffix: 'Peak', nature: 'hills', pool: ['mine', 'lodge', 'hotsprings', 'cafe'], lot: 0.9, farm: 0.9,
-      wants: { fish: 1.5, shell: 1.5, tomato: 1.3, berry: 1.2 }, blurb: 'Snowy peaks, a crystal mine, skiing and hot springs.' },
+      wants: { fish: 1.5, shell: 1.5, tomato: 1.3, berry: 1.2, coconut: 1.6 }, blurb: 'Snowy peaks, a crystal mine, skiing and hot springs.' },
     college: { name: 'College Town', icon: '🎓', suffix: 'College', nature: 'grove', pool: ['university', 'museum', 'stadium', 'cafe'], lot: 1.3, farm: 1,
       wants: { berry: 1.4, apple: 1.3, egg: 1.2, corn: 1.2 }, blurb: 'The university, the big stadium and busy students.' },
     oldtown: { name: 'Old Town', icon: '🏰', suffix: 'Old Town', nature: 'stars', pool: ['castle', 'museum', 'cafe', 'hotel'], lot: 1.4, farm: 1,
@@ -257,9 +257,14 @@
     egg: { name: 'Eggs', icon: '🥚', base: 6 },
     apple: { name: 'Apple', icon: '🍎', base: 6 },
     ore: { name: 'Ore', icon: '🪨', base: 9 },
+    // gathered out in the Wild
+    mushroom: { name: 'Mushrooms', icon: '🍄', base: 7 },
+    coconut: { name: 'Coconut', icon: '🥥', base: 8 },
+    flower: { name: 'Wildflowers', icon: '🌸', base: 4 },
+    honey: { name: 'Honey', icon: '🍯', base: 12 },
   };
   const CROPS = ['wheat', 'carrot', 'tomato', 'corn'];
-  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log', 'fish', 'shell', 'gem', 'berry', 'milk', 'egg', 'apple', 'ore'];
+  const SELLABLE = ['wheat', 'carrot', 'tomato', 'corn', 'log', 'fish', 'shell', 'gem', 'berry', 'milk', 'egg', 'apple', 'ore', 'mushroom', 'coconut', 'flower', 'honey'];
   const NORM = 20;   // how much of each good the market usually has
   const FARM_REGROW = 40 * 1000, TREE_REGROW = 5 * MIN;
   const TAX = { farm: 2, lot: 3 };          // property tax per day

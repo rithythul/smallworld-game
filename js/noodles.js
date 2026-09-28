@@ -43,7 +43,10 @@ const KITCHEN = [
   { id: 'soup', icon: '🍅', name: 'Tomato Corn Soup', needs: { tomato: 2, corn: 1 }, stars: 2 },
   { id: 'udon', icon: '🐟', name: 'Seaside Udon', needs: { wheat: 1, fish: 1 }, stars: 2 },
   { id: 'pancake', icon: '🥞', name: 'Apple Pancakes', needs: { wheat: 1, milk: 1, apple: 1 }, stars: 2 },
+  { id: 'shroom', icon: '🍄', name: 'Mushroom Soup', needs: { mushroom: 2, milk: 1 }, stars: 2 },
+  { id: 'smoothie', icon: '🥥', name: 'Tropical Smoothie', needs: { coconut: 1, berry: 1, honey: 1 }, stars: 3 },
+  { id: 'tea', icon: '🌸', name: 'Flower Honey Tea', needs: { flower: 2, honey: 1 }, stars: 2 },
   { id: 'feast', icon: '🍲', name: "Grandma's Feast", needs: { wheat: 1, egg: 1, milk: 1, apple: 1, fish: 1, carrot: 1 }, stars: 5 },
 ];
 // where to get each ingredient (a guide-arrow target in sw.js)
-const INGREDIENT_AT = { wheat: 'townfarm', carrot: 'townfarm', tomato: 'townfarm', corn: 'townfarm', egg: 'work:hen', milk: 'work:cow', apple: 'work:apple', fish: 'spot:fish', berry: 'nature' };
+const INGREDIENT_AT = { wheat: 'townfarm', carrot: 'townfarm', tomato: 'townfarm', corn: 'townfarm', egg: 'work:hen', milk: 'work:cow', apple: 'work:apple', fish: 'spot:fish', berry: 'wild:berry', mushroom: 'wild:mushroom', coconut: 'wild:coconut', flower: 'wild:flower', honey: 'wild:honey' };

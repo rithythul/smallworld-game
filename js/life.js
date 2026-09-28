@@ -369,6 +369,9 @@
     w_stones: ['🗿', 'Stone Circle'], w_ruins: ['🏛️', 'Old Ruins'], w_well: ['🪣', 'Wishing Well'], w_camp: ['⛺', 'Campsite'], w_statue: ['🗽', 'Squareface Statue'],
     w_tower: ['🗼', 'Watchtower'], w_bigshroom: ['🍄', 'Giant Mushroom'], w_crystal: ['💎', 'Crystal Cave'], w_igloo: ['🧊', 'Snow Fort'], w_arch: ['🌉', 'Red Arch'],
     w_mesa: ['🏜️', 'Mesa'], w_lighthouse: ['🗼', 'Lighthouse'], w_pole: ['🚩', 'A Pole of the planet'],
+    w_shipwreck: ['⚓', 'Shipwreck'], w_pyramid: ['🔺', 'Pyramid'], w_temple: ['🛕', 'Jungle Temple'], w_cabin: ['🛖', 'Log Cabin'], w_bigtree: ['🌳', 'Ancient Tree'],
+    w_snowman: ['⛄', 'Snowman'], w_totem: ['🪵', 'Totem Pole'], w_scarecrow: ['🌾', 'Scarecrow'],
+    a_sheep: ['🐑', 'A fluffy sheep'], a_rabbit: ['🐰', 'A rabbit'], a_deer: ['🦌', 'A deer'], a_fox: ['🦊', 'A fox'], a_penguin: ['🐧', 'A penguin'], a_camel: ['🐪', 'A camel'], a_parrot: ['🦜', 'A parrot'], a_crab: ['🦀', 'A crab'],
     b_snow: ['❄️', 'The Snowlands'], b_desert: ['🌵', 'The Desert'], b_jungle: ['🌴', 'The Jungle'], b_sea: ['🌊', 'Out in the ocean'], b_round: ['🌍', 'All the way round the planet'],
     museum: ['🦕', 'Dinosaur bones'], zoo: ['🦁', 'Zoo day'], cafe: ['☕', 'Hot cocoa'], arcade: ['🕹️', 'Arcade high score'], hotel: ['🏨', 'Hotel night'],
   };
@@ -849,16 +852,16 @@
     const b = clamp(band | 0, 1, 3) || 2;
     return {
       v: 1, coins: RULES[b].start, bank: 0, loan: 0, iou: 0, band: b,
-      bag: { wheat: 0, carrot: 0, tomato: 0, corn: 0, log: 0, fish: 0, shell: 0, gem: 0, berry: 0, photo: 0, milk: 0, egg: 0, apple: 0, ore: 0 }, shelf: {}, online: {}, shares: {}, kindsSeen: {},
+      bag: { wheat: 0, carrot: 0, tomato: 0, corn: 0, log: 0, fish: 0, shell: 0, gem: 0, berry: 0, photo: 0, milk: 0, egg: 0, apple: 0, ore: 0, mushroom: 0, coconut: 0, flower: 0, honey: 0 }, shelf: {}, online: {}, shares: {}, kindsSeen: {},
       school: {}, job: null, shift: null, shiftsToday: 0, day: null, today: freshToday(),
       dream: null, dreamStep: 0, dreamLv: 0, dreamMark: 0, rentFree: RULES[b].rentFree, rep: 0, owesSapling: 0, seen: {},
       hat: null, hats: {}, levelClaimed: 1, starter: 0, rit: {}, daily: null, perfectDays: 0, streak: 0, lastPerfect: null, lastPlayed: null, prevPlayed: null, rested: null, wonders: {},
       vehicles: {}, riding: null, companies: [], channel: { videos: 0, subs: 0, views: 0, earned: 0, places: {} },
-      xp: 0, memories: {}, noodles: {}, shiny: {}, crunched: { day: null, ids: {} }, faces: {}, snail: null, fed: null, classic: null, wild: {}, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
+      xp: 0, memories: {}, noodles: {}, shiny: {}, crunched: { day: null, ids: {} }, faces: {}, snail: null, fed: null, classic: null, wild: {}, wildPicked: { day: null, ids: [] }, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
       stats: { earned: 0, wages: 0, shifts: {}, harvested: 0, farmPicked: 0, sold: 0, soldCoins: 0, chopped: 0, replanted: 0, planted: 0,
         interest: 0, loanInterest: 0, taxPaid: 0, votes: 0, ran: 0, won: 0, classes: 0, deposits: 0, borrowed: 0, stocked: 0, shopSales: 0, built: 0,
         companies: 0, ads: 0, coRevenue: 0, coProfit: 0, onlineSold: 0, onlineCoins: 0, listed: 0, viewCoins: 0, photos: 0, rides: 0, rideBus: 0, rideTrain: 0,
-        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0, gathered: {}, localBonus: 0, stockGain: 0, crunches: 0, bestCombo: 0, walked: 0, farthest: 0, discoveries: 0 },
+        spots: 0, trips: 0, found: {}, gifts: 0, swims: 0, sips: 0, sleeps: 0, healthy: 0, hops: 0, kicks: 0, gathered: {}, localBonus: 0, stockGain: 0, crunches: 0, bestCombo: 0, walked: 0, farthest: 0, discoveries: 0, foraged: 0, petted: 0 },
     };
   }
   // fill in anything missing from older saves

@@ -385,6 +385,7 @@
     if (at === 'pool') return { x: HOME.pool.x, y: HOME.pool.y - HOME.pool.ry + 30, h: 6 };
     if (at === 'tap') return town.built.includes('fountain') && dist(p, Town.PROJECT_SPOTS.fountain) < dist(p, HOME.tap) ? { ...Town.PROJECT_SPOTS.fountain, h: 8 } : { ...HOME.tap, h: 8 };
     if (at === 'home') return { ...homeDoor(), h: 12 };
+    if (at.startsWith('wild:')) { const good = at.slice(5), it = nearest((World.wildItems ? World.wildItems() : []).filter(q => q.good === good), p); return it ? { x: it.x, y: it.y, h: 6 } : null; }
     if (at === 'brick') { const b = nearest((World.pickups ? World.pickups() : []).filter(q => q.kind === 'brick'), p); return b ? { x: b.x, y: b.y, h: 5 } : null; }
     if (at === 'ball') return { ...(World.ballAt ? World.ballAt() : Town.BALL), h: 5 };
     if (at === 'npc') { const k = nearest(World.keepers.filter(q => !life.today.hello[q.id]), p); return k ? { x: k.x, y: k.y, h: 13 } : null; }
@@ -418,6 +419,11 @@
     { const d = dist(p, tap); if (d < (tap === HOME.tap ? 60 : 190)) add({ key: 'tap', label: 'Drink', icon: '💧', cls: 'water', run: () => sip() }, d, 10); }
     if (Life.ritualState(life, 'sleep', t) === 'open') { const h = homeDoor(), d = dist(p, h); if (d < (h.own ? 110 : 80)) add({ key: 'bed', label: 'Sleep', icon: '🛏️', cls: 'buy', run: () => goSleep() }, d, 30); }
     if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 90);   // anything close by comes first; otherwise the big button is a wish
+    // things to pick and animals to say hello to
+    if (World.wildItems && inWildNow()) {
+      World.wildItems().forEach(it => { const d = dist(p, it); if (d < 100) { const g = G[it.good] || {}; add({ key: 'item:' + it.id, label: life.band === 1 ? '' : `Pick ${(g.name || '').toLowerCase()}`, icon: g.icon || '🧺', cls: 'work', run: () => pickWild(it) }, d, 10); } });
+      World.wildAnimals().forEach(an => { const d = dist(p, an); if (d < 90) add({ key: 'pet:' + an.id, label: life.band === 1 ? '' : 'Say hi', icon: ANIMAL_INFO[an.kind] || '🐾', cls: 'talk', run: () => petAnimal(an) }, d, 5); });
+    }
     // a discovery in the Wild
     if (World.wildSpots && inWildNow()) World.wildSpots().forEach(q => { if (life.wild[q.id]) return; const d = dist(p, q); if (d < 130) { const [icon, name] = wildSpotName(q); add({ key: 'wild:' + q.id, label: life.band === 1 ? '' : name, icon, cls: 'buy', run: () => discover(q) }, d, 20); } });
     // a friend close by: see their card (anything else close by comes first)
@@ -911,7 +917,7 @@
         const have = life.bag[g] || 0, b = document.createElement('button'); b.type = 'button';
         b.className = 'need' + (have >= n ? ' ok' : ''); b.innerHTML = `${(G[g] || {}).icon || g}${n > 1 ? '×' + n : ''}`;
         b.title = have >= n ? 'You have it' : 'Where to get it';
-        if (have < n) b.addEventListener('click', () => { const w = placeFor(INGREDIENT_AT[g]); if (w) { guide = { ...w, icon: (G[g] || {}).icon }; closeSheet(); toast(`${(G[g] || {}).icon} ➤`, { life: 2 }); } });
+        if (have < n) b.addEventListener('click', () => { const w = placeFor(INGREDIENT_AT[g]); if (w) { guide = { ...w, icon: (G[g] || {}).icon }; closeSheet(); toast(`${(G[g] || {}).icon} ➤`, { life: 2 }); } else if (/^wild:/.test(INGREDIENT_AT[g] || '')) toast(`${(G[g] || {}).icon} 🌍 ${life.band === 1 ? '' : 'Grows out in the Wild: walk out of town to find it.'}`, { life: 3 }); });
         needs.append(b);
       });
       row.append(button(can ? (cooked ? '🍳' : `🍳 ⭐+${r.stars}`) : '🔒', () => cook(r), 'choice', !can));
@@ -1384,6 +1390,7 @@
     if (sleeping) wakeUp();
     const r = Life.newDay(life, town, me.uid, day);
     spawnBricks(true);
+    if (World.setWildPicked) World.setWildPicked(wildPickedToday().ids);   // a new morning: the Wild has grown back
     touch();
     syncDaily();
     if (!r) return;
@@ -1569,7 +1576,29 @@
   // Everything outside the towns is the Wild, made by js/planet.js as you walk (world3d streams it).
   const WILD_INFO = { stones: ['🗿', 'Stone Circle'], ruins: ['🏛️', 'Old Ruins'], well: ['🪣', 'Wishing Well'], camp: ['⛺', 'Campsite'], statue: ['🗽', 'Squareface Statue'],
     tower: ['🗼', 'Watchtower'], bigshroom: ['🍄', 'Giant Mushroom'], crystal: ['💎', 'Crystal Cave'], igloo: ['🧊', 'Snow Fort'], arch: ['🌉', 'Red Arch'], mesa: ['🏜️', 'Mesa'],
-    lighthouse: ['🗼', 'Lighthouse'], pole: ['🚩', 'Pole'] };
+    lighthouse: ['🗼', 'Lighthouse'], pole: ['🚩', 'Pole'], shipwreck: ['⚓', 'Shipwreck'], pyramid: ['🔺', 'Pyramid'], temple: ['🛕', 'Jungle Temple'],
+    cabin: ['🛖', 'Log Cabin'], bigtree: ['🌳', 'Ancient Tree'], snowman: ['⛄', 'Snowman'], totem: ['🪵', 'Totem Pole'], scarecrow: ['🌾', 'Scarecrow'] };
+  const ANIMAL_INFO = { sheep: '🐑', rabbit: '🐰', deer: '🦌', fox: '🦊', penguin: '🐧', camel: '🐪', parrot: '🦜', crab: '🦀' };
+  // things to pick in the Wild: into your bag, to sell or cook. They grow back every morning.
+  function wildPickedToday() { if (life.wildPicked.day !== life.day) life.wildPicked = { day: life.day, ids: [] }; return life.wildPicked; }
+  function pickWild(it) {
+    const wp = wildPickedToday(); if (wp.ids.includes(it.id)) return;
+    wp.ids.push(it.id); World.pickWild(it.id);
+    const n = life.band === 1 ? 2 : 1, g = G[it.good] || {};
+    Life.addItem(life, it.good, n); life.stats.foraged = (life.stats.foraged || 0) + 1;
+    Sound.pop(); World.mood('happy', 1); floatMe(`+${n} ${g.icon || ''}`);
+    if (!life.seen['forage']) { life.seen['forage'] = 1; toast(`<span class="t-small">🧺 Into your bag</span>${g.icon} ${esc(g.name || it.good)} · sell it at a market, or cook it at the Cafe`, { life: 5 }); }
+    touch(); hud(); checkDream();
+  }
+  // animals are friendly: say hello for a heart (and a star for each kind of animal, once a day)
+  function petAnimal(an) {
+    const icon = ANIMAL_INFO[an.kind] || '🐾';
+    Sound.chord(6, 'kalimba'); World.floatText(an.x, an.y, '💕', 'pay', 6); World.mood('love', 2);
+    const k = 'pet:' + an.kind;
+    if (!life.today.count[k]) { life.today.count[k] = 1; Life.addStars(life, 1); floatMe(`${icon} ⭐+1`); } else floatMe(icon + ' 💕');
+    life.stats.petted = (life.stats.petted || 0) + 1;
+    memory('a_' + an.kind); touch(); hud();
+  }
   const HOME_G = { x: 4800, y: 1500 };   // Small Town's plaza, in game px
   const toW = (p) => ({ x: (p.x - 4800) / 10, z: (p.y - 1300) / 10 });   // game px -> planet metres (world3d's units)
   const inWildNow = () => !World.trip && !!World.inWild && World.inWild(World.pos().x, World.pos().y);
@@ -2561,6 +2590,7 @@
       playing = true;
       goSolo();
       dayTick(); syncDaily(); birthdayCheck(); classicCheck();
+      if (World.setWildPicked) World.setWildPicked(wildPickedToday().ids);
       save(); startMusic();
       if (fresh && life.band > 1) later(() => welcome());
       else if (!life.dream && (life.starter || 0) >= Life.STARTER.length && life.seen.pickedDream) later(() => { if (!life.dream) dreamPicker(true); });
