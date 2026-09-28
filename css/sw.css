@@ -354,3 +354,14 @@ button.sure { background: #ffe08a !important; }
 .pcard-stat b { font-size: 18px; }
 .pcard-stat small { font-size: 11px; opacity: .75; text-align: center; }
 .pcard-row { display: flex; flex-wrap: wrap; gap: 6px; font-size: 26px; margin-bottom: 8px; }
+
+/* leaderboard */
+.board-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.board-tabs .tab { display: flex; flex-direction: column; align-items: center; min-width: 64px; font-size: 20px; line-height: 1.1; }
+.board-tabs .tab small { font-size: 11px; }
+.board-who { display: flex; gap: 6px; margin-bottom: 10px; }
+.board-list .rank { width: 44px; }
+.board-list .stat.big { font-weight: 800; font-size: 16px; }
+.board-list .stats { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.board-gap { text-align: center; font-weight: 800; opacity: .6; }
+.board-mine { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 6px; }

@@ -36,6 +36,70 @@ setInterval(() => {
   fs.mkdir(path.dirname(BOARD_FILE), { recursive: true }, () => fs.writeFile(BOARD_FILE, JSON.stringify(board), () => {}));
 }, 10000);
 const lastPost = new Map();
+
+/* ---------- Small World leaderboard: one record per player, many ways to shine ---------- */
+// Every board counts something that only goes up, so nobody drops down for spending or for a bad day.
+const SW_BOARD_FILE = path.join(DATA_DIR, 'swboard.json');
+const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', perfect: 'perfect days', kinds: 'kinds of towns', nights: 'nights', week: 'stars this week' };
+const SW_STATS = ['xp', 'earned', 'mem', 'perfect', 'kinds', 'nights'];
+// how much each number may grow per minute since the last update (plus a start allowance), so one bad post cannot jump to the top
+const SW_GROW = { xp: [60, 40], earned: [600, 400], mem: [15, 5], perfect: [3, 1], kinds: [10, 3], nights: [5, 2] };
+let swBoard = {};
+try { swBoard = JSON.parse(fs.readFileSync(SW_BOARD_FILE, 'utf8')) || {}; } catch (e) { swBoard = {}; }
+let swDirty = false, swCache = new Map();
+setInterval(() => {
+  if (!swDirty) return;
+  swDirty = false;
+  fs.mkdir(DATA_DIR, { recursive: true }, () => fs.writeFile(SW_BOARD_FILE, JSON.stringify(swBoard), () => {}));
+}, 10000);
+const weekNo = (t) => Math.floor((t + 3 * 864e5) / (7 * 864e5));   // weeks start on Monday (UTC)
+const swVal = (e, by, wk) => by === 'week' ? (e.wk === wk ? Math.max(0, (e.xp || 0) - (e.wkBase || 0)) : 0) : (e[by] || 0);
+const keyHash = (k) => crypto.createHash('sha256').update('sw:' + k).digest('hex');
+// sorted boards are cached for a few seconds, so many players can look at once
+function swSorted(by, band) {
+  const wk = weekNo(Date.now()), ck = by + ':' + band, hit = swCache.get(ck);
+  if (hit && Date.now() - hit.at < 15000) return hit.list;
+  const list = Object.values(swBoard).filter(e => !band || e.band === band)
+    .map(e => ({ e, v: swVal(e, by, wk) })).filter(x => x.v > 0)
+    .sort((a, b) => b.v - a.v || (b.e.xp || 0) - (a.e.xp || 0) || a.e.at - b.e.at);
+  swCache.set(ck, { at: Date.now(), list });
+  return list;
+}
+const swRow = (x, i) => ({ rank: i + 1, name: x.e.name, color: x.e.color, hat: x.e.hat || '', dream: x.e.dream || '', band: x.e.band, v: x.v });
+function swScore(m, json) {
+  if (!m || typeof m.id !== 'string' || !/^[a-z0-9]{8,24}$/.test(m.id) || typeof m.key !== 'string' || !/^[a-z0-9]{16,40}$/.test(m.key)) return json(400, { error: 'bad request' });
+  const t = Date.now(), prev = swBoard[m.id];
+  if (prev && prev.kh !== keyHash(m.key)) return json(403, { error: 'This record belongs to another device.' });
+  if (t - (lastPost.get('sw:' + m.id) || 0) < 15000) return json(429, { error: 'slow down' });
+  lastPost.set('sw:' + m.id, t);
+  const e = prev || { id: m.id, kh: keyHash(m.key), at: t, last: t };
+  const mins = Math.max(0, (t - (e.last || t)) / 60000);
+  for (const k of SW_STATS) {
+    const was = e[k] || 0, [base, perMin] = SW_GROW[k];
+    e[k] = Math.max(was, Math.min(num(m[k], 0, 1e8), was + base * (prev ? 1 : 20) + Math.floor(mins * perMin)));   // only up, and not too fast (the first record may bring what you already did)
+  }
+  const wk = weekNo(t);
+  if (e.wk !== wk) { e.wk = wk; e.wkBase = prev ? (prev.xp || 0) : e.xp; }
+  e.name = safeName(m.name) || 'Squareface'; e.color = COLORS.includes(m.color) ? m.color : COLORS[0];
+  e.hat = /^[a-z]{1,12}$/.test(m.hat || '') ? m.hat : ''; e.dream = /^[a-z_]{1,24}$/.test(m.dream || '') ? m.dream : '';
+  e.band = [1, 2, 3].includes(m.band) ? m.band : 2; e.last = t;
+  swBoard[m.id] = e; swDirty = true;
+  json(200, { ok: true });
+}
+function swBoardList(q, json) {
+  const by = SW_BOARDS[q.get('by')] ? q.get('by') : 'xp', band = [1, 2, 3].includes(+q.get('band')) ? +q.get('band') : 0, id = q.get('me') || '';
+  const list = swSorted(by, band);
+  const out = { by, band, total: list.length, list: list.slice(0, 50).map(swRow), me: null, mine: null };
+  const e = swBoard[id];
+  if (e) {
+    const i = list.findIndex(x => x.e === e);
+    out.me = i >= 0 ? swRow(list[i], i) : null;
+    // my place on every board, for "my records"
+    out.mine = {};
+    for (const b of Object.keys(SW_BOARDS)) { const l = swSorted(b, 0), j = l.findIndex(x => x.e === e); out.mine[b] = { v: swVal(e, b, weekNo(Date.now())), rank: j >= 0 ? j + 1 : 0, of: l.length }; }
+  }
+  json(200, out);
+}
 function readBody(req, cb, limit = 2000) {
   let data = '';
   req.on('data', (c) => { data += c; if (data.length > limit) req.destroy(); });
@@ -59,6 +123,8 @@ function handleApi(req, res, urlPath, query) {
     const by = new URLSearchParams(query).get('by');
     return json(200, { list: topList(by), total: Object.keys(board).length });
   }
+  if (urlPath === '/api/sw/board' && req.method === 'GET') return swBoardList(new URLSearchParams(query), json);
+  if (urlPath === '/api/sw/score' && req.method === 'POST') return readBody(req, (m) => swScore(m, json));
   if (urlPath === '/api/score' && req.method === 'POST') {
     return readBody(req, (m) => {
       if (!m || typeof m.id !== 'string' || !/^[a-z0-9]{8,24}$/.test(m.id)) return json(400, { error: 'bad request' });
@@ -468,6 +534,7 @@ server.listen(PORT, () => console.log(`Small World running at http://localhost:$
 // Docker and most clouds stop the server with SIGTERM on every redeploy: save what is still in memory first.
 function shutdown() {
   try {
+    if (swDirty) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(SW_BOARD_FILE, JSON.stringify(swBoard)); }
     if (boardDirty) { fs.mkdirSync(path.dirname(BOARD_FILE), { recursive: true }); fs.writeFileSync(BOARD_FILE, JSON.stringify(board)); }
     for (const [code, t] of towns) if (t.dirty) { fs.mkdirSync(TOWN_DIR, { recursive: true }); fs.writeFileSync(path.join(TOWN_DIR, code + '.json'), JSON.stringify(t.town)); }
   } catch (e) { console.error('Could not save on shutdown:', e.message); }

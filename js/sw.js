@@ -1545,6 +1545,7 @@
         body.append(tiles(tile('🙂', '', '', () => { life.hat = null; World.setMe({ color: me.color, hat: null }); touch(); starSheet(); }, { on: !life.hat }),
           hats.map(h => tile(HAT_ICON[h] || '🎩', '', '', () => { life.hat = h; World.setMe({ color: me.color, hat: h }); Sound.pop(); touch(); starSheet(); }, { on: life.hat === h }))));
       }
+      body.append(button('🏆 Leaderboard', () => boardSheet(), 'choice alt'));
       body.insertAdjacentHTML('beforeend', `<p class="sheet-sub">${life.band === 1 ? '🌅 🌇 🛏️ 🎯 📸 → ⭐' : 'Stars come from the swim, sip and bed, challenges, memories, classes and your dream.'}</p>`);
     });
   }
@@ -1754,6 +1755,7 @@
   $('friendsBtn2').addEventListener('click', () => { $('menuPop').hidden = true; if (online()) friendsSheet(); else roomSheet(); });
   $('roomPill').addEventListener('click', () => { Sound.blip(); friendsSheet(); });
   $('helpBtn').addEventListener('click', () => { $('menuPop').hidden = true; helpSheet(); });
+  $('boardBtn').addEventListener('click', () => { $('menuPop').hidden = true; boardSheet(); });
   function helpSheet() {
     sheet('❓', (body) => {
       body.insertAdjacentHTML('beforeend', `<div class="help-grid">
@@ -1835,6 +1837,49 @@
       const mem = (c.best || []).map(id => Life.MEMORIES[id]).filter(Boolean);
       if (mem.length) body.insertAdjacentHTML('beforeend', `<h4 class="sub-h">📸</h4><div class="pcard-row">${mem.map(([icon, name]) => `<span title="${esc(name)}">${icon}</span>`).join('')}</div>`);
       if (!isMe) body.append(button('👋', () => { Net.emote('👋'); World.say('me', '👋', 3); Sound.pop(); closeSheet(); }, 'big-btn small'));
+    });
+  }
+  /* ---------------- the leaderboard: everyone has a record, and many ways to be on top ---------------- */
+  // Every board counts something that only goes up. A secret key on this device keeps the record yours.
+  if (!me.key) me.key = newUid() + newUid();
+  const BOARDS = [['xp', '⭐', 'Stars'], ['week', '📅', 'This week'], ['earned', '💼', 'Coins earned'], ['mem', '📸', 'Memories'], ['perfect', '🌟', 'Perfect Days'], ['kinds', '🗺️', 'Towns'], ['nights', '🌙', 'Nights']];
+  const onServer = /^https?:$/.test(location.protocol);
+  let boardSent = '';
+  function myRecord() {
+    return { id: me.uid, key: me.key, name: me.name || 'Squareface', color: me.color, hat: life.hat || '', dream: life.dream || '', band: life.band,
+      xp: life.xp, earned: Math.round(life.stats.earned || 0), mem: Life.memCount(life), perfect: life.perfectDays || 0, kinds: Object.keys(life.kindsSeen || {}).length, nights: life.stats.sleeps || 0 };
+  }
+  function postRecord(force) {
+    if (!onServer || !life || !me.name) return Promise.resolve();
+    const r = myRecord(), k = JSON.stringify(r);
+    if (k === boardSent && !force) return Promise.resolve();
+    return fetch('api/sw/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: k, keepalive: true })
+      .then(res => { if (res.ok) boardSent = k; }).catch(() => {});
+  }
+  setInterval(() => { if (playing) postRecord(); }, 30000);
+  addEventListener('pagehide', () => postRecord());
+  function boardSheet(by = 'xp', band = 0) {
+    sheet('🏆', (body) => {
+      const tabs = document.createElement('div'); tabs.className = 'tabs board-tabs';
+      BOARDS.forEach(([id, icon, name]) => tabs.append(button(`${icon}<small>${name}</small>`, () => boardSheet(id, band), id === by ? 'tab on' : 'tab')));
+      body.append(tabs);
+      const who = document.createElement('div'); who.className = 'tabs board-who';
+      who.append(button('🌍 Everyone', () => boardSheet(by, 0), band ? 'tab' : 'tab on'), button(`👤 ${BAND_NAMES[life.band]}`, () => boardSheet(by, life.band), band ? 'tab on' : 'tab'));
+      body.append(who);
+      const list = document.createElement('div'); list.className = 'players board-list'; list.innerHTML = '<p class="small">⏳</p>';
+      body.append(list);
+      if (!onServer) { list.innerHTML = '<p class="small">The leaderboard lives on the online server.</p>'; return; }
+      const icon = (BOARDS.find(b => b[0] === by) || BOARDS[0])[1];
+      const rowOf = (e, mine) => `<div class="player-row ${mine ? 'me' : ''}"><span class="rank">${e.rank <= 3 ? ['🥇', '🥈', '🥉'][e.rank - 1] : '#' + e.rank}</span><span class="dot" style="background:${esc(e.color)}"></span><span class="who">${esc(e.name)} ${HAT_ICON[e.hat] || ''}</span><span class="stats"><span class="stat">${(Life.DREAMS[e.dream] || {}).icon || ''}</span><span class="stat big">${icon} ${e.v}</span></span></div>`;
+      postRecord(true).then(() => fetch(`api/sw/board?by=${by}&band=${band}&me=${me.uid}`)).then(r => r.ok ? r.json() : Promise.reject()).then(d => {
+        if (!list.isConnected) return;   // another tab or screen took its place
+        const inTop = d.me && d.list.some(e => e.rank === d.me.rank);
+        list.innerHTML = d.list.length ? d.list.map(e => rowOf(e, d.me && e.rank === d.me.rank)).join('') + (d.me && !inTop ? `<div class="board-gap">⋯</div>${rowOf(d.me, true)}` : '') : '<p class="small">Nobody yet. Be the first! ⭐</p>';
+        if (d.mine) {
+          const mine = card(`<h3>🏅 My records</h3><div class="board-mine">${BOARDS.map(([id, ic, name]) => { const m = d.mine[id] || {}; return `<div class="pcard-stat"><span>${ic}</span><b>${m.v || 0}</b><small>${m.rank ? `#${m.rank} of ${m.of}` : name}</small></div>`; }).join('')}</div>`);
+          body.append(mine);
+        }
+      }).catch(() => { if (list.isConnected) list.innerHTML = '<p class="small">📡 ✕ · Could not load the leaderboard. Try again soon.</p>'; });
     });
   }
   Net.on('emote', (m) => { if (m.id !== Net.me && Net.others.has(m.id)) World.say(m.id, m.e, 3); });
