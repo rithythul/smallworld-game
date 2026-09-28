@@ -1090,7 +1090,7 @@ function drawScreen(ctx, mood, t) {
 }
 const ANIMATED_MOODS = new Set(['laugh', 'love', 'think', 'crunch', 'sad', 'silly', 'thirsty']);
 
-const HATS = ['flower', 'beanie', 'propeller', 'chef', 'crown', 'bowl'];   // every kind hat() can draw
+const HATS = ['flower', 'beanie', 'propeller', 'chef', 'crown', 'bowl', 'shell', 'party'];   // every kind hat() can draw
 const hatOf = (h) => HATS.includes(h) ? h : null;
 function hat(B, kind, color) {
   const y = 7.75;
@@ -1118,6 +1118,16 @@ function hat(B, kind, color) {
     case 'propeller':
       B.add(GEO.sph(1.9, 14, 8, true), M(0, y - 0.1, 0, 0, 0, 0, 1, 0.6, 1), color, { ol: 0.08 });
       B.add(GEO.cyl(0.1, 0.1, 0.9, 5), M(0, y + 1.3, 0), INKC, { ol: 0 });
+      break;
+    case 'shell':   // the Udon Snail's golden shell: a spiral of shrinking rings
+      B.add(GEO.torus(1.25, 0.5, 18), M(0, y + 0.45, 0), COL.yellow, { ol: 0.07 });
+      B.add(GEO.torus(0.78, 0.42, 16), M(0.15, y + 1.2, 0), COL.gold, { ol: 0.06 });
+      B.add(GEO.sph(0.45, 10, 8), M(0.3, y + 1.8, 0), COL.yellow, { ol: 0.05 });
+      break;
+    case 'party':
+      B.add(GEO.cone(1.3, 2.6, 14), M(0, y + 1.3, 0), '#b98cff', { ol: 0.07 });
+      B.add(GEO.ico(0.45, 1), M(0, y + 2.75, 0), COL.yellow, { ol: 0.05 });
+      for (let i = 0; i < 3; i++) B.add(GEO.torus(1.05 - i * 0.33, 0.1, 12), M(0, y + 0.45 + i * 0.75, 0), i % 2 ? '#ff8fb1' : '#ffd23f', { ol: 0 });
       break;
     case 'bowl':
       B.add(GEO.cyl(1.9, 1.2, 1.3, 14), M(0, y + 0.6, 0), '#e4572e', { ol: 0.08 });
@@ -3453,7 +3463,7 @@ function addPickups(list) {
     if (picks.filter(p => p.kind === it.kind).length >= PICK_MAX) continue;
     // inside a tree or a wall? nudge it towards the player a few times, else leave it out
     let x = wx(it.x), z = wz(it.y);
-    for (let k = 0; k < 3 && solidAt(x, z, 0.8); k++) { const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
+    for (let k = 0; k < 3 && !it.fixed && solidAt(x, z, 0.8); k++) {   // fixed: the same spot for everyone (races) const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
     if (solidAt(x, z, 0.8)) continue;
     // on water it floats at the surface, on land it hovers
     const w = waterAt(x, z), pot = it.kind === 'pot' || it.kind === 'brick';

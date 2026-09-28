@@ -29,3 +29,14 @@ const NOODLE_DEX = [
 ];
 const NOODLE_BY_ID = Object.fromEntries(NOODLE_DEX.map(n => [n.id, n]));
 const NOODLE_SHINY = 1 / 40;   // a noodle you already have sometimes comes back golden
+
+// Grandma's kitchen (in every Cafe): cook what you picked, gathered and caught. Each dish is a few stars once a day and fast feet.
+const KITCHEN = [
+  { id: 'ramen', icon: '🍜', name: 'Classic Ramen', needs: { wheat: 1, egg: 1, carrot: 1 }, stars: 2 },
+  { id: 'soup', icon: '🍅', name: 'Tomato Corn Soup', needs: { tomato: 2, corn: 1 }, stars: 2 },
+  { id: 'udon', icon: '🐟', name: 'Seaside Udon', needs: { wheat: 1, fish: 1 }, stars: 2 },
+  { id: 'pancake', icon: '🥞', name: 'Apple Pancakes', needs: { wheat: 1, milk: 1, apple: 1 }, stars: 2 },
+  { id: 'feast', icon: '🍲', name: "Grandma's Feast", needs: { wheat: 1, egg: 1, milk: 1, apple: 1, fish: 1, carrot: 1 }, stars: 5 },
+];
+// where to get each ingredient (a guide-arrow target in sw.js)
+const INGREDIENT_AT = { wheat: 'townfarm', carrot: 'townfarm', tomato: 'townfarm', corn: 'townfarm', egg: 'work:hen', milk: 'work:cow', apple: 'work:apple', fish: 'spot:fish', berry: 'nature' };

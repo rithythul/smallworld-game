@@ -404,3 +404,21 @@ button.sure { background: #ffe08a !important; }
 .place-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .place-chip { display: flex; align-items: center; gap: 4px; border: 2.5px solid var(--ink); border-radius: 12px; background: #fff; padding: 4px 10px; font: inherit; font-size: 20px; color: var(--ink); cursor: pointer; }
 .place-chip small { font-size: 12px; font-weight: 800; }
+
+/* Grandma's kitchen */
+.clue.kitchen { display: flex; flex-direction: column; gap: 6px; }
+.recipe { display: flex; align-items: center; gap: 8px; border: 2.5px solid var(--ink); border-radius: 14px; background: #fff; padding: 6px 8px; }
+.recipe.can { background: #fff7d1; }
+.recipe .r-icon { font-size: 28px; flex: none; }
+.recipe .r-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.recipe .r-needs { display: flex; flex-wrap: wrap; gap: 4px; }
+.recipe .need { border: 2px dashed var(--ink); border-radius: 9px; background: #f3ead8; font: inherit; font-size: 15px; padding: 0 5px; cursor: pointer; color: var(--ink); }
+.recipe .need.ok { border-style: solid; background: #d9f0c5; cursor: default; }
+.recipe .choice { flex: none; }
+
+/* Crunch Race bar */
+#raceBar { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 158px); left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; background: var(--paper, #fff8e8); border: 3px solid var(--ink); border-radius: 16px; padding: 4px 12px; font-weight: 800; box-shadow: 0 3px 0 var(--ink); pointer-events: none; }
+#raceBar b { font-size: 18px; }
+#raceBar i { font-style: normal; min-width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--ink); color: #fff; text-shadow: 0 1px 0 var(--ink); display: grid; place-items: center; font-size: 12px; }
+#raceBar.lead { background: #fff1a8; }
+.region-town .rt-snail { position: absolute; bottom: -8px; right: -4px; font-size: 18px; }

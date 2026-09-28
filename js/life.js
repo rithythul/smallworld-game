@@ -849,7 +849,7 @@
       dream: null, dreamStep: 0, dreamLv: 0, dreamMark: 0, rentFree: RULES[b].rentFree, rep: 0, owesSapling: 0, seen: {},
       hat: null, hats: {}, levelClaimed: 1, starter: 0, rit: {}, daily: null, perfectDays: 0, streak: 0, lastPerfect: null, lastPlayed: null, prevPlayed: null, rested: null, wonders: {},
       vehicles: {}, riding: null, companies: [], channel: { videos: 0, subs: 0, views: 0, earned: 0, places: {} },
-      xp: 0, memories: {}, noodles: {}, shiny: {}, crunched: { day: null, ids: {} }, faces: {}, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
+      xp: 0, memories: {}, noodles: {}, shiny: {}, crunched: { day: null, ids: {} }, faces: {}, snail: null, fed: null, badges: {}, spotAt: {}, photos: {}, log: [], logSeq: 0, bankFrac: 0, loanFrac: 0, home: null, land: {}, townSeen: {},
       stats: { earned: 0, wages: 0, shifts: {}, harvested: 0, farmPicked: 0, sold: 0, soldCoins: 0, chopped: 0, replanted: 0, planted: 0,
         interest: 0, loanInterest: 0, taxPaid: 0, votes: 0, ran: 0, won: 0, classes: 0, deposits: 0, borrowed: 0, stocked: 0, shopSales: 0, built: 0,
         companies: 0, ads: 0, coRevenue: 0, coProfit: 0, onlineSold: 0, onlineCoins: 0, listed: 0, viewCoins: 0, photos: 0, rides: 0, rideBus: 0, rideTrain: 0,

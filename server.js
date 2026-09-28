@@ -40,7 +40,7 @@ const lastPost = new Map();
 /* ---------- Small World leaderboard: one record per player, many ways to shine ---------- */
 // Every board counts something that only goes up, so nobody drops down for spending or for a bad day.
 const SW_BOARD_FILE = path.join(DATA_DIR, 'swboard.json');
-const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', noodles: 'noodles', perfect: 'perfect days', kinds: 'kinds of towns', nights: 'nights', week: 'stars this week' };
+const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', noodles: 'noodles', trophies: 'race wins', perfect: 'perfect days', kinds: 'kinds of towns', nights: 'nights', week: 'stars this week' };
 const SW_STATS = ['xp', 'earned', 'mem', 'noodles', 'perfect', 'kinds', 'nights'];
 // how much each number may grow per minute since the last update (plus a start allowance), so one bad post cannot jump to the top
 const SW_GROW = { xp: [60, 40], earned: [600, 400], mem: [15, 5], noodles: [5, 2], perfect: [3, 1], kinds: [10, 3], nights: [5, 2] };
@@ -323,13 +323,14 @@ function joinRoom(ws, room, name, color, uid) {
 }
 
 function roundInfo(room) { return room.roundEnd ? { secs: Math.max(0, Math.round((room.roundEnd - Date.now()) / 1000)) } : null; }
-function startRound(room) {
+function startRound(room, by) {
   if (room.roundEnd) return;
   room.roundEnd = Date.now() + ROUND_SECS * 1000;
+  room.roundNo = (room.roundNo || 0) + 1;
   room.players.forEach(p => { p.round = 0; });
   room.crunched.clear();
   broadcast(room, { t: 'respawn' });
-  broadcast(room, { t: 'round', state: 'start', secs: ROUND_SECS });
+  broadcast(room, { t: 'round', state: 'start', secs: ROUND_SECS, no: room.roundNo, by: by || '' });
   room.roundTimer = setTimeout(() => endRound(room), ROUND_SECS * 1000);
 }
 function endRound(room) {
@@ -342,8 +343,9 @@ function endRound(room) {
     const p = room.players.get(w.id); if (!p) return;
     p.trophies++;
     if (p.uid && board[p.uid]) { board[p.uid].trophies = (board[p.uid].trophies || 0) + 1; boardDirty = true; }
+    if (p.uid && swBoard[p.uid]) { swBoard[p.uid].trophies = (swBoard[p.uid].trophies || 0) + 1; swDirty = true; }   // the server saw the win, so it counts
   });
-  broadcast(room, { t: 'round', state: 'end', list, winners: winners.map(w => w.id), valid: scored >= 2 });
+  broadcast(room, { t: 'round', state: 'end', no: room.roundNo, list, winners: winners.map(w => w.id), valid: scored >= 2 });
   broadcast(room, { t: 'scores', list: scores(room) });
 }
 
@@ -414,7 +416,7 @@ wss.on('connection', (ws) => {
         p.s = { mood: clean(m.mood, 10), sw: !!m.sw, mv: !!m.mv, f: num(m.f, -1, 1), z: num(m.z, 0, 400), su: !!m.su, h: clean(m.h, 10), ga: !!m.ga, ti: clean(m.ti, 24) };
         break;
       case 'crunch': {
-        const id = typeof m.b === 'number' ? m.b : clean(m.b, 12);
+        const id = typeof m.b === 'number' ? m.b : clean(m.b, 24);
         if (room.crunched.has(id)) return;
         room.crunched.add(id);
         // n and v are the musical note and instrument, so friends hear each other's crunches as music
@@ -450,9 +452,8 @@ wss.on('connection', (ws) => {
         break;
       }
       case 'round':
-        if (room.mode !== 'race') break;
         if (room.players.size < 2) { send(ws, { t: 'error', msg: 'Crunch Races need at least 2 players. Share your room name with a friend!' }); break; }
-        startRound(room);
+        startRound(room, p.name);
         break;
       case 'away':
         p.away = !!m.on;

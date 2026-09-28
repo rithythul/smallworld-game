@@ -310,6 +310,7 @@
   const set = (id, text) => { const el = $(id); if (el && el.textContent !== text) el.textContent = text; };
   function hud() {
     if (online()) Net.card(myCard());
+    snailTick();
     if (!life) return;
     const t = now(), h = Life.hourOf(t), rain = Town.raining(t);
     const icon = rain ? '🌧️' : h < 7 ? '🌅' : h < 18 ? '☀️' : h < 20 ? '🌇' : '🌙';
@@ -894,10 +895,42 @@
       body.append(tiles(tile('⚽', 'Field', '→ 🔶', () => { const d = Town.districtsOf(town).find(q => q.landmarks.some(l => l.type === 'stadium')); if (d) guide = { x: d.x0 + 1450, y: 420, h: 6, icon: '⚽' }; closeSheet(); })));
     });
   }
+  // Grandma's kitchen: cook what you picked, gathered and caught (from Noodle Universe)
+  function kitchen(body) {
+    const c = card(`<h3>👵 Grandma's kitchen</h3><p class="small">${life.band === 1 ? '🧺 → 🍳 → ⭐ 👟' : 'Bring what you pick, gather and catch. Each dish gives stars once a day, and a full tummy gives fast feet for the rest of the day.'}</p>`, 'kitchen');
+    KITCHEN.forEach(r => {
+      const cooked = life.today.count['cook:' + r.id], can = Object.entries(r.needs).every(([g, n]) => (life.bag[g] || 0) >= n);
+      const row = document.createElement('div'); row.className = 'recipe' + (can ? ' can' : '');
+      row.innerHTML = `<span class="r-icon">${r.icon}</span><span class="r-text"><b>${esc(r.name)}</b><span class="r-needs"></span></span>`;
+      const needs = row.querySelector('.r-needs');
+      Object.entries(r.needs).forEach(([g, n]) => {
+        const have = life.bag[g] || 0, b = document.createElement('button'); b.type = 'button';
+        b.className = 'need' + (have >= n ? ' ok' : ''); b.innerHTML = `${(G[g] || {}).icon || g}${n > 1 ? '×' + n : ''}`;
+        b.title = have >= n ? 'You have it' : 'Where to get it';
+        if (have < n) b.addEventListener('click', () => { const w = placeFor(INGREDIENT_AT[g]); if (w) { guide = { ...w, icon: (G[g] || {}).icon }; closeSheet(); toast(`${(G[g] || {}).icon} ➤`, { life: 2 }); } });
+        needs.append(b);
+      });
+      row.append(button(can ? (cooked ? '🍳' : `🍳 ⭐+${r.stars}`) : '🔒', () => cook(r), 'choice', !can));
+      c.append(row);
+    });
+    body.append(c);
+  }
+  function cook(r) {
+    if (!Object.entries(r.needs).every(([g, n]) => (life.bag[g] || 0) >= n)) return;
+    Object.entries(r.needs).forEach(([g, n]) => Life.takeItem(life, g, n));
+    const first = !life.today.count['cook:' + r.id]; life.today.count['cook:' + r.id] = 1;
+    life.fed = life.day; life.stats.cooked = (life.stats.cooked || 0) + 1;
+    if (first) Life.addStars(life, r.stars);
+    boostTick(); Sound.chord(5, 'kalimba'); World.mood('love', 2); World.celebrate(r.id === 'feast' ? 20 : 6);
+    toast(`<span class="t-small">👵 Yum!${first ? ` ⭐ +${r.stars}` : ''} · 👟 fast feet today</span>${r.icon} ${esc(r.name)}`, { big: true, life: 4 });
+    findNoodle('bubble'); touch(); hud(); checkDream();
+    funSheet('cafe');
+  }
   function funSheet(type) {
     const P = placeInfo(type), F = FUN[type] || {}, cost = F.cost || 0;
     sheet(`${P.icon || ''} ${P.name || ''}`, (body) => {
       body.insertAdjacentHTML('beforeend', head(type, HELLO[type] || '👋'));
+      if (type === 'cafe') kitchen(body);
       if (cost && life.coins < cost) note(body, needCoins(cost));
       body.append(tiles(tile(P.icon, cost ? coin(cost) : 'Visit', type === 'arcade' ? 'right answer → win 5🪙' : '', () => {
         if (cost && life.coins < cost) return;
@@ -1405,12 +1438,12 @@
   }
 
   /* ---------------- a day like in Noodle Universe: swim at sunrise, a sip at sunset, bed at night ---------------- */
-  const HAT_ICON = { flower: '🌼', beanie: '🧢', propeller: '🚁', chef: '👨‍🍳', crown: '👑', bowl: '🎩' };
+  const HAT_ICON = { flower: '🌼', beanie: '🧢', propeller: '🚁', chef: '👨‍🍳', crown: '👑', bowl: '🎩', shell: '🐚', party: '🥳' };
   function hopInPool() {
     const P = HOME.pool, p = World.pos(), a = Math.atan2((p.y - P.y) / P.ry, (p.x - P.x) / P.rx);
     World.place(P.x + Math.cos(a) * P.rx * 0.6, P.y + Math.sin(a) * P.ry * 0.6); Sound.splash();
   }
-  function boostTick() { if (World.setBoost) { const k = life.rit.swim === life.day ? 1.15 : 1; if (World.boost !== k) World.setBoost(k); } }
+  function boostTick() { if (World.setBoost) { const k = (life.rit.swim === life.day ? 1.15 : 1) * (life.fed === life.day ? 1.15 : 1); if (World.boost !== k) World.setBoost(k); } }   // a morning swim and a good meal each give fast feet for the day
   function healthyDay() { later(() => { toast('<span class="t-small">❤️ Healthy Day</span>🌅 🌇 🛏️ ⭐+1', { big: true, life: 4 }); Sound.chord(6, 'bell'); }); }
   function poolSwim() {
     const p = World.pos(); if (!Town.inPool(p.x, p.y, 20)) return;
@@ -1497,6 +1530,8 @@
   let poolNote = 0;
   function onPickup(id) {
     if (id.startsWith('nb:')) return crunchBrick(id);
+    if (id.startsWith('race:')) return raceCrunch(id);
+    if (id === 'snail:gift') return meetSnail();
     if (id.startsWith('trail:')) { if (Life.kidBonus(life, 'trail', 1, '✨', 'Sparkle coin', 'Found on the way!')) { Sound.coin(); floatMe('+1🪙'); } }
     else if (id.startsWith('pool:')) { Life.earn(life, 1, null, '🏊', 'Pool coin', 'Found in the pool after your morning swim!'); Sound.note(6 + (poolNote++ % 5), 'bell'); floatMe('+1🪙'); }
     else if (id.startsWith('rain:')) { if (Life.kidBonus(life, 'rain', 1, '🪙', 'Coin rain!', 'Coins fell from the sky!')) { Sound.coin(); floatMe('+1🪙'); } memory('coinrain'); }
@@ -1523,6 +1558,7 @@
     const list = [];
     for (let k = lo; k <= hi; k++) brickSpots(k).forEach(([x, y], i) => { const id = `nb:${day}:${k}:${i}`; if (!life.crunched.ids[id]) list.push({ id, x, y, kind: 'brick' }); });
     World.addPickups(list);
+    if (life.snail && !life.snail.done && snailArrived()) snailGift();
   }
   let combo = { n: 0, at: 0 };
   function crunchBrick(id) {
@@ -1562,6 +1598,91 @@
     touch(); hud();
     return true;
   }
+  /* ---------------- Crunch Races (from Noodle Universe): 2 minutes, bricks around the plaza, most crunches wins ---------------- */
+  // Anyone in a room with a friend can start one. Race bricks are shared: whoever gets there first crunches it.
+  let race = null;   // { no, end, mine, bar }
+  const raceId = (no, i) => `race:${no}:${i};`;   // the ';' keeps race:1:1 from matching race:1:10
+  function raceSpots(no) {
+    const P = Town.PLAZA, r = Town.rng ? Town.rng(no * 131 + 7) : Math.random, out = [];
+    for (let i = 0; i < 36; i++) { const a = i * 2.39996 + r() * 0.5, d = 190 + (i % 6) * 85 + r() * 40; out.push([P.x + Math.cos(a) * d, P.y + Math.sin(a) * d * 0.8]); }
+    return out;
+  }
+  function raceBar() {
+    if (!race) return;
+    let el = document.getElementById('raceBar');
+    if (!el) { el = document.createElement('div'); el.id = 'raceBar'; document.body.append(el); }
+    const left = Math.max(0, Math.ceil((race.end - Date.now()) / 1000)), list = (Net.scores || []).slice().sort((a, b) => (b.round || 0) - (a.round || 0));
+    const mine = (list.find(e => e.id === Net.me) || {}).round || race.mine, best = list[0] ? list[0].round || 0 : 0;
+    el.innerHTML = `<b>🏁 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</b><span>🍜 ${mine}</span>${list.slice(0, 4).map(e => `<i style="background:${esc(e.color)}" title="${esc(e.name)}">${e.round || 0}</i>`).join('')}`;
+    el.classList.toggle('lead', mine > 0 && mine >= best);
+  }
+  function raceStart(m) {
+    if (World.trip || !World.addPickups) return;
+    race = { no: m.no, end: Date.now() + m.secs * 1000, mine: 0 };
+    World.clearPickups('race:');
+    closeSheet();
+    const P = Town.PLAZA, a = Math.random() * 6.28;
+    if (!World.riding) World.place(P.x + Math.cos(a) * 60, P.y + 170 + Math.sin(a) * 30);   // everyone starts together at the plaza
+    World.addPickups(raceSpots(m.no).map(([x, y], i) => ({ id: raceId(m.no, i), x, y, kind: 'brick', fixed: true })));
+    guide = { x: P.x, y: P.y, h: 8, icon: '🏁' };
+    toast(`<span class="t-small">🏁 Crunch Race${m.by ? ` · ${esc(m.by)} started it` : ''}</span>3 · 2 · 1 · 🍜!`, { big: true, life: 3 });
+    Sound.chord(8, 'bell'); raceBar();
+  }
+  function raceCrunch(id) {
+    if (!race || !id.startsWith(`race:${race.no}:`)) return;
+    race.mine++;
+    const n = race.mine;
+    Net.crunch(id, 4 + (n - 1) % 8, 'marimba');
+    Sound.crunch(1); Sound.note(4 + (n - 1) % 8, 'marimba', { harmony: n % 4 === 0 }); World.mood('crunch', 0.6); floatMe(`🍜 ${n}`);
+    life.stats.crunches = (life.stats.crunches || 0) + 1; daily('crunch');
+    raceBar();
+  }
+  function raceEnd(m) {
+    if (!race) return;
+    World.clearPickups('race:'); const el = document.getElementById('raceBar'); if (el) el.remove();
+    race = null; if (guide && guide.icon === '🏁') guide = null;
+    const won = m.valid && m.winners.includes(Net.me);
+    const today = life.today.count.race || 0; life.today.count.race = today + 1;
+    if (today < 3) Life.addStars(life, 1);   // ⭐ for racing, three races a day
+    if (won) { life.stats.trophies = (life.stats.trophies || 0) + 1; Life.addStars(life, 2); findNoodle('thunder'); World.celebrate(30); Sound.chord(10, 'bell'); }
+    touch(); hud();
+    later(() => sheet(won ? '🏆 You won!' : '🏁 Race over', (body) => {
+      body.insertAdjacentHTML('beforeend', `<div class="players">${m.list.map((e, i) => `<div class="player-row ${e.id === Net.me ? 'me' : ''}"><span class="rank">${i < 3 && e.n ? ['🥇', '🥈', '🥉'][i] : '#' + (i + 1)}</span><span class="dot" style="background:${esc(e.color)}"></span><span class="who">${esc(e.name)}</span><span class="stats"><span class="stat big">🍜 ${e.n}</span></span></div>`).join('')}</div>
+        <p class="sheet-sub">${m.valid ? (won ? `🏆 +1 · ⭐ +${today < 3 ? 3 : 2}` : (today < 3 ? '⭐ +1 for racing' : '')) : 'A race needs two players who crunch.'}</p>`);
+      body.append(button('🏁 Again', () => { Net.startRound(); closeSheet(); }, 'big-btn small'));
+    }), true);
+  }
+  Net.on('round', (m) => { if (m.state === 'start') raceStart(m); else if (m.state === 'end') raceEnd(m); });
+  Net.on('crunch', (m) => { if (typeof m.b === 'string' && m.b.startsWith('race:')) { World.clearPickups(m.b); if (m.n != null) Sound.note(m.n, 'marimba', { vol: 0.4 }); } });
+  Net.on('scores', () => raceBar());
+  setInterval(() => { if (race) { raceBar(); if (Date.now() > race.end + 8000) raceEnd({ valid: false, winners: [], list: [] }); } }, 500);
+  Net.on('left', () => { if (race && Net.others.size === 0) raceBar(); });
+
+  /* ---------------- the Udon Snail (from Noodle Universe): a week-long walk to Snowcap, and a gift at the end ---------------- */
+  const SNAIL_DAYS = 7, SNAIL_TO = 5;   // Snowcap
+  function snailTick() {
+    if (!life || !life.day || !town || (town.districts || 0) < SNAIL_TO) return;
+    if (!life.snail && Life.starLevel(life.xp) >= 3) {
+      life.snail = { from: life.day, to: SNAIL_TO }; touch();
+      later(() => { toast(`<span class="t-small">🐌 The Udon Snail set off!</span>🐌 → ${Town.district(SNAIL_TO).icon} ${SNAIL_DAYS} days`, { big: true, life: 5 }); Sound.secret(); });
+    }
+    if (life.snail && !life.snail.done && snailArrived()) snailGift();
+  }
+  const snailDays = () => life.snail ? Math.max(0, Math.min(SNAIL_DAYS, life.day - life.snail.from)) : 0;
+  const snailArrived = () => !!life.snail && snailDays() >= SNAIL_DAYS;
+  function snailGift() {
+    if (World.trip || !World.addPickups || life.snail.done) return;
+    const g = Town.district(life.snail.to).garden;
+    World.addPickups([{ id: 'snail:gift', x: g.x + g.w / 2, y: g.y - 40, kind: 'star' }]);
+  }
+  function meetSnail() {
+    if (!life.snail || life.snail.done) return;
+    life.snail.done = life.day; life.hats.shell = 1; life.hat = 'shell'; World.setMe({ color: me.color, hat: 'shell' });
+    Life.addStars(life, 5); findNoodle('slowudon');
+    later(() => { toast('<span class="t-small">🐌 The Udon Snail made it! ⭐ +5</span>🐚 A golden shell hat for you!', { big: true, life: 5 }); World.celebrate(30); Sound.chord(9, 'bell'); });
+    touch(); hud();
+  }
+
   function noodleIcon(n, size, locked, shiny) {
     const c = document.createElement('canvas'); c.width = c.height = size * 2; c.style.width = c.style.height = size + 'px';
     try { drawNoodleIcon(c.getContext('2d'), n, size * 2, locked, shiny); } catch (e) {}
@@ -1632,6 +1753,11 @@
     else rows.push({ icon: '✨', text: 'Pick a dream', stars: '+2 a step', state: 'now', note: '', run: () => { closeSheet(); dreamPicker(true); } });
     const nextKind = Town.districtsOf(town).find(d => !life.kindsSeen[d.kind]);
     if (nextKind) rows.push({ icon: nextKind.icon, text: `Visit ${nextKind.name}`, stars: '+5', state: 'now', note: 'new memory', run: go('kind:next', nextKind.icon) });
+    if (life.snail && !life.snail.done) {
+      const to = Town.district(life.snail.to);
+      if (snailArrived()) rows.push({ icon: '🐌', text: `Meet the Udon Snail in ${to.name}`, stars: '+5 🐚', state: 'now', note: 'it made it!', run: go(`kind:${to.kind}`, '🐌') });
+      else rows.push({ icon: '🐌', text: `The Udon Snail is walking to ${to.name}`, stars: '+5 🐚', state: 'soon', note: `day ${snailDays()}/${SNAIL_DAYS}` });
+    } else if (!life.snail) rows.push({ icon: '🐌', text: 'Reach level 3 to meet the Udon Snail', stars: '+5 🐚', state: 'later', note: '' });
     rows.push({ icon: '🎓', text: 'Take a class', stars: life.band === 1 ? '+1 a right answer' : '+1, +3 for a certificate', state: 'now', note: '', run: go('school', '🎓') });
     rows.push({ icon: '📸', text: 'New places and firsts', stars: '+5', state: 'soon', note: `${Life.memCount(life)}/${Object.keys(Life.MEMORIES).length}`, run: () => { closeSheet(); lifeSheet(); } });
     rows.push({ icon: '🍜', text: 'New noodles for the Noodle-dex', stars: '+3', state: 'soon', note: `${Object.keys(life.noodles).length}/${NOODLE_DEX.length}`, run: () => noodleSheet() });
@@ -1842,7 +1968,8 @@
       // 1) the whole region at a glance, west to east: tap a town to see it and get an arrow there
       const strip = document.createElement('div'); strip.className = 'region';
       const friendsIn = (k) => [...Net.others.values()].filter(o => o.x != null && o.x < 20000 && Town.districtAt(town, o.tx ?? o.x) === k).map(o => `<i style="background:${esc(o.color)}"></i>`).join('');
-      const cell = (k, icon, name, tint, seen) => `<button type="button" class="region-town ${k === here ? 'here' : ''} ${seen ? '' : 'new'}" data-k="${k}" style="--tint:${tint}">
+      const snailAt = life.snail && !life.snail.done ? Math.round(snailDays() / SNAIL_DAYS * life.snail.to) : -1;
+      const cell = (k, icon, name, tint, seen) => `<button type="button" class="region-town ${k === here ? 'here' : ''} ${seen ? '' : 'new'}" data-k="${k}" style="--tint:${tint}">${k === snailAt ? '<span class="rt-snail">🐌</span>' : ''}
         <span class="rt-icon">${icon}</span><span class="rt-name">${esc(name)}</span>${k === here ? `<span class="rt-me" style="background:${esc(me.color)}"></span>` : ''}<span class="rt-friends">${friendsIn(k)}</span>${seen ? '' : '<span class="rt-badge">NEW</span>'}</button>`;
       const need = Town.growthNeed(ds.length + 1), prev = Town.growthNeed(ds.length), have = Math.floor(town.growth || 0), pct = Math.max(0, Math.min(100, Math.round((have - prev) / Math.max(1, need - prev) * 100)));
       strip.innerHTML = cell(0, '🏡', 'Small Town', '#b4dc7a', true) + ds.map(d => cell(d.k, d.icon, d.name, MAP_TINT[d.kind] || '#b4dc7a', !!life.kindsSeen[d.kind])).join('') +
@@ -1931,6 +2058,7 @@
       list.innerHTML = rowFor(me.name, me.color, Life.title(life), 'me') + [...Net.others.values()].map(o => rowFor(o.name, o.color, o.ti, o.id)).join('');
       list.addEventListener('click', (e) => { const b = e.target.closest('[data-card]'); if (!b) return; Sound.blip(); const id = b.dataset.card; cardSheet(id === 'me' ? 'me' : Net.others.get(+id)); });
       body.append(list);
+      if (Net.others.size) body.append(button('🏁 Crunch Race (2 min)', () => { Net.startRound(); closeSheet(); }, race ? 'choice' : 'big-btn small', !!race));
       body.append(row(button('📋 Copy', () => { navigator.clipboard && navigator.clipboard.writeText(link).then(() => toast('📋 ✓')).catch(() => {}); }, 'choice'),
         button('🚪 Leave', () => { Net.leave(); Talk.leave(); goSolo(); closeSheet(); toast('🏡'); }, 'choice alt')));
     });
