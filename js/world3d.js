@@ -5,6 +5,24 @@
 // (farms, houses, the forest, town projects) are small groups rebuilt only when the shared town changes.
 // The game logic lives in js/sw.js and talks to this file through window.World.
 import * as THREE from './vendor/three.module.min.js';
+// A planet, not a flat board: every vertex drops a little with its distance from the middle of the view, so the
+// ground curves away to the horizon. Only for the perspective camera: shadows (orthographic) are made flat.
+const BEND_K = 1 / 1800, BEND_OFF = 95;   // a 900 m bend radius for the eye; the view centre sits BEND_OFF in front of the camera
+THREE.ShaderChunk.project_vertex = `
+vec4 bwp = vec4( transformed, 1.0 );
+#ifdef USE_BATCHING
+bwp = batchingMatrix * bwp;
+#endif
+#ifdef USE_INSTANCING
+bwp = instanceMatrix * bwp;
+#endif
+bwp = modelMatrix * bwp;
+if ( projectionMatrix[ 3 ][ 3 ] < 0.5 ) {
+  vec2 bdd = bwp.xz - cameraPosition.xz + vec2( 0.0, ${BEND_OFF.toFixed(1)} );
+  bwp.y -= dot( bdd, bdd ) * ${BEND_K.toFixed(8)};
+}
+vec4 mvPosition = viewMatrix * bwp;
+gl_Position = projectionMatrix * mvPosition;`;
 
 const T = window.Town;
 const S = 0.1;                                   // 1 three.js unit = 10 game px
@@ -379,16 +397,6 @@ function buildGround() {
   for (let i = 0; i < 70; i++) {
     const px = T.X0 + ((i * 733) % 2400), py = (i * 479) % T.H, r = (60 + (i * 37) % 90) * S;
     W.add(GEO.disc(1, 20), M(wx(px), 0.02 + (i % 5) * 0.002, wz(py), i * 0.7, 0, 0, r, 1, r * 0.6), i % 3 ? COL.grass2 : COL.grass3, { ol: 0 });
-  }
-  // fluffy clouds drifting beside the floating board
-  const cr = rng(5);
-  for (let i = 0; i < 16; i++) {
-    const side = i % 4, t = cr();
-    const gx = side === 0 ? SLAB.x0 - 120 - cr() * 200 : side === 1 ? SLAB.x1 + 120 + cr() * 200 : SLAB.x0 - 200 + t * (SLAB.x1 - SLAB.x0 + 400);
-    const gy = side === 2 ? SLAB.y0 - 140 - cr() * 220 : side === 3 ? SLAB.y1 + 300 : SLAB.y0 + t * (SLAB.y1 - SLAB.y0);
-    if (side === 3 || side === 1) continue;   // nothing on the east side: the town grows that way
-    const cx = wx(gx), cz = wz(gy), cy = -6 + cr() * 8, sc = 1 + cr() * 1.2;
-    [[0, 0, 3.2], [3.4, -0.6, 2.4], [-3.2, -0.8, 2.2], [1.2, 1.6, 2.2]].forEach(([dx, dy, r]) => W.add(GEO.ico(r * sc, 1), M(cx + dx * sc, cy + dy * sc, cz, 0, 0, 0, 1, 0.8, 1), '#ffffff', { ol: 0.12 }));
   }
   // forest floor
   W.add(GEO.rrect(90, 72, 12), M(wx(4130), 0.035, wz(480)), '#9fca68', { ol: 0 });
@@ -1283,6 +1291,7 @@ const WATERS = [];   // {x, z, rx, rz, y?}: lakes, seas and the pool (y = the wa
 const DECKS = [];    // {x0, z0, x1, z1, y}: planks over the water that you walk on instead of swimming
 const PADS = [];     // {x, z, rx, rz, y}: raised ovals you walk over, like the pool's tiled edge
 function hillH(x, z) {
+  if (!onTrip && !inRegion(x, z)) return wildH(x, z);   // out in the Wild: the planet's own hills
   let h = 0;
   for (const q of HILLS) { const dx = x - q.x, dz = z - q.z, d2 = dx * dx + dz * dz; if (d2 < 9 * q.s * q.s) h += q.h * Math.exp(-d2 / (2 * q.s * q.s)); }
   return h;
@@ -1292,6 +1301,7 @@ const SEAS = [];     // {x0, x1, z0, z1, y}: the sea along a beach town's south 
 // near the town's east and west edges the shore curves away, so the sea ends in sand, not in a straight cut
 const shoreZ = (s, x) => { const e = Math.min(x - s.x0, s.x1 - x) / 16, bend = e < 1 ? (1 - Math.max(0, e)) ** 2 * (s.z1 - s.z0 + 3) : 0; return s.z0 + Math.sin(x * 0.21) * 0.9 + Math.sin(x * 0.07 + 1) * 1.3 + bend; };
 function waterAt(x, z) {
+  if (!onTrip && !inRegion(x, z)) return PL.sample(x, z).ocean ? OCEAN : null;
   for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return deckAt(x, z) ? null : w; }
   for (const s of SEAS) if (x > s.x0 && x < s.x1 && z < s.z1 && z > shoreZ(s, x)) return deckAt(x, z) ? null : s;
   return null;
@@ -2919,7 +2929,8 @@ function updateFrontier(town) {
 
 /* ------------------------------------------------------------------ faraway trips: islands built the first time you visit */
 const TRIP_SPOT = {};                       // trip id -> [{id, type, x, y}] in game px, for the game to use
-const tripCenter = (id) => ({ x: 26000 + ['island', 'snow', 'safari', 'volcano', 'moon'].indexOf(id) * 2000, y: 1300 });
+const TRIP_Y = 9e6;   // trips are far away from the planet's map (game px), so the Wild never reaches them
+const tripCenter = (id) => ({ x: 4800 + ['island', 'snow', 'safari', 'volcano', 'moon'].indexOf(id) * 3000, y: TRIP_Y });
 const builtTrips = new Set();
 let onTrip = null;
 function buildTrip(id) {
@@ -3313,7 +3324,8 @@ const tagBox = document.getElementById('tags');
 const tags = new Map();     // key -> { el, html, sayUntil, say }
 const _v = new THREE.Vector3();
 function toScreen(x, y, z) {
-  _v.set(x, y, z).project(camera);
+  const bx = x - camera.position.x, bz = z - camera.position.z + BEND_OFF;
+  _v.set(x, y - (bx * bx + bz * bz) * BEND_K, z).project(camera);
   if (_v.z > 1) return null;
   return { x: (_v.x + 1) / 2 * innerWidth, y: (1 - _v.y) / 2 * innerHeight };
 }
@@ -3499,6 +3511,202 @@ function updatePickups(t) {
   });
 }
 
+/* ------------------------------------------------------------------ the planet: the Wild, made as you walk */
+// Around the towns the whole planet is open land, sea and ice, generated from js/planet.js in 100 m chunks.
+// Chunks near you are built (one per frame, so walking never stutters) and chunks far behind are thrown away,
+// so the world is endless but memory stays flat. The same numbers give every player the same planet.
+const PL = window.Planet;
+const WCH = 100, WRES = 4;                      // chunk size and ground grid spacing, in units (m)
+const WCHUNKS = Math.round(PL.C / WCH);         // chunks around the planet (for wrap-safe seeds)
+const OCEAN = { y: 0.07, ocean: true };
+const wild = new Map();                         // "cx,cz" -> { cx, cz, group, solids, spots }
+const wildGroup = new THREE.Group(); wildGroup.name = 'wild'; scene.add(wildGroup);
+let WR = { x0: wx(SLAB.x0), x1: wx(SLAB.x1), z0: wz(SLAB.y0), z1: wz(SLAB.y1) };   // the towns' rectangle
+let wildQueue = [], wildT = 0, wildVersion = 0;
+const inRegion = (x, z) => x > WR.x0 && x < WR.x1 && z > WR.z0 && z < WR.z1;
+// height of the Wild: 0 under the towns' boards, easing up into the planet's hills over the first 24 m
+function wildH(x, z) {
+  const d = PL.regionDist(x, z), s = PL.sample(x, z);
+  if (d <= 0) return -0.06;
+  return s.ocean ? s.h : -0.06 + (s.h + 0.06) * PL.smooth(0, 24, d);
+}
+function wildRegion() {
+  const r = { x0: wx(SLAB.x0), x1: wx(T.worldRight(townNow)), z0: wz(SLAB.y0), z1: wz(SLAB.y1) };
+  if (r.x0 === WR.x0 && r.x1 === WR.x1 && r.z0 === WR.z0 && r.z1 === WR.z1 && PL.regionDist(0, 0) === 0) return false;
+  WR = r; PL.setRegion(r); return true;
+}
+function wildReset() { wild.forEach(dropChunk); wild.clear(); wildQueue = []; wildVersion++; }
+function dropChunk(c) {
+  if (!c.group) return;
+  wildGroup.remove(c.group);
+  c.group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
+  disposeGroup(c.group);
+}
+// kits for the Wild's instanced plants, made once from the town's tree kits
+const WK = {};
+function wildKits() {
+  if (WK.oak) return;
+  ensureKits();
+  const tuft = new Builder();
+  [[0, 0, 0], [0.3, 0.1, 0.5], [-0.3, -0.1, -0.5]].forEach(([dx, dz, rz]) => tuft.add(GEO.cone(0.18, 1.0, 3), M(dx, 0.45, dz, 0, 0, rz), '#98c965', { ol: 0 }));
+  const lily = new Builder(); lily.add(GEO.ico(1.1, 1), M(0, 0.7, 0), '#6fb84a', { ol: 0.07 });
+  Object.entries({ oak: TK.oak, pine: TK.pine, snowpine: TK.snowpine, cactus: TK.cactus, palm: TK.palm, shroom: TK.shroom, flower: TK.fl, tuft, bush: lily })
+    .forEach(([k, b]) => { const g = b.geometries(); WK[k] = g; });
+}
+const keepGeo = (m) => { m.userData.keepGeo = true; return m; };
+function wildInstances(group, kind, list, tintK) {
+  if (!list.length) return;
+  const { main, line } = WK[kind], m = new THREE.Matrix4(), c = new THREE.Color();
+  const mesh = keepGeo(new THREE.InstancedMesh(main, toonMat, list.length)), out = line ? keepGeo(new THREE.InstancedMesh(line, outlineMat, list.length)) : null;
+  list.forEach((it, i) => {
+    m.compose(_p.set(it.x, it.y, it.z), _q.setFromEuler(_e.set(0, it.r * 6.28, 0)), _s.setScalar(it.s));
+    mesh.setMatrixAt(i, m); if (out) out.setMatrixAt(i, m);
+    if (it.c) c.set(it.c); else { const k = 1 + (it.r - 0.5) * tintK; c.setRGB(k, k * 1.02, k * 0.97); }
+    mesh.setColorAt(i, c);
+  });
+  mesh.castShadow = kind !== 'flower' && kind !== 'tuft'; mesh.receiveShadow = true;
+  mesh.computeBoundingSphere(); mesh.boundingSphere.radius += 12;   // the curve moves far things down: cull a little generously
+  group.add(mesh);
+  if (out) { out.computeBoundingSphere(); out.boundingSphere.radius += 12; out.castShadow = false; group.add(out); }
+}
+// what the Wild's discoveries look like; sw.js knows their names and what finding one gives
+const WILD_KINDS = {
+  meadow: ['stones', 'ruins', 'well', 'camp', 'statue', 'tower'], forest: ['bigshroom', 'camp', 'ruins', 'tower'], taiga: ['camp', 'tower', 'stones'],
+  snow: ['igloo', 'crystal', 'stones'], rock: ['crystal', 'tower', 'stones'], desert: ['arch', 'mesa', 'ruins'], jungle: ['ruins', 'bigshroom', 'statue'], beach: ['lighthouse', 'camp'],
+};
+function wildLandmark(B, type, x, z, seed) {
+  const r = rng(seed);
+  switch (type) {
+    case 'stones': for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28, px = x + Math.cos(a) * 7, pz = z + Math.sin(a) * 7; B.add(GEO.rbox(1.6, 4 + r() * 1.6, 1.2, 0.3, 1), M(px, 2.2, pz, a), '#b9ae9f', { ol: 0.08, ao: 0.2 }); addCircleSolid(px, pz, 1); }
+      B.add(GEO.rbox(3.4, 0.8, 2.2, 0.3, 1), M(x, 0.4, z), '#a39888', { ol: 0.07 }); break;
+    case 'ruins': [[-5, 0, 5.5], [-1.5, -2, 3.2], [3, 1, 6.2], [5.5, -1.5, 2.2]].forEach(([dx, dz, h]) => { B.add(GEO.cyl(0.9, 1, h, 10), M(x + dx, h / 2, z + dz), '#e8dcc2', { ol: 0.08, ao: 0.15 }); addCircleSolid(x + dx, z + dz, 1.1); });
+      B.add(GEO.box(8.6, 0.9, 1.4), M(x - 1, 5.9, z - 1), '#ddcfb2', { ol: 0.08 }); B.add(GEO.box(2.4, 1.2, 1.4), M(x + 2, 0.6, z + 4, 0.6), '#d8c9ab', { ol: 0.07 }); break;
+    case 'well': well(B, x, z); break;
+    case 'camp': campfire(B, x, z);
+      B.add(GEO.prism(5, 3.4, 4.4), M(x + 6, 1.7, z - 3, 0.5), '#e4572e', { ol: 0.09 }); addCircleSolid(x + 6, z - 3, 2.4); break;
+    case 'statue': B.add(GEO.rbox(4, 2, 4, 0.4, 1), M(x, 1, z), '#cfc6d8', { ol: 0.08 }); B.add(GEO.rbox(2.6, 2.6, 2.4, 0.5, 1), M(x, 4.4, z), '#bdb2a4', { ol: 0.08 });
+      B.add(GEO.rbox(2, 1.5, 0.2, 0.3, 1), M(x, 4.5, z + 1.25), '#8fdcf2', { ol: 0.04 }); B.add(GEO.cyl(0.08, 0.08, 1.6, 5), M(x, 6.4, z), INKC, { ol: 0 }); B.add(GEO.ico(0.4, 1), M(x, 7.3, z), COL.yellow, { ol: 0.04 }); addCircleSolid(x, z, 2.4); break;
+    case 'tower': [[-2, -2], [2, -2], [-2, 2], [2, 2]].forEach(([dx, dz]) => { B.add(GEO.cyl(0.25, 0.3, 9, 6), M(x + dx, 4.5, z + dz), COL.woodDark, { ol: 0.05 }); addCircleSolid(x + dx, z + dz, 0.5); });
+      B.add(GEO.box(5.4, 3, 5.4), M(x, 10.2, z), COL.wood, { ol: 0.08 }); B.add(GEO.cone(4.6, 2.6, 4), M(x, 13, z, 0.785), '#9a3b2a', { ol: 0.08 }); break;
+    case 'bigshroom': B.add(GEO.cyl(1.4, 1.9, 7, 12), M(x, 3.5, z), '#fff3d6', { ol: 0.09 }); B.add(GEO.sph(6, 18, 10, true), M(x, 6.8, z, 0, 0, 0, 1, 0.62, 1), '#e4572e', { ol: 0.12 });
+      for (let i = 0; i < 9; i++) { const a = i * 2.4, d = 1.5 + (i % 3) * 1.4; B.add(GEO.ico(0.55, 0), M(x + Math.cos(a) * d, 10.3 - d * 0.35, z + Math.sin(a) * d), '#fff8e8', { ol: 0 }); } addCircleSolid(x, z, 2); break;
+    case 'crystal': B.add(GEO.ico(4.5, 1), M(x, 1.2, z, 0, 0, 0, 1.2, 0.7, 1), '#a39888', { ol: 0.1 }); crystals(B, x + 3.5, z + 2.5); crystals(B, x - 3, z + 3.2); addCircleSolid(x, z, 4.6); break;
+    case 'igloo': B.add(GEO.sph(4.6, 18, 10, true), M(x, 0, z), '#f7fbff', { ol: 0.1 }); B.add(GEO.cyl(1.7, 1.7, 3.4, 12), M(x, 1.2, z + 4.4, 0, Math.PI / 2), '#eef4fb', { ol: 0.07 });
+      B.add(GEO.disc(1.3, 12), M(x, 1.2, z + 6.12, 0, Math.PI / 2), '#34233f', { ol: 0 }); addCircleSolid(x, z, 4.7); break;
+    case 'arch': redArch(B, x, z, r() * 3); break;
+    case 'mesa': mesa(B, x, z, 6 + r() * 3, 9 + r() * 5, seed % 7); break;
+    case 'lighthouse': for (let i = 0; i < 5; i++) B.add(GEO.cyl(2.3 - i * 0.25, 2.5 - i * 0.25, 2.6, 14), M(x, 1.3 + i * 2.6, z), i % 2 ? '#e4572e' : '#ffffff', { ol: 0.08 });
+      B.add(GEO.cyl(1.4, 1.4, 1.8, 10), M(x, 14.4, z), COL.yellow, { ol: 0.07 }); B.add(GEO.cone(1.9, 1.8, 10), M(x, 16.2, z), '#9a3b2a', { ol: 0.07 }); addCircleSolid(x, z, 2.6); break;
+    case 'pole': B.add(GEO.cyl(0.35, 0.35, 12, 8), M(x, 6, z), '#ffffff', { ol: 0.06 });
+      for (let i = 0; i < 6; i++) B.add(GEO.cyl(0.37, 0.37, 1, 8), M(x, 1 + i * 2, z), '#e4572e', { ol: 0 });
+      B.add(GEO.box(4, 2.4, 0.15), M(x + 2.2, 10.6, z), '#5b7cfa', { ol: 0.05 }); B.add(GEO.ico(0.6, 1), M(x, 12.4, z), COL.yellow, { ol: 0.04 }); addCircleSolid(x, z, 0.8); break;
+  }
+}
+function buildWildChunk(cx, cz) {
+  const x0 = cx * WCH, z0 = cz * WCH, x1 = x0 + WCH, z1 = z0 + WCH;
+  const c = { cx, cz, group: null, solids: [], spots: [] };
+  if (x0 >= WR.x0 && x1 <= WR.x1 && z0 >= WR.z0 && z1 <= WR.z1) return c;   // all town: the boards are there
+  if (z1 < PL.POLE_N - WCH || z0 > PL.POLE_S + WCH) return c;                // past the poles
+  wildKits();
+  const group = new THREE.Group(), cxw = ((cx % WCHUNKS) + WCHUNKS) % WCHUNKS;
+  // the ground: a grid of heights and colours
+  const n = WCH / WRES + 1, pos = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), idx = [];
+  let sea = false, land = false;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = x0 + i * WRES, z = z0 + j * WRES, s = PL.sample(x, z), d = PL.regionDist(x, z), k = (j * n + i) * 3;
+    const h = d <= 0 ? -0.06 : s.ocean ? s.h : -0.06 + (s.h + 0.06) * PL.smooth(0, 24, d);
+    pos[k] = x; pos[k + 1] = h; pos[k + 2] = z;
+    _pc.set(s.ocean ? PL.BIOME.sea.ground : s.h > 17 ? '#f4f8fc' : PL.BIOME[s.biome].ground);
+    const v = 0.93 + PL.fbm(x, z, 50, 9, 1) * 0.14; col[k] = _pc.r * v; col[k + 1] = _pc.g * v; col[k + 2] = _pc.b * v;
+    if (s.ocean) sea = true; else land = true;
+  }
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) { const a = j * n + i, b = a + 1, cc = a + n, d = cc + 1; idx.push(a, cc, b, b, cc, d); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+  g.computeBoundingSphere(); g.boundingSphere.radius += 12;
+  const ground = new THREE.Mesh(g, toonMat); ground.receiveShadow = true; group.add(ground);
+  const B = new Chunked(1e9), base = new THREE.Matrix4(), ps = curSolids; curSolids = c.solids;
+  try {
+    if (sea) B.add(GEO.box(WCH, 0.04, WCH), M(x0 + WCH / 2, 0.05, z0 + WCH / 2), '#6cc4e6', { ol: 0 });   // the sea's surface
+    if (land) {
+      const rs = rng(Math.imul(cxw + 3, 2654435761) ^ Math.imul(cz + 101, 40503));
+      // a discovery in about four chunks out of ten; a pole marker all along each pole
+      const pz = z0 <= PL.POLE_N + 12 && z1 > PL.POLE_N + 12 ? PL.POLE_N + 12 : z0 <= PL.POLE_S - 12 && z1 > PL.POLE_S - 12 ? PL.POLE_S - 12 : null;
+      let spot = null;
+      if (pz !== null && x0 % 400 === 0) spot = { type: 'pole', x: x0 + WCH / 2, z: pz, pole: pz < 0 ? 'N' : 'S' };
+      else if (rs() < 0.38) for (let tries = 0; tries < 6 && !spot; tries++) {
+        const x = x0 + 25 + rs() * 50, z = z0 + 25 + rs() * 50, s = PL.sample(x, z);
+        if (s.ocean || PL.regionDist(x, z) < 30 || !WILD_KINDS[s.biome]) continue;
+        const kinds = WILD_KINDS[s.biome]; spot = { type: kinds[Math.floor(rs() * kinds.length)], x, z, biome: s.biome };
+      }
+      // plants and rocks, by biome
+      const r = rng(Math.imul(cxw + 1, 73856093) ^ Math.imul(cz + 7919, 19349663)), P = { oak: [], pine: [], snowpine: [], cactus: [], palm: [], shroom: [], flower: [], tuft: [], bush: [] };
+      const FL = ['#ff8fb1', '#ffd23f', '#ffffff', '#b98cff', '#ff9f43'];
+      for (let i = 0; i < 95; i++) {
+        const x = x0 + r() * WCH, z = z0 + r() * WCH, q = r(), rr = r(), sc = 0.8 + r() * 0.5;
+        if (level >= 2 && i % 5 >= 3) continue;   // slow devices: a thinner Wild (the same places, fewer plants)
+        const d = PL.regionDist(x, z); if (d < 10 || (spot && Math.hypot(x - spot.x, z - spot.z) < 13)) continue;   // clear space around a discovery
+        const s = PL.sample(x, z); if (s.ocean) continue;
+        const y = wildH(x, z), it = { x, y, z, s: sc, r: rr };
+        const tree = (k, rad = 0.9) => { P[k].push(it); c.solids.push({ type: 'circle', x, z, r: rad * sc }); };
+        const rock = (red) => { base.makeTranslation(0, y - 0.2, 0); B.base = base; (red ? redRock : greyRock)(B, x, z, 0.8 + rr * 0.9, (i * 7 + cxw) | 0); B.base = null; };
+        switch (s.biome) {
+          case 'meadow': if (q < 0.09) tree('oak'); else if (q < 0.34) P.flower.push({ ...it, s: 1.3, c: FL[i % FL.length] }); else if (q < 0.5) P.tuft.push(it); else if (q < 0.52) rock(); else if (q < 0.55) tree('bush', 1.2); break;
+          case 'forest': if (q < 0.42) tree(s.t < 0.5 ? 'pine' : 'oak'); else if (q < 0.56) P.shroom.push(it); else if (q < 0.66) P.tuft.push(it); else if (q < 0.7) tree('bush', 1.2); break;
+          case 'taiga': if (q < 0.42) tree('pine'); else if (q < 0.47) rock(); else if (q < 0.55) P.tuft.push(it); break;
+          case 'snow': if (q < 0.16) tree('snowpine'); else if (q < 0.21) rock(); break;
+          case 'rock': if (q < 0.2) rock(); else if (q < 0.26) tree('pine'); break;
+          case 'desert': if (q < 0.06) tree('cactus', 0.8); else if (q < 0.1) rock(true); break;
+          case 'jungle': if (q < 0.3) tree('palm', 0.8); else if (q < 0.5) tree('oak'); else if (q < 0.62) P.flower.push({ ...it, s: 1.5, c: FL[i % FL.length] }); else if (q < 0.7) tree('bush', 1.2); break;
+          case 'beach': if (q < 0.04) tree('palm', 0.8); break;
+        }
+      }
+      Object.entries(P).forEach(([k, list]) => wildInstances(group, k, list, k === 'flower' ? 0 : 0.2));
+      if (spot) {
+        const y = wildH(spot.x, spot.z);
+        base.makeTranslation(0, y - 0.1, 0); B.base = base;
+        wildLandmark(B, spot.type, spot.x, spot.z, (Math.imul(cxw, 9973) + cz * 31) | 0);
+        B.base = null;
+        c.spots.push({ id: `w${cxw}_${cz}`, ...spot, y });
+      }
+    }
+  } finally { curSolids = ps; }
+  B.meshes().forEach(m => { m.geometry.boundingSphere.radius += 12; group.add(m); });
+  wildGroup.add(group); c.group = group;
+  return c;
+}
+// which chunks should exist: a wide band in front of the camera (north, up the screen) and a little behind
+function wildTick(dt) {
+  if (!started) return;
+  if (onTrip) { wildGroup.visible = false; return; }
+  wildGroup.visible = true;
+  if ((wildT -= dt) <= 0) {
+    wildT = 0.25;
+    if (wildRegion()) wildReset();
+    const pcx = Math.floor(player.x / WCH), pcz = Math.floor(player.z / WCH), want = [];
+    for (let dz = -3; dz <= 1; dz++) for (let dx = -2; dx <= 2; dx++) want.push([pcx + dx, pcz + dz, dx * dx + (dz + 1) * (dz + 1)]);
+    const keep = new Set(want.map(([x, z]) => x + ',' + z));
+    wild.forEach((c, k) => { if (Math.abs(c.cx - pcx) > 3 || c.cz - pcz < -4 || c.cz - pcz > 2) { dropChunk(c); wild.delete(k); wildVersion++; } });
+    wildQueue = want.filter(([x, z]) => !wild.has(x + ',' + z)).sort((a, b) => a[2] - b[2]);
+    void keep;
+  }
+  // build the nearest missing chunk (two when the first was cheap)
+  const t0 = performance.now();
+  while (wildQueue.length && performance.now() - t0 < 6) {
+    const [x, z] = wildQueue.shift(), k = x + ',' + z;
+    if (wild.has(k)) continue;
+    wild.set(k, buildWildChunk(x, z)); wildVersion++;
+  }
+}
+function collideWild(p) {
+  if (onTrip || !wild.size) return;
+  const cx = Math.floor(p.x / WCH), cz = Math.floor(p.z / WCH);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const c = wild.get((cx + dx) + ',' + (cz + dz)); if (!c) continue;
+    for (const s of c.solids) if (Math.abs(s.x - p.x) < s.r + 4 && Math.abs(s.z - p.z) < s.r + 4) pushOut(p, s);
+  }
+}
+
 /* ------------------------------------------------------------------ time of day */
 const SKY = { day: new THREE.Color('#cdeefc'), dusk: new THREE.Color('#ffd6b8'), night: new THREE.Color('#4a4f86') };
 const FOG = { day: new THREE.Color('#dcefe6'), dusk: new THREE.Color('#f6d9c2'), night: new THREE.Color('#545a8e') };
@@ -3651,7 +3859,6 @@ function jump() {
 
 /* ------------------------------------------------------------------ movement + collision */
 const SPEED = 17, PR = 1.9;
-const BOUND = { x0: wx(SLAB.x0) + 3, x1: wx(SLAB.x1) - 3, z0: wz(SLAB.y0) + 3, z1: wz(SLAB.y1 - 150) };
 const tripR = 50;
 function pushOut(p, s) {
   if (s.type === 'circle') {
@@ -3679,8 +3886,8 @@ function collide(p) {
     if (d > tripR) { p.x = cx + dx / d * tripR; p.z = cz + dz / d * tripR; }
     return;
   }
-  BOUND.x1 = wx(T.worldRight(townNow)) - 3;
-  p.x = Math.max(BOUND.x0, Math.min(BOUND.x1, p.x)); p.z = Math.max(BOUND.z0, Math.min(BOUND.z1, p.z));
+  if (!(p === player && vehicleKind === 'plane' && flyH > 2)) collideWild(p);
+  p.z = Math.max(PL.POLE_N + 2, Math.min(PL.POLE_S - 2, p.z));   // the poles are as far as you can go
 }
 
 let flyH = 0, swimming = false;
@@ -3717,13 +3924,15 @@ function updatePlayer(dt, frozen) {
   flyH += Math.max(-10 * dt, Math.min(8 * dt, wantFly - flyH));
   player.x += player.vx * dt; player.z += player.vz * dt;
   collide(player);
+  // all the way round the planet: back into the -C/2..C/2 band around home, and the Wild rebuilds around you
+  if (!onTrip && Math.abs(player.x) > PL.C / 2) { const nx = PL.wrapX(player.x), d = nx - player.x; player.x = nx; camTarget.x += d; wildReset(); }
   const sp = Math.hypot(player.vx, player.vz);
   sf.speed = vehicleKind && vehicleKind !== 'bike' ? 0 : sp;
   if (sp > 1 && vehicleKind) sf.targetFace = Math.atan2(player.vx, player.vz);
   else if (L > 0.15) sf.targetFace = Math.atan2(ix, iz);
   if (sf.y > 0 || sf.yv > 0) { sf.yv -= gravity * dt; sf.y = Math.max(0, sf.y + sf.yv * dt); if (sf.y === 0) { sf.yv = 0; sf.moodOverride = 'laugh'; sf.moodUntil = now + 0.5; if (swimming) burst(gxOf(player.x), gyOf(player.z), 'water', 14, 1); } }
   const gh = groundAt(player.x, player.z) + hillH(player.x, player.z);
-  sf.ground = swimming ? -1.6 + Math.sin(now * 3) * 0.25 : gh + flyH + (vehicleKind === 'car' ? 0.3 : vehicleKind === 'bike' || vehicleKind === 'scooter' ? 0.6 : 0);
+  sf.ground = swimming ? Math.max(-1.6, gh - 0.2) + Math.sin(now * 3) * 0.25 : gh + flyH + (vehicleKind === 'car' ? 0.3 : vehicleKind === 'bike' || vehicleKind === 'scooter' ? 0.6 : 0);
   if (swimming && sp > 3 && Math.random() < dt * 6) burst(gxOf(player.x), gyOf(player.z), 'water', 3, 0.5);
   if (swimming !== updatePlayer.was) { updatePlayer.was = swimming; if (swimming) { burst(gxOf(player.x), gyOf(player.z), 'water', 18, 1); hooks.onSwim && hooks.onSwim(true); } }
   sf.root.position.x = player.x; sf.root.position.z = player.z;
@@ -3829,13 +4038,16 @@ function frame() {
   const lead = 0.35, k = 1 - Math.exp(-dt * 4.5);
   camTarget.x += (player.x + player.vx * lead - camTarget.x) * k;
   camTarget.z += (player.z + player.vz * lead - camTarget.z) * k;
-  const lift = flyH * 0.8;
+  const landY = onTrip ? 0 : Math.max(0, groundAt(player.x, player.z) + hillH(player.x, player.z));
+  camTarget.y += (landY - camTarget.y) * k;
+  const lift = flyH * 0.8 + camTarget.y;
   camera.position.set(camTarget.x + camOff.x, camOff.y + lift, camTarget.z + camOff.z);
   camera.lookAt(camTarget.x, 2.5 + lift, camTarget.z - 2);
+  wildTick(dt);
   // shadow box follows the view, snapped to shadow-map texels so edges do not shimmer
   const texel = (SH * 2) / sun.shadow.mapSize.x;
   const sx = Math.round(camTarget.x / texel) * texel, sz = Math.round((camTarget.z - 10) / texel) * texel;
-  sun.target.position.set(sx, 0, sz); sun.position.set(sx + SUN_DIR.x * 120, SUN_DIR.y * 120, sz + SUN_DIR.z * 120);
+  sun.target.position.set(sx, camTarget.y, sz); sun.position.set(sx + SUN_DIR.x * 120, camTarget.y + SUN_DIR.y * 120, sz + SUN_DIR.z * 120);
   // props
   hallFlag.rotation.y = Math.sin(t * 2.6) * 0.35 - 0.2;
   drops.visible = fountainOn;
@@ -3939,6 +4151,13 @@ window.World = {
   addPickups(list) { addPickups(list); },
   clearPickups(prefix, forget) { clearPickups(prefix, forget); },
   pickups: () => picks.map(p => ({ id: p.id, kind: p.kind, x: gxOf(p.x), y: gyOf(p.z) })),
+  // the planet around the towns (game px in, game px out)
+  inWild: (gx, gy) => !inRegion(wx(gx), wz(gy)) && gy < TRIP_Y / 2,
+  onTrip: () => !!onTrip,
+  planetAt: (gx, gy) => PL.sample(wx(gx), wz(gy)),
+  wildSpots: () => { const out = []; wild.forEach(c => c.spots.forEach(q => out.push({ id: q.id, type: q.type, biome: q.biome, pole: q.pole, x: gxOf(q.x), y: gyOf(q.z) }))); return out; },
+  get wildVersion() { return wildVersion; },
+  get wildChunks() { return wild.size; },
   // wonders
   rainbow(on, gx, gy) { setRainbow(on, gx, gy); },
   shootingStars(on) { setShootingStars(on); },

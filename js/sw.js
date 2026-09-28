@@ -1962,7 +1962,7 @@
     if (big) Town.districtsOf(town).forEach(d => { x.font = `bold ${Math.max(24, 90 * k)}px sans-serif`; x.textAlign = 'center'; x.fillStyle = '#34233f'; x.fillText(`${d.icon} ${d.name}`, X(d.x0 + 1000), Y(B.y0 + 330)); });
     x.textBaseline = 'alphabetic';
     mapMarks.forEach(m => { x.fillStyle = '#ffd23f'; x.strokeStyle = '#34233f'; x.lineWidth = 1.5; x.beginPath(); const px = X(m.x), py = Y(m.y), r = Math.max(4, 40 * k); x.moveTo(px, py - r); x.lineTo(px + r * 0.7, py); x.lineTo(px, py + r); x.lineTo(px - r * 0.7, py); x.closePath(); x.fill(); x.stroke(); });
-    Net.others.forEach(o => { if (o.x == null || o.x > 20000) return; x.fillStyle = o.color; x.strokeStyle = '#fff8e8'; x.lineWidth = 2; x.beginPath(); x.arc(X(o.tx ?? o.x), Y(o.ty ?? o.y), Math.max(3.5, 40 * k), 0, 7); x.fill(); x.stroke(); });
+    Net.others.forEach(o => { if (o.x == null || o.y > 5e6) return; x.fillStyle = o.color; x.strokeStyle = '#fff8e8'; x.lineWidth = 2; x.beginPath(); x.arc(X(o.tx ?? o.x), Y(o.ty ?? o.y), Math.max(3.5, 40 * k), 0, 7); x.fill(); x.stroke(); });
     if (!World.trip) { const p = World.pos(); x.fillStyle = me.color; x.strokeStyle = '#34233f'; x.lineWidth = 2.5; x.beginPath(); x.arc(X(p.x), Y(p.y), Math.max(4.5, 50 * k), 0, 7); x.fill(); x.stroke(); }
   }
   function mapSheet() {
@@ -1970,7 +1970,7 @@
     sheet(`🗺️ ${ds.length + 1} towns`, (body) => {
       // 1) the whole region at a glance, west to east: tap a town to see it and get an arrow there
       const strip = document.createElement('div'); strip.className = 'region';
-      const friendsIn = (k) => [...Net.others.values()].filter(o => o.x != null && o.x < 20000 && Town.districtAt(town, o.tx ?? o.x) === k).map(o => `<i style="background:${esc(o.color)}"></i>`).join('');
+      const friendsIn = (k) => [...Net.others.values()].filter(o => o.x != null && o.y < 5e6 && Town.districtAt(town, o.tx ?? o.x) === k).map(o => `<i style="background:${esc(o.color)}"></i>`).join('');
       const snailAt = life.snail && !life.snail.done ? Math.round(snailDays() / SNAIL_DAYS * life.snail.to) : -1;
       const cell = (k, icon, name, tint, seen) => `<button type="button" class="region-town ${k === here ? 'here' : ''} ${seen ? '' : 'new'}" data-k="${k}" style="--tint:${tint}">${k === snailAt ? '<span class="rt-snail">🐌</span>' : ''}
         <span class="rt-icon">${icon}</span><span class="rt-name">${esc(name)}</span>${k === here ? `<span class="rt-me" style="background:${esc(me.color)}"></span>` : ''}<span class="rt-friends">${friendsIn(k)}</span>${seen ? '' : '<span class="rt-badge">NEW</span>'}</button>`;
@@ -2429,7 +2429,7 @@
       if (!solo) solo = Town.newTown(Date.now());
       $('title').hidden = true; $('hud').hidden = false; $('minimap').hidden = false;
       World.setMe({ color: me.color, hat: life.hat });
-      if (pos && pos.x && pos.x < 20000) World.place(pos.x, pos.y);
+      if (pos && pos.x && pos.y < 5e6) World.place(pos.x, pos.y);   // trips are far away (y > 5e6); anywhere on the planet is fine
       playing = true;
       goSolo();
       dayTick(); syncDaily(); birthdayCheck(); classicCheck();
