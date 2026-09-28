@@ -325,7 +325,12 @@ const BSPEC = {
   jobs: { d: 12, h: 9, wall: '#bcd6ff', roof: COL.blue },
   rent: { d: 14, h: 16, wall: '#f0d2b0', roof: '#9a7b5b' },
 };
-const LSPEC = { station: { d: 11, h: 7 }, tech: { d: 12, h: 10 }, biz: { d: 12, h: 18 }, studio: { d: 12, h: 9 }, dealer: { d: 12, h: 7 }, airport: { d: 14, h: 8 }, harbor: { d: 11, h: 7 }, space: { d: 13, h: 9 }, stadium: { d: 14, h: 6 }, museum: { d: 12, h: 10 }, zoo: { d: 10, h: 6 }, cafe: { d: 10, h: 7 }, arcade: { d: 11, h: 8 }, hotel: { d: 12, h: 16 } };
+const LSPEC = { station: { d: 11, h: 7 }, tech: { d: 12, h: 10 }, biz: { d: 12, h: 18 }, studio: { d: 12, h: 9 }, dealer: { d: 12, h: 7 }, airport: { d: 14, h: 8 }, harbor: { d: 11, h: 7 }, space: { d: 13, h: 9 }, stadium: { d: 14, h: 6 }, museum: { d: 12, h: 10 }, zoo: { d: 10, h: 6 }, cafe: { d: 10, h: 7 }, arcade: { d: 11, h: 8 }, hotel: { d: 12, h: 16 },
+  // places that belong to one kind of town. wk: narrower than the slot; body: false = no plain box, the case builds its own
+  exchange: { d: 13, h: 12 }, office: { d: 12, h: 30 }, gallery: { d: 12, h: 9 }, concert: { d: 13, h: 8 }, ranch: { d: 12, h: 7 }, orchard: { d: 10, h: 6.5 },
+  mine: { d: 12, h: 9, body: false }, lodge: { d: 12, h: 7 }, hotsprings: { d: 12, h: 5.5, body: false }, icecream: { d: 8, h: 5, wk: 0.55 },
+  lighthouse: { d: 10, h: 6, wk: 0.62 }, university: { d: 14, h: 11 }, castle: { d: 14, h: 10 }, boathouse: { d: 11, h: 7 }, sawmill: { d: 11, h: 7 },
+  treehouse: { d: 10, h: 4, body: false }, observatory: { d: 12, h: 6 }, mart: { d: 8, h: 5, body: false } };
 const foot = b => { const s = BSPEC[b.id] || LSPEC[b.type] || { d: 12, h: 9 }, zf = wz(b.y - 45); return { x0: wx(b.x - b.w / 2), x1: wx(b.x + b.w / 2), z0: zf - s.d, z1: zf, zf, cx: wx(b.x) }; };
 
 function freeSpot(gx, gy, pad) {
@@ -977,7 +982,7 @@ function buildTrees() {
   sap.add(GEO.ico(0.7, 1), M(0, 1.9, 0), '#9dd46e', { ol: 0.07 });
   sap.add(GEO.sph(0.9, 10, 6, true), M(0, 0.05, 0, 0, 0, 0, 1, 0.35, 1), '#7a4a2a', { ol: 0 });
   const tint = (it, m, c, spread) => {
-    m.compose(_p.set(it.x, 0, it.z), _q.setFromEuler(_e.set(0, it.r * 2.3, 0)), _s.setScalar(it.s));
+    m.compose(_p.set(it.x, it.y || 0, it.z), _q.setFromEuler(_e.set(0, it.r * 2.3, 0)), _s.setScalar(it.s));
     const k = 1 + (((it.r * 53) % 17) / 17 - 0.5) * spread; c.setRGB(k, k * 1.02, k * 0.97);
   };
   instanced(oak, trees.oak, (it, m, c) => tint(it, m, c, 0.16));
@@ -1273,7 +1278,13 @@ function hillH(x, z) {
   return h;
 }
 function deckAt(x, z) { for (const d of DECKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return d; return null; }
-function waterAt(x, z) { for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return deckAt(x, z) ? null : w; } return null; }
+const SEAS = [];     // {x0, x1, z0, z1, y}: the sea along a beach town's south edge, with a wavy shore at z0
+const shoreZ = (s, x) => s.z0 + Math.sin(x * 0.21) * 0.9 + Math.sin(x * 0.07 + 1) * 1.3;
+function waterAt(x, z) {
+  for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return deckAt(x, z) ? null : w; }
+  for (const s of SEAS) if (x > s.x0 && x < s.x1 && z < s.z1 && z > shoreZ(s, x)) return deckAt(x, z) ? null : s;
+  return null;
+}
 const slopeAt = (x, z) => ({ gx: (hillH(x + 0.5, z) - hillH(x - 0.5, z)), gz: (hillH(x, z + 0.5) - hillH(x, z - 0.5)) });
 const GRAV = 42;                 // world units / s², the pull that brings every hop back down
 let gravity = GRAV;              // one sixth of it on the Moon
@@ -1285,12 +1296,15 @@ const hillGeo = (key, q, size) => prep(key, () => {
 
 /* ------------------------------------------------------------------ landmark buildings */
 function buildLandmark(B, L) {
-  const s = LSPEC[L.type] || { d: 12, h: 9 }, f = foot(L), w = L.w * S, cx = f.cx, zc = (f.z0 + f.z1) / 2, zf = f.z1, top = s.h + 0.3;
-  addBoxSolid(f.x0 - 0.4, f.z0 - 0.4, f.x1 + 0.4, f.z1 + 0.3);
+  const s = LSPEC[L.type] || { d: 12, h: 9 }, f = foot(L), w = L.w * S * (s.wk || 1), cx = f.cx, zc = (f.z0 + f.z1) / 2, zf = f.z1, top = s.h + 0.3;
+  const bx0 = cx - w / 2, bx1 = cx + w / 2;   // the same as f.x0 / f.x1 unless the place is narrower than its slot
+  let solid = true, door = true, doorColor = COL.woodDark, doorW = 3.6, doorH = 5.4, doorX = cx, signX = cx, signZ = zf + 0.5, bushes = true;
   B.add(GEO.rbox(w + 1.2, 0.5, s.d + 1.2, 0.25, 1), M(cx, 0.25, zc), '#d9cbb0', { ol: 0.08 });
-  B.add(GEO.rbox(w, s.h, s.d, 0.45, 2), M(cx, s.h / 2 + 0.3, zc), L.wall, { ol: 0.14, ao: 0.16 });
+  if (s.body !== false) B.add(GEO.rbox(w, s.h, s.d, 0.45, 2), M(cx, s.h / 2 + 0.3, zc), L.wall, { ol: 0.14, ao: 0.16 });
   const flat = () => { B.add(GEO.rbox(w + 1.2, 1.2, s.d + 1.2, 0.4, 1), M(cx, top, zc), L.roof, { ol: 0.12 }); };
   const rows = (n, m, y0 = 3.8, dy = 3.6) => { for (let r = 0; r < n; r++) for (let c = 0; c < m; c++) { const x = cx - w * 0.38 + c * (w * 0.76 / Math.max(1, m - 1)); if (r === 0 && Math.abs(x - cx) < 3) continue; window3(B, x, y0 + r * dy, zf + 0.26, 2.3, 2.3); } };
+  const cols = (n, span, y0, h, z, color = '#ffffff') => { for (let i = 0; i < n; i++) { const x = cx - span / 2 + i * span / (n - 1); if (Math.abs(x - cx) < 2.6) continue; B.add(GEO.cyl(0.6, 0.7, h, 10), M(x, y0 + h / 2, z), color, { ol: 0.09, ao: 0.12 }); } };
+  const planks = (color, y0 = 0.6, y1 = s.h) => { for (let x = bx0 + 1.2; x < bx1 - 0.6; x += 1.3) B.add(GEO.box(0.16, y1 - y0, 0.1), M(x, (y0 + y1) / 2 + 0.3, zf + 0.05), color, { ol: 0 }); };
   let signY = Math.min(top - 1.6, 7.6);
   switch (L.type) {
     case 'station':
@@ -1381,9 +1395,10 @@ function buildLandmark(B, L) {
       if (L.type === 'hotel') { rows(4, 5, 3.8, 3.4); }
       break;
   }
-  door3(B, cx, zf + 0.3, COL.woodDark);
-  sign(B, cx, signY, zf + 0.5, `${L.icon} ${L.name}`, { th: 1.7 });
-  [[-1, 0], [1, 0]].forEach(([sx]) => { const x = sx < 0 ? f.x0 - 0.2 : f.x1 + 0.2; B.add(GEO.ico(1.5, 1), M(x, 1.1, zf + 0.6), '#7fbf55', { ol: 0.09 }); });
+  if (solid) addBoxSolid(bx0 - 0.4, f.z0 - 0.4, bx1 + 0.4, f.z1 + 0.3);
+  if (door) door3(B, doorX, zf + 0.3, doorColor, doorW, doorH);
+  sign(B, signX, signY, signZ, `${L.icon} ${L.name}`, { th: 1.7 });
+  if (bushes) [[-1, 0], [1, 0]].forEach(([sx]) => { const x = sx < 0 ? bx0 - 0.2 : bx1 + 0.2; B.add(GEO.ico(1.5, 1), M(x, 1.1, zf + 0.6), '#7fbf55', { ol: 0.09 }); });
 }
 function carParts(B, x, y, z, color, ry = 0) {
   const r = new THREE.Matrix4().makeRotationY(ry), at = (dx, dy, dz) => new THREE.Vector3(dx, dy, dz).applyMatrix4(r).add(new THREE.Vector3(x, y, z));
@@ -1425,11 +1440,11 @@ function crystals(B, x, z, y = 0) {
   [[0, 0, 1.6], [0.9, 0.4, 1.1], [-0.8, 0.3, 1]].forEach(([dx, dz, h]) => B.add(GEO.cone(0.5, h * 1.6, 5), M(x + dx, y + h * 0.8, z + dz, dx, 0, dx * 0.2), '#b98cff', { ol: 0.05 }));
   B.add(GEO.ico(1.1, 0), M(x - 0.3, y + 0.4, z - 0.7), '#cfc6d8', { ol: 0.06 });
 }
-function palm(B, x, z, y = 0) {
+function palm(B, x, z, y = 0) { palmParts(B, x, z, y); addCircleSolid(x, z, 0.7); }
+function palmParts(B, x, z, y = 0) {
   for (let i = 0; i < 5; i++) B.add(GEO.cyl(0.35, 0.42, 1.3, 7), M(x + i * 0.18, y + 0.65 + i * 1.25, z, 0, 0, -0.08), '#b07a4a', { ol: 0.05 });
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; B.add(GEO.box(0.5, 0.18, 3.6), M(x + 0.9 + Math.sin(a) * 1.6, y + 6.6, z + Math.cos(a) * 1.6, a, -0.35), '#6fb84a', { ol: 0.04 }); }
   B.add(GEO.ico(0.35, 0), M(x + 0.9, y + 6.2, z + 0.3), '#8a5a34', { ol: 0 });
-  addCircleSolid(x, z, 0.7);
 }
 function berryBush(B, x, z) { B.add(GEO.ico(1.4, 1), M(x, 1, z), '#6fb84a', { ol: 0.08 }); for (let i = 0; i < 6; i++) B.add(GEO.ico(0.25, 0), M(x + Math.cos(i) * 1.1, 1 + (i % 3) * 0.4, z + Math.sin(i) * 1.1), '#5b7cfa', { ol: 0 }); addCircleSolid(x, z, 1.2); }
 function buildNature(B, D, trees) {
