@@ -111,26 +111,33 @@ The original 2D game is still here at `classic.html` (⋯ menu → 🍜 Classic 
 
 See [GAME_DESIGN.md](GAME_DESIGN.md) for the original design.
 
-## Deploy on Render
+## Deploy on KOOMPI Cloud (Docker)
 
-Multiplayer needs a **Web Service** (a Static Site can't run the server). `render.yaml` sets it up.
+The game and the multiplayer server run together from the `Dockerfile` in this repo.
 
-1. Merge this branch into `main` (or use this branch directly).
-2. If you already have a Static Site called `noodle-universe`, delete it first (Settings → Delete) so the new service can keep the `noodle-universe.onrender.com` address.
-3. In the Render dashboard click **New +** → **Blueprint**, pick the `smallworld-game` repo and branch, and click **Apply**. Render runs `npm install` and `npm start`.
-4. Open `https://noodle-universe.onrender.com` and try **Play with friends**.
+1. In [KOOMPI Cloud](https://kconsole.koompi.cloud) create a new app from the `smallworld-game` GitHub repo and branch, and choose **Dockerfile** as the build type.
+2. Set the container port to **3000** (or set the `PORT` environment variable to the port KOOMPI Cloud gives you).
+3. Add a **persistent volume** mounted at `/data`. Online saves, shared towns and the leaderboard live there; without a volume they are erased on every redeploy.
+4. Health check path: `/healthz` (it answers `ok`).
+5. Multiplayer uses WebSockets on the same address, so make sure WebSockets are allowed through KOOMPI Cloud's proxy (they usually are by default).
 
-Manual setup: **New +** → **Web Service**, pick the repo, Runtime **Node**, Build Command `npm install`, Start Command `npm start`.
+**Try the image on your own computer:**
 
-**Check it works:** open `https://<your-site>.onrender.com/healthz`. It should show `ok`. If it says Not Found, the site is still a Static Site and multiplayer will not work.
+```sh
+docker build -t smallworld .
+docker run -p 3000:3000 -v smallworld-data:/data smallworld
+# open http://localhost:3000
+```
 
-**Warning "package-lock.json found … Yarn"?** Render picked `yarn` as the build command. It is harmless, but set **Settings → Build Command** to `npm install` to match this project's `package-lock.json` (do not delete the lock file).
+When the container is stopped (for example on a redeploy) the server saves towns and the leaderboard before it exits.
+
+`render.yaml` is still here if you ever want to go back to Render.
 
 **Voice chat on strict networks:** voice connects players directly using free STUN servers, which works on most home Wi-Fi. Some school and phone networks block that; to relay voice there, add a TURN server (for example from Metered or Twilio) with the environment variables `TURN_URL` (like `turn:your.server:3478`), `TURN_USER` and `TURN_PASS`.
 
-**Keep saves and the leaderboard:** the free plan sleeps after about 15 minutes without players and its disk is wiped on every restart or deploy, which erases online saves, shared towns and the leaderboard. To keep them, use a paid instance, add a **Disk** (mount path `/var/data`) and set the environment variable `DATA_DIR=/var/data`. The free plan also takes about 30 seconds to wake up for the first visitor.
+**Keep saves and the leaderboard:** mount a volume at `/data` (the Docker image sets `DATA_DIR=/data`). Outside Docker, set `DATA_DIR` to any folder that survives restarts.
 
-**How many players?** Each room holds up to 8 players, and there can be many rooms at the same time. A single free Render instance comfortably handles a few dozen players at once.
+**How many players?** Each room holds up to 8 players, and there can be many rooms at the same time. One small container comfortably handles a few dozen players at once.
 
 ## Code
 

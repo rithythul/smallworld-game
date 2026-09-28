@@ -23,7 +23,7 @@ const ROUND_SECS = +process.env.ROUND_SECS || 120;               // one Crunch R
 const potNeed = (level) => 20 + level * 10; // team pot grows every time it fills
 
 /* ---------- leaderboard (saved to a JSON file) ---------- */
-// Everything the server remembers lives in DATA_DIR. On Render, point it at a persistent disk.
+// Everything the server remembers lives in DATA_DIR. In Docker it is /data: mount a volume there.
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const BOARD_FILE = process.env.LEADERBOARD_FILE || path.join(DATA_DIR, 'leaderboard.json');
 const SAVE_DIR = path.join(DATA_DIR, 'saves');
@@ -448,3 +448,13 @@ setInterval(() => {
 }, 15000);
 
 server.listen(PORT, () => console.log(`Small World running at http://localhost:${PORT}`));
+// Docker and most clouds stop the server with SIGTERM on every redeploy: save what is still in memory first.
+function shutdown() {
+  try {
+    if (boardDirty) { fs.mkdirSync(path.dirname(BOARD_FILE), { recursive: true }); fs.writeFileSync(BOARD_FILE, JSON.stringify(board)); }
+    for (const [code, t] of towns) if (t.dirty) { fs.mkdirSync(TOWN_DIR, { recursive: true }); fs.writeFileSync(path.join(TOWN_DIR, code + '.json'), JSON.stringify(t.town)); }
+  } catch (e) { console.error('Could not save on shutdown:', e.message); }
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
