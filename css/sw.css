@@ -335,3 +335,5 @@ button.sure { background: #ffe08a !important; }
 .tile.wanted { box-shadow: 0 0 0 3px #ffd23f, 0 3px 0 var(--ink); }
 .tile .usual.wanted { color: #3e7d22; }
 .spark { display: block; width: 100%; max-width: 220px; height: 34px; color: #5b7cfa; margin: 2px 0 4px; }
+.map-wrap.scroll { overflow-x: auto; overflow-y: hidden; max-width: 100%; border-radius: 14px; -webkit-overflow-scrolling: touch; }
+.map-wrap.scroll .map-canvas.wide { max-width: none; display: block; }

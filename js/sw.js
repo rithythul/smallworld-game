@@ -411,7 +411,7 @@
     const tap = town.built.includes('fountain') && dist(p, Town.PROJECT_SPOTS.fountain) < 190 ? Town.PROJECT_SPOTS.fountain : HOME.tap;
     { const d = dist(p, tap); if (d < (tap === HOME.tap ? 60 : 190)) add({ key: 'tap', label: 'Drink', icon: '💧', cls: 'water', run: () => sip() }, d, 10); }
     if (Life.ritualState(life, 'sleep', t) === 'open') { const h = homeDoor(), d = dist(p, h); if (d < (h.own ? 110 : 80)) add({ key: 'bed', label: 'Sleep', icon: '🛏️', cls: 'buy', run: () => goSleep() }, d, 30); }
-    if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 0, 50);
+    if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 90);   // anything close by comes first; otherwise the big button is a wish
     // bus stops
     if (World.busOn) Town.stopsOf(town).forEach(s => { const d = dist(p, s); if (d < 70) add({ key: 'bus:' + s.id, label: `Ride · ${coin(Life.FARES.bus)}`, icon: '🚌', cls: 'buy', run: () => stopSheet(s) }, d); });
     // land
@@ -1709,7 +1709,7 @@
       x.fillRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k); x.strokeRect(X(b.x - b.w / 2), Y(b.y - 45 - 130), b.w * k, 130 * k);
       x.font = `${Math.max(10, 70 * k)}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(b.icon, X(b.x), Y(b.y - 110));
     });
-    if (big) Town.districtsOf(town).forEach(d => { x.font = `bold ${Math.max(11, 90 * k)}px sans-serif`; x.textAlign = 'center'; x.fillStyle = '#34233f'; x.fillText(`${d.icon} ${d.name}`, X(d.x0 + 1000), Y(B.y0 + 330)); });
+    if (big) Town.districtsOf(town).forEach(d => { x.font = `bold ${Math.max(24, 90 * k)}px sans-serif`; x.textAlign = 'center'; x.fillStyle = '#34233f'; x.fillText(`${d.icon} ${d.name}`, X(d.x0 + 1000), Y(B.y0 + 330)); });
     x.textBaseline = 'alphabetic';
     mapMarks.forEach(m => { x.fillStyle = '#ffd23f'; x.strokeStyle = '#34233f'; x.lineWidth = 1.5; x.beginPath(); const px = X(m.x), py = Y(m.y), r = Math.max(4, 40 * k); x.moveTo(px, py - r); x.lineTo(px + r * 0.7, py); x.lineTo(px, py + r); x.lineTo(px - r * 0.7, py); x.closePath(); x.fill(); x.stroke(); });
     Net.others.forEach(o => { if (o.x == null || o.x > 20000) return; x.fillStyle = o.color; x.strokeStyle = '#fff8e8'; x.lineWidth = 2; x.beginPath(); x.arc(X(o.tx ?? o.x), Y(o.ty ?? o.y), Math.max(3.5, 40 * k), 0, 7); x.fill(); x.stroke(); });
@@ -1717,14 +1717,19 @@
   }
   function mapSheet() {
     sheet('🗺️', (body) => {
-      const c = document.createElement('canvas'); c.className = 'map-canvas';
-      const R = Town.worldRight(town), ratio = (R - 3380) / 3060;
-      c.width = Math.round(Math.min(1400, 720 * Math.max(1, ratio))); c.height = Math.round(c.width / ratio);
-      const wrap = document.createElement('div'); wrap.className = 'map-wrap'; wrap.append(c); body.append(wrap);
+      // a readable scale that scrolls sideways as the region grows, opened where you are
+      const c = document.createElement('canvas'); c.className = 'map-canvas wide';
+      const R = Town.worldRight(town), H = 460, ratio = (R - 3380) / 3060;
+      c.height = H; c.width = Math.round(Math.min(16000, H * ratio)); c.style.width = (c.width / 2) + 'px'; c.style.height = (H / 2) + 'px';
+      const wrap = document.createElement('div'); wrap.className = 'map-wrap scroll'; wrap.append(c); body.append(wrap);
       drawMap(c, true);
-      body.append(tiles(places().map(b => tile(b.icon, '', '', () => { const k = keeper(b.id); if (k) guide = { x: k.x, y: k.y, h: 13, icon: b.icon }; closeSheet(); })),
-        Town.districtsOf(town).map(d => tile(d.icon, '', life.band === 1 ? '' : esc(d.name), () => { guide = { x: d.gate.x + 200, y: d.gate.y - 60, h: 12, icon: d.icon }; closeSheet(); })),
+      requestAnimationFrame(() => { const p = World.pos(); wrap.scrollLeft = Math.max(0, (p.x - 3380) / (R - 3380) * c.width / 2 - wrap.clientWidth / 2); });
+      body.append(tiles(Town.BUILDINGS.map(b => tile(b.icon, '', '', () => { const k = keeper(b.id); if (k) guide = { x: k.x, y: k.y, h: 13, icon: b.icon }; closeSheet(); })),
         tile('🌲', '', '', () => { guide = { x: 4130, y: 480, h: 12, icon: '🌲' }; closeSheet(); }), tile('🌾', '', '', () => { guide = { x: 5520, y: 470, h: 10, icon: '🌾' }; closeSheet(); })));
+      if (town.districts) {
+        body.insertAdjacentHTML('beforeend', '<h4 class="sub-h">🚆 Towns</h4>');
+        body.append(tiles(Town.districtsOf(town).map(d => tile(d.icon, '', life.band === 1 ? '' : esc(d.name), () => { guide = { x: d.gate.x + 200, y: d.gate.y - 60, h: 12, icon: d.icon }; closeSheet(); }, { on: !!life.kindsSeen[d.kind] && Town.districtAt(town, World.pos().x) === d.k }))));
+      }
     });
   }
   $('minimap').addEventListener('click', () => { Sound.blip(); mapSheet(); });

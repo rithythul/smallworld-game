@@ -158,6 +158,9 @@ const GEO = {
     for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + Math.PI / 2, r = i % 2 ? ri : ro; s[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
     return new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 1 }).translate(0, 0, -d / 2);
   }),
+  // half a cylinder (a vaulted roof), and half a torus standing up (a rock arch)
+  hcyl: (r, len, s = 16) => prep(`hc${r},${len},${s}`, () => new THREE.CylinderGeometry(r, r, len, s, 1, false, 0, Math.PI)),
+  arch: (R, r, s = 16) => prep(`ar${R},${r},${s}`, () => new THREE.TorusGeometry(R, r, 7, s, Math.PI)),
   lily: (r) => prep(`ly${r}`, () => new THREE.CircleGeometry(r, 14, 0.4, Math.PI * 2 - 0.8).rotateX(-Math.PI / 2)),   // a pad with a notch
 };
 
@@ -172,12 +175,13 @@ class Builder {
   // o.ol = outline width (0 = none), o.ao = darken towards the bottom of the primitive (fake ambient occlusion)
   add(e, m, color, o = {}) {
     if (this.base) m = this.base.clone().multiply(m);
-    const ol = (o.ol ?? 0.12) * OLS, ao = o.ao ?? 0, g = e.g, pos = g.attributes.position, nor = g.attributes.normal;
+    const ol = (o.ol ?? 0.12) * OLS, ao = o.ao ?? 0, g = e.g, pos = g.attributes.position, nor = g.attributes.normal, vc = o.vc ? g.attributes.color : null;
     tmpM3.getNormalMatrix(m);
     tmpC.set(color);
     const span = Math.max(1e-6, e.maxY - e.minY);
     for (let i = 0; i < pos.count; i++) {
       tmpV.fromBufferAttribute(pos, i);
+      if (vc) tmpC.fromBufferAttribute(vc, i);
       const f = ao ? 1 - ao * (1 - (tmpV.y - e.minY) / span) : 1;
       tmpV.applyMatrix4(m);
       this.p.push(tmpV.x, tmpV.y, tmpV.z);
@@ -296,7 +300,7 @@ function sign(B, x, y, z, text, o = {}) {
     if (!o.noSolid) addCircleSolid(p0.x, p0.z, 0.5);
   }
   const c = at(0, 0, 0);
-  B.add(GEO.rbox(w, h, 0.45, 0.35, 2), M(c.x, c.y, c.z, ry), o.color || COL.paper, { ol: 0.09 });
+  B.add(GEO.rbox(w, h, 0.45, 0.35, RK), M(c.x, c.y, c.z, ry), o.color || COL.paper, { ol: 0.09 });
   const f = at(0, 0.02, 0.26);
   addText(L, M(f.x, f.y, f.z, ry), th);
   return w;
@@ -412,15 +416,18 @@ function buildGround() {
   for (let r = 4; r < P.r * S; r += 3.6) W.add(GEO.ring(r - 0.12, r + 0.12, 40), M(wx(P.x), 0.18, wz(P.y)), '#dfd0aa', { ol: 0 });
 }
 
+// how round small boxes (windows, doors, sign boards) are: the new towns use one step less, which looks the same
+// from the camera but builds much faster, since every new town has hundreds of them
+let RK = 2;
 function window3(B, x, y, z, w = 2.6, h = 2.6, ry = 0, lit = COL.glass) {
-  B.add(GEO.rbox(w, h, 0.5, 0.35, 2), M(x, y, z, ry), lit, { ol: 0.08 });
+  B.add(GEO.rbox(w, h, 0.5, 0.35, RK), M(x, y, z, ry), lit, { ol: 0.08 });
   const r = new THREE.Matrix4().makeRotationY(ry), o = new THREE.Vector3(0, 0, 0.26).applyMatrix4(r);
   B.add(GEO.box(0.16, h - 0.3, 0.1), M(x + o.x, y, z + o.z, ry), INKC, { ol: 0 });
   B.add(GEO.box(w - 0.3, 0.16, 0.1), M(x + o.x, y, z + o.z, ry), INKC, { ol: 0 });
   B.add(GEO.box(w * 0.36, 0.16, 0.1), M(x + o.x - w * 0.22, y + h * 0.28, z + o.z + 0.02, ry), '#ffffff', { ol: 0 });
 }
 function door3(B, x, z, color = COL.dirt, w = 3.6, h = 5.4) {
-  B.add(GEO.rbox(w, h, 0.6, 0.5, 2), M(x, h / 2, z), color, { ol: 0.09 });
+  B.add(GEO.rbox(w, h, 0.6, 0.5, RK), M(x, h / 2, z), color, { ol: 0.09 });
   B.add(GEO.ico(0.28, 0), M(x + w * 0.28, h * 0.48, z + 0.36), COL.yellow, { ol: 0.04 });
   B.add(GEO.box(w + 1.4, 0.3, 1.6), M(x, 0.15, z + 0.6), '#d9cbb0', { ol: 0.07 });   // doorstep
 }
@@ -782,14 +789,7 @@ function buildForestStatic() {
 /* ------------------------------------------------------------------ the Small World mark */
 // The logo, recoloured in the town's greens, mown into the lawn beside the plaza: easy to spot, never in the way.
 const LOGO = { x: 4546, y: 1330, w: 180, h: 180 * 228 / 640 };
-function buildLogoMark() {
-  const tex = new THREE.TextureLoader().load('icons/smallworld-mark.png');
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  const mat = new THREE.MeshToonMaterial({ map: tex, gradientMap: ramp, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const mark = new THREE.Mesh(new THREE.PlaneGeometry(LOGO.w * S, LOGO.h * S).rotateX(-Math.PI / 2), mat);
-  mark.position.set(wx(LOGO.x), 0.05, wz(LOGO.y)); mark.receiveShadow = true; mark.renderOrder = -1;
-  scene.add(mark);
-}
+function buildLogoMark() { logoMark(LOGO.x, LOGO.y, LOGO.w); }
 
 /* ------------------------------------------------------------------ town projects */
 const PROJ_SIGN = { fountain: '⛲ Future fountain · vote at Town Hall', park: '🌳 Future Town Park · vote at Town Hall', library: '📚 Future Library · vote at Town Hall', clinic: '🏥 Future Clinic · vote at Town Hall' };
@@ -1279,7 +1279,8 @@ function hillH(x, z) {
 }
 function deckAt(x, z) { for (const d of DECKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return d; return null; }
 const SEAS = [];     // {x0, x1, z0, z1, y}: the sea along a beach town's south edge, with a wavy shore at z0
-const shoreZ = (s, x) => s.z0 + Math.sin(x * 0.21) * 0.9 + Math.sin(x * 0.07 + 1) * 1.3;
+// near the town's east and west edges the shore curves away, so the sea ends in sand, not in a straight cut
+const shoreZ = (s, x) => { const e = Math.min(x - s.x0, s.x1 - x) / 16, bend = e < 1 ? (1 - Math.max(0, e)) ** 2 * (s.z1 - s.z0 + 3) : 0; return s.z0 + Math.sin(x * 0.21) * 0.9 + Math.sin(x * 0.07 + 1) * 1.3 + bend; };
 function waterAt(x, z) {
   for (const w of WATERS) { const u = (x - w.x) / w.rx, v = (z - w.z) / w.rz; if (u * u + v * v < 1) return deckAt(x, z) ? null : w; }
   for (const s of SEAS) if (x > s.x0 && x < s.x1 && z < s.z1 && z > shoreZ(s, x)) return deckAt(x, z) ? null : s;
@@ -1389,6 +1390,323 @@ function buildLandmark(B, L) {
       [[-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5]].forEach(([dx, dz]) => B.add(GEO.cyl(0.18, 0.18, 2.2, 5), M(cx + w / 2 + 4 + dx, 1.1, zf + 3 + dz), COL.yellow, { ol: 0.04 }));
       addCircleSolid(cx + w / 2 + 4.5, zf + 3, 2);
       break;
+    case 'exchange': {
+      // a temple of money: steps, columns, a ticker board with the three companies, a low pediment
+      B.add(GEO.box(w * 0.7, 0.4, 2.6), M(cx, 0.2, zf + 1.4), '#e9e2d0', { ol: 0.08 });
+      cols(6, w * 0.8, 0.3, top - 1.5, zf + 1.1);
+      B.add(GEO.box(w * 0.92, 1.4, 1.8), M(cx, top - 0.5, zf + 1.0), '#f3f7fa', { ol: 0.1 });
+      B.add(GEO.rbox(w * 0.72, 1.2, 0.3, 0.2, 1), M(cx, top - 0.5, zf + 1.95), '#1f1a2e', { ol: 0.05 });
+      B.add(GEO.box(w * 0.69, 0.9, 0.1), M(cx, top - 0.5, zf + 2.1), '#dff7d0', { ol: 0 });
+      addText(label('BAKE 21 ▲   TOY 35 ▼   ROCKET 64 ▲'), M(cx, top - 0.48, zf + 2.17), 0.85);
+      gable(B, cx, zc, w, s.d, top, L.roof, 1.1, 0.38, L.wall);
+      // a gold bull on the steps
+      const bx = bx1 + 3.4, bz = zf + 1.2;
+      B.add(GEO.rbox(2.6, 1.3, 1.2, 0.45, 1), M(bx, 1.7, bz), COL.gold, { ol: 0.07 });
+      B.add(GEO.rbox(1.0, 0.9, 0.9, 0.3, 1), M(bx - 1.5, 2.2, bz), COL.gold, { ol: 0.06 });
+      [-0.3, 0.3].forEach(dz => B.add(GEO.cone(0.14, 0.7, 5), M(bx - 1.7, 2.9, bz + dz, 0, 0, 0.5), '#fff8e8', { ol: 0.03 }));
+      [[-0.9, -0.4], [0.9, -0.4], [-0.9, 0.4], [0.9, 0.4]].forEach(([dx, dz]) => B.add(GEO.cyl(0.18, 0.18, 1.1, 5), M(bx + dx, 0.75, bz + dz), COL.gold, { ol: 0.03 }));
+      B.add(GEO.box(3.2, 0.3, 1.8), M(bx, 0.35, bz), '#cfc6d8', { ol: 0.05 });
+      addCircleSolid(bx, bz, 1.6);
+      doorColor = INKC; signY = 7.2; signZ = zf + 2.0;
+      break;
+    }
+    case 'office': {
+      // a tall glass tower: window ribbons all round, a lobby canopy, a crown and a mast
+      for (let y = 8.2; y < s.h - 1; y += 2.7) B.add(GEO.box(w + 0.12, 1.4, s.d + 0.12), M(cx, y, zc), '#8fd3ee', { ol: 0 });
+      B.add(GEO.box(w * 0.74, 4.6, 0.3), M(cx, 2.8, zf + 0.12), '#bfefff', { ol: 0.05 });
+      for (let i = 1; i < 6; i++) B.add(GEO.box(0.18, 4.6, 0.12), M(cx - w * 0.37 + i * w * 0.74 / 6, 2.8, zf + 0.3), INKC, { ol: 0 });
+      B.add(GEO.box(w * 0.8, 0.45, 3.2), M(cx, 5.4, zf + 1.6), L.roof, { ol: 0.08 });
+      B.add(GEO.rbox(w + 0.8, 1.4, s.d + 0.8, 0.3, 1), M(cx, top + 0.4, zc), L.roof, { ol: 0.12 });
+      B.add(GEO.box(w * 0.55, 4, s.d * 0.6), M(cx, top + 3, zc), L.wall, { ol: 0.1, ao: 0.15 });
+      B.add(GEO.box(w * 0.55 + 0.1, 1.2, s.d * 0.6 + 0.1), M(cx, top + 3.2, zc), '#8fd3ee', { ol: 0 });
+      B.add(GEO.cyl(0.14, 0.22, 7, 6), M(cx + 2, top + 8.5, zc), INKC, { ol: 0 });
+      B.add(GEO.ico(0.4, 0), M(cx + 2, top + 12.2, zc), COL.roof, { ol: 0.04 });
+      doorColor = '#1f1a2e'; signY = 6.9; signZ = zf + 0.7;
+      break;
+    }
+    case 'gallery': {
+      // a white cube with a big framed painting, a skylight and a sculpture on the roof
+      B.add(GEO.rbox(w + 0.8, 0.8, s.d + 0.8, 0.3, 1), M(cx, top, zc), '#f3eddd', { ol: 0.1 });
+      B.add(GEO.prism(w * 0.45, 1.5, s.d * 0.5), M(cx - 3, top + 0.4, zc), '#bfefff', { ol: 0.08 });
+      const px = cx - 8.8, py = 4.1;
+      B.add(GEO.box(8.4, 4.0, 0.3), M(px, py, zf + 0.2), '#d6f1ff', { ol: 0 });
+      B.add(GEO.sph(2.6, 14, 6, true), M(px - 1.4, py - 2, zf + 0.3, 0, 0, 0, 1, 0.62, 0.2), '#8cc45e', { ol: 0 });
+      B.add(GEO.sph(2.2, 14, 6, true), M(px + 1.8, py - 2, zf + 0.32, 0, 0, 0, 1, 0.5, 0.2), '#ff8fb1', { ol: 0 });
+      B.add(GEO.ico(0.7, 1), M(px + 2.4, py + 1.1, zf + 0.4), COL.yellow, { ol: 0 });
+      [[0, 2.2, 9.2, 0.6], [0, -2.2, 9.2, 0.6], [-4.5, 0, 0.6, 5], [4.5, 0, 0.6, 5]].forEach(([dx, dy, fw, fh]) => B.add(GEO.box(fw, fh, 0.5), M(px + dx, py + dy, zf + 0.35), COL.gold, { ol: 0.05 }));
+      const sx = cx + 7, sy = top + 0.4;
+      B.add(GEO.box(2.4, 1.2, 2.4), M(sx, sy + 0.6, zc), '#e9e2d0', { ol: 0.06 });
+      B.add(GEO.cone(1.1, 2.6, 4), M(sx, sy + 2.5, zc, 0.6), COL.blue, { ol: 0.06 });
+      B.add(GEO.ico(0.9, 0), M(sx + 0.3, sy + 4.4, zc), '#ff8fb1', { ol: 0.06 });
+      B.add(GEO.box(1.4, 1.4, 1.4), M(sx - 0.2, sy + 5.8, zc, 0.8, 0.6), COL.yellow, { ol: 0.06 });
+      window3(B, cx + 8.5, 4.4, zf + 0.26, 3.4, 2.4);
+      doorColor = INKC; signY = 7.7;
+      break;
+    }
+    case 'concert': {
+      // a hall under a curved roof, tall arched windows, notes floating over it and a red carpet
+      B.add(GEO.hcyl(s.d / 2 + 0.7, w + 1.2, 18), M(cx, top - 0.1, zc, 0, 0, Math.PI / 2, 0.62, 1, 1), L.roof, { ol: 0.12, ao: 0.1 });
+      B.add(GEO.box(w + 1.2, 0.6, s.d + 1.4), M(cx, top - 0.1, zc), '#f3eddd', { ol: 0.1 });
+      [-1, 1].forEach(sd => [5.5, 9.5].forEach(dx => { const x = cx + sd * dx; window3(B, x, 3.8, zf + 0.26, 2.2, 4.2); B.add(GEO.cyl(1.1, 1.1, 0.5, 12, 1), M(x, 5.9, zf + 0.26, 0, Math.PI / 2), COL.glass, { ol: 0.06 }); }));
+      [[-3, 5.2, '#ffd23f'], [3.6, 6.4, '#ff8fb1']].forEach(([dx, dy, c]) => {
+        const nx = cx + dx, ny = top + dy, nz = zc + 2;
+        B.add(GEO.sph(0.8, 12, 8), M(nx, ny, nz, 0, 0, 0.4, 1.2, 0.9, 0.7), c, { ol: 0.06 });
+        B.add(GEO.box(0.22, 3, 0.22), M(nx + 0.85, ny + 1.5, nz), c, { ol: 0.04 });
+        B.add(GEO.box(1.2, 0.35, 0.2), M(nx + 1.35, ny + 2.8, nz, 0, 0, -0.5), c, { ol: 0.04 });
+      });
+      B.add(GEO.box(3.4, 0.06, 3.6), M(cx, 0.52, zf + 2.2), '#c0392b', { ol: 0 });
+      doorColor = '#9a3b3b'; signY = 7.0;
+      break;
+    }
+    case 'ranch': {
+      // a red barn with white trim and a big barn door, a silo beside it
+      gable(B, cx, zc, w, s.d, top, '#7d5a44', 0.8, 0.72, L.wall);
+      [bx0 + 0.15, bx1 - 0.15].forEach(x => B.add(GEO.box(0.5, s.h, 0.5), M(x, s.h / 2 + 0.3, zf + 0.05), '#fff8e8', { ol: 0.04 }));
+      const dw = 7, dh = 5.2;
+      B.add(GEO.box(dw, dh, 0.3), M(cx, dh / 2 + 0.3, zf + 0.12), '#9a3b2a', { ol: 0.06 });
+      [[0, dh + 0.3, dw + 0.5, 0.4], [-dw / 2, dh / 2 + 0.3, 0.4, dh], [dw / 2, dh / 2 + 0.3, 0.4, dh], [0, dh / 2 + 0.3, 0.3, dh]].forEach(([dx, y, bw, bh]) => B.add(GEO.box(bw, bh, 0.2), M(cx + dx, y, zf + 0.32), '#fff8e8', { ol: 0.03 }));
+      [-1, 1].forEach(sd => [-1, 1].forEach(d2 => B.add(GEO.box(0.3, Math.hypot(dw / 2, dh), 0.14), M(cx + sd * dw / 4, dh / 2 + 0.3, zf + 0.36, 0, 0, d2 * Math.atan2(dw / 2, dh)), '#fff8e8', { ol: 0 })));
+      B.add(GEO.box(3, 2, 0.3), M(cx, top + 3.4, zf + 0.12), '#fff8e8', { ol: 0.05 });
+      B.add(GEO.box(2.4, 1.5, 0.2), M(cx, top + 3.4, zf + 0.25), '#6b3b2a', { ol: 0 });
+      const sx = bx1 + 3.6, sz = zc - 1.5;
+      B.add(GEO.cyl(2.6, 2.7, 13, 16), M(sx, 6.8, sz), '#dfe6ee', { ol: 0.1, ao: 0.15 });
+      [3.5, 7, 10.5].forEach(y => B.add(GEO.cyl(2.72, 2.72, 0.3, 16), M(sx, y, sz), '#9aa3b5', { ol: 0 }));
+      B.add(GEO.sph(2.7, 16, 8, true), M(sx, 13.3, sz), '#9aa3b5', { ol: 0.08 });
+      addCircleSolid(sx, sz, 2.9);
+      door = false; signY = top + 1.4;
+      break;
+    }
+    case 'orchard': {
+      // a farmhouse with a porch and a giant apple on the roof
+      const rise = gable(B, cx, zc, w, s.d, top, L.roof, 0.9, 0.6, L.wall);
+      B.add(GEO.box(w * 0.5, 0.35, 2.6), M(cx, 4.9, zf + 1.3), '#b8693e', { ol: 0.07 });
+      [-1, 1].forEach(sd => B.add(GEO.box(0.35, 4.6, 0.35), M(cx + sd * w * 0.23, 2.6, zf + 2.4), COL.wood, { ol: 0.04 }));
+      window3(B, cx - w * 0.36, 3.4, zf + 0.26, 2.4, 2.2); window3(B, cx + w * 0.36, 3.4, zf + 0.26, 2.4, 2.2);
+      const ax = cx + w * 0.3, ay = top + rise + 1.6, az = zc + 0.5;
+      B.add(GEO.sph(2.2, 16, 12), M(ax, ay, az, 0, 0, 0, 1.05, 0.95, 1.05), '#e4572e', { ol: 0.1 });
+      B.add(GEO.cyl(0.18, 0.22, 1.2, 6), M(ax, ay + 2.4, az, 0, 0, -0.2), COL.woodDark, { ol: 0.03 });
+      B.add(GEO.sph(0.7, 10, 6), M(ax + 0.8, ay + 2.5, az, 0, 0, -0.5, 1.4, 0.35, 0.8), '#6fb84a', { ol: 0.04 });
+      B.add(GEO.box(0.4, 1.4, 0.4), M(ax, top + rise + 0.2, az), COL.woodDark, { ol: 0 });
+      [[bx0 - 2.3, zf - 1.6], [bx0 - 2.1, zf - 4.4]].forEach(([x, z], i) => { B.add(GEO.box(2.2, 1.2, 1.6), M(x, 0.6, z), COL.wood, { ol: 0.06 }); for (let k = 0; k < 3; k++) B.add(GEO.ico(0.42, 1), M(x - 0.6 + k * 0.6, 1.4, z + (k % 2) * 0.2), i ? '#8cd05a' : '#e4572e', { ol: 0.03 }); addCircleSolid(x, z, 1.2); });
+      doorW = 3.2; doorH = 4.4; signY = top + 1.5;
+      break;
+    }
+    case 'mine': {
+      // a rocky hillside with a timbered tunnel, rails coming out of it and a cart full of ore
+      B.add(GEO.rbox(w, s.h, s.d, 2.2, 2), M(cx, s.h / 2 + 0.1, zc), '#b8aca0', { ol: 0.14, ao: 0.25 });
+      [[-0.32, 8.4, 3.4, '#a89c90'], [0.05, 9.2, 4.2, '#c7bcb0'], [0.36, 7.6, 3.2, '#a89c90'], [-0.08, 6, 2.6, '#9a8f86']].forEach(([fx, y, r, c], i) => B.add(GEO.ico(r, 0), M(cx + fx * w, y, zc - 1 + (i % 2), i, 0, 0, 1.3, 0.8, 1), c, { ol: 0.1 }));
+      [[-0.4, 9.6], [0.15, 11.4], [0.42, 9.2]].forEach(([fx, y]) => B.add(GEO.ico(1.1, 1), M(cx + fx * w, y, zc), '#8cc45e', { ol: 0.07 }));
+      B.add(GEO.box(6.4, 5.6, 0.4), M(cx, 3.1, zf + 0.02), '#1f1a2e', { ol: 0 });
+      [-1, 1].forEach(sd => B.add(GEO.box(0.8, 6.2, 0.8), M(cx + sd * 3.6, 3.4, zf + 0.3), COL.woodDark, { ol: 0.06 }));
+      B.add(GEO.box(9, 0.9, 1), M(cx, 6.7, zf + 0.3), COL.woodDark, { ol: 0.07 });
+      B.add(GEO.ico(0.35, 0), M(cx + 2.6, 5.6, zf + 0.9), '#ffe9a3', { ol: 0.03 });
+      [-0.9, 0.9].forEach(dx => B.add(GEO.box(0.2, 0.16, 5.2), M(cx + dx, 0.58, zf + 1.6), '#8a8f99', { ol: 0 }));
+      for (let z = zf - 0.6; z < zf + 4; z += 0.9) B.add(GEO.box(2.6, 0.12, 0.45), M(cx, 0.48, z), COL.woodDark, { ol: 0 });
+      B.add(GEO.rbox(2.8, 1.4, 2.2, 0.3, 1), M(cx, 1.55, zf - 0.3), '#8a8f99', { ol: 0.07 });
+      [[-0.6, '#b98cff'], [0.2, '#9a8f86'], [0.7, COL.yellow]].forEach(([dx, c]) => B.add(GEO.ico(0.5, 0), M(cx + dx, 2.4, zf - 0.3), c, { ol: 0.03 }));
+      crystals(B, bx1 + 1.3, zf - 0.9);
+      door = false; bushes = false; signY = 8.4;
+      break;
+    }
+    case 'lodge': {
+      // a chalet: log walls, a steep snowy roof, a balcony, skis by the door
+      for (let y = 1.2; y < s.h; y += 0.95) B.add(GEO.box(w + 0.1, 0.14, 0.1), M(cx, y, zf + 0.05), '#7d4a2e', { ol: 0 });
+      gable(B, cx, zc, w, s.d, top, '#fff8e8', 1.4, 0.82, L.wall);
+      B.add(GEO.box(w * 0.55, 0.4, 2.2), M(cx, top + 1.2, zf + 1.0), COL.woodDark, { ol: 0.06 });
+      B.add(GEO.box(w * 0.55, 0.25, 0.25), M(cx, top + 2.3, zf + 2.0), COL.woodDark, { ol: 0.03 });
+      for (let i = 0; i <= 8; i++) B.add(GEO.box(0.18, 1.1, 0.18), M(cx - w * 0.27 + i * w * 0.55 / 8, top + 1.8, zf + 2.0), COL.wood, { ol: 0 });
+      window3(B, cx, top + 3.4, zf + 0.26, 2.4, 2.2);
+      window3(B, cx - w * 0.33, 3.6, zf + 0.26); window3(B, cx + w * 0.33, 3.6, zf + 0.26);
+      [[5.2, '#e4572e', 0.12], [5.9, COL.blue, 0.2]].forEach(([dx, c, a]) => B.add(GEO.box(0.35, 5.2, 0.12), M(cx + dx, 2.9, zf + 0.6, 0, 0, a), c, { ol: 0.03 }));
+      B.add(GEO.box(1.6, 5, 1.6), M(cx + w * 0.3, top + 5, zc - 2), '#9aa3b5', { ol: 0.07 });
+      signY = 6.6;
+      break;
+    }
+    case 'hotsprings': {
+      // a bath house on the left, a steaming pool of warm water on the right
+      const hw = w * 0.5, hx = bx0 + hw / 2;
+      B.add(GEO.rbox(hw, s.h, s.d, 0.4, 2), M(hx, s.h / 2 + 0.3, zc), L.wall, { ol: 0.12, ao: 0.16 });
+      gable(B, hx, zc, hw, s.d, top, '#6b4a2f', 1.5, 0.48, L.wall);
+      ['#e4572e', '#fff8e8', '#e4572e'].forEach((c, i) => B.add(GEO.box(1.05, 1.6, 0.12), M(hx - 1.1 + i * 1.1, 4.4, zf + 0.62), c, { ol: 0.02 }));
+      const px = bx1 - w * 0.25, pz = zc + 0.4, rx = 5.4, rz = 4.4;
+      B.add(GEO.ering(rx, rz, 1.1, 0.8), M(px, 0.3, pz), '#cfc6d8', { ol: 0.08 });
+      B.add(GEO.disc(1, 32), M(px, 0.85, pz, 0, 0, 0, rx + 0.1, 1, rz + 0.1), '#8fe0e0', { ol: 0 });
+      B.add(GEO.ring(0.6, 0.66, 32), M(px, 0.87, pz, 0, 0, 0, rx, 1, rz), '#d4fbff', { ol: 0 });
+      [[-4, -4.4, 1.3], [3.2, -4.8, 1.1], [5.8, -1, 0.9]].forEach(([dx, dz, r]) => B.add(GEO.ico(r, 0), M(px + dx, 1.1, pz + dz), '#a89c90', { ol: 0.06 }));
+      [[-1.5, 2.2, 1.1], [1.2, 3.2, 1.3], [-0.2, 4.8, 1.0], [1.8, 6.2, 0.8], [-1.2, 7.2, 0.6]].forEach(([dx, y, r]) => B.add(GEO.ico(r, 1), M(px + dx, y, pz - 0.5), '#ffffff', { ol: 0.04 }));
+      doorX = hx; doorW = 3; doorH = 4.4; signX = hx; signY = top + 1.6;
+      break;
+    }
+    case 'icecream': {
+      // a little stand with a striped awning and a giant cone on the roof
+      B.add(GEO.rbox(w + 0.8, 0.8, s.d + 0.8, 0.3, 1), M(cx, top, zc), L.roof, { ol: 0.1 });
+      for (let i = 0; i < 6; i++) B.add(GEO.box((w + 1) / 6, 0.3, 2.4), M(cx - (w + 1) / 2 + (w + 1) / 12 * (2 * i + 1), top - 1.2, zf + 1.1, 0, 0.42), i % 2 ? '#fff8e8' : L.roof, { ol: 0.05 });
+      B.add(GEO.box(w * 0.34, 0.4, 1.0), M(cx + w * 0.22, 2.4, zf + 0.5), '#fff8e8', { ol: 0.05 });
+      B.add(GEO.box(w * 0.3, 1.6, 0.12), M(cx + w * 0.22, 3.4, zf + 0.08), '#1f1a2e', { ol: 0 });
+      const ky = top + 0.4;
+      B.add(GEO.cone(2.1, 6, 12), M(cx, ky + 3, zc, 0, Math.PI), '#e9b872', { ol: 0.1 });
+      [-0.6, 0.6].forEach(a => B.add(GEO.box(0.14, 5.4, 0.14), M(cx, ky + 3.2, zc + 1.2, 0, 0, a), '#c9904a', { ol: 0 }));
+      B.add(GEO.sph(2.3, 14, 10), M(cx, ky + 6.9, zc), '#fff8e8', { ol: 0.09 });
+      B.add(GEO.sph(2.0, 14, 10), M(cx, ky + 9.0, zc), '#ff8fb1', { ol: 0.09 });
+      B.add(GEO.ico(0.5, 1), M(cx, ky + 11.2, zc), '#e4572e', { ol: 0.05 });
+      [[-1.3, 7.5, '#ffd23f'], [1.4, 6.8, '#8fdcf2'], [0.3, 9.6, COL.yellow]].forEach(([dx, y, c]) => B.add(GEO.box(0.18, 0.5, 0.18), M(cx + dx, ky + y, zc + 1.9, 0, 0.3, dx), c, { ol: 0 }));
+      umbrella(B, bx1 + 4.6, zc + 0.5, '#8fdcf2', COL.paper);
+      B.add(GEO.cyl(1.2, 1.2, 0.2, 14), M(bx1 + 4.6, 2.2, zc + 0.5), '#fff8e8', { ol: 0.05 });
+      umbrella(B, bx0 - 4.6, zc + 0.5, '#ff8fb1', COL.paper);
+      B.add(GEO.cyl(1.2, 1.2, 0.2, 14), M(bx0 - 4.6, 2.2, zc + 0.5), '#fff8e8', { ol: 0.05 });
+      doorX = cx - w * 0.2; doorW = 2.6; doorH = 3.8; signY = top + 1.1; signZ = zf + 2.0;
+      break;
+    }
+    case 'lighthouse': {
+      // the keeper's cottage and a tall striped tower with a lamp room
+      gable(B, cx, zc, w, s.d, top, L.roof, 0.9, 0.6, L.wall);
+      window3(B, cx - w * 0.3, 3.6, zf + 0.26, 2.2, 2.2);
+      B.add(GEO.torus(0.9, 0.28, 16), M(cx + w * 0.3, 3.6, zf + 0.4, 0, Math.PI / 2), '#e4572e', { ol: 0.04 });
+      const tx = bx1 + 3.2, tz = zc - 0.5, r0 = 3.1, r1 = 2.1, H = 20;
+      for (let i = 0; i < 5; i++) { const a = r0 + (r1 - r0) * i / 5, b = r0 + (r1 - r0) * (i + 1) / 5; B.add(GEO.cyl(b, a, H / 5, 16), M(tx, H / 10 + i * H / 5, tz), i % 2 ? '#fff8e8' : '#e4572e', { ol: 0.1 }); }
+      window3(B, tx, 9.5, tz + 2.7, 1.2, 1.6); window3(B, tx, 14, tz + 2.45, 1.1, 1.4);
+      B.add(GEO.cyl(3, 3, 0.5, 16), M(tx, H + 0.25, tz), INKC, { ol: 0 });
+      B.add(GEO.torus(2.8, 0.12, 20), M(tx, H + 1.2, tz), INKC, { ol: 0 });
+      B.add(GEO.cyl(1.7, 1.7, 2.4, 12), M(tx, H + 1.7, tz), '#ffe9a3', { ol: 0.07 });
+      B.add(GEO.cone(2.2, 2, 12), M(tx, H + 3.9, tz), '#e4572e', { ol: 0.08 });
+      B.add(GEO.ico(0.35, 0), M(tx, H + 5.1, tz), INKC, { ol: 0 });
+      addCircleSolid(tx, tz, 3.3);
+      doorW = 3; doorH = 4.4; signY = top + 1.5;
+      break;
+    }
+    case 'university': {
+      // red brick with white trim, a portico and a copper dome
+      B.add(GEO.box(w + 0.6, 0.7, s.d + 0.6), M(cx, top - 0.2, zc), '#f7f1e3', { ol: 0.08 });
+      B.add(GEO.box(w + 0.12, 0.35, s.d + 0.12), M(cx, 6.1, zc), '#f7f1e3', { ol: 0 });
+      rows(2, 5, 3.8, 4.2);
+      cols(6, w * 0.44, 0.3, top - 1.6, zf + 1.3, '#f7f1e3');
+      B.add(GEO.box(w * 0.5, 1.0, 2.6), M(cx, top - 0.8, zf + 1.3), '#f7f1e3', { ol: 0.08 });
+      B.add(GEO.prism(w * 0.5, 2.4, 2.6), M(cx, top - 0.3, zf + 1.3), '#f7f1e3', { ol: 0.08 });
+      B.add(GEO.rbox(w + 0.6, 0.7, s.d + 0.6, 0.25, 1), M(cx, top + 0.35, zc), L.roof, { ol: 0.1 });
+      B.add(GEO.cyl(4.2, 4.2, 2.4, 20), M(cx, top + 1.9, zc - 1), '#f7f1e3', { ol: 0.1 });
+      B.add(GEO.sph(4.3, 20, 10, true), M(cx, top + 3.1, zc - 1), '#8fc2b0', { ol: 0.1 });
+      B.add(GEO.cyl(0.8, 0.8, 1.4, 10), M(cx, top + 8, zc - 1), '#f7f1e3', { ol: 0.06 });
+      B.add(GEO.cone(0.9, 1.4, 10), M(cx, top + 9.4, zc - 1), COL.gold, { ol: 0.05 });
+      doorColor = INKC; signY = 7.9; signZ = zf + 2.2;
+      break;
+    }
+    case 'castle': {
+      // stone walls with battlements, two round towers with pointy roofs and flags, a keep behind
+      for (let x = bx0 + 0.6; x < bx1; x += 2.4) B.add(GEO.box(1.2, 1.3, 1.2), M(x, top + 0.6, zf - 0.6), L.wall, { ol: 0.06 });
+      [[-7, 3.2], [5, 2.4], [9, 6.8], [-10, 7.4], [1, 8.4]].forEach(([dx, y]) => B.add(GEO.box(1.6, 0.8, 0.12), M(cx + dx, y, zf + 0.05), '#bdb2cc', { ol: 0 }));
+      [-4, 4].forEach(dx => B.add(GEO.box(0.5, 2.2, 0.12), M(cx + dx, 6.4, zf + 0.06), '#1f1a2e', { ol: 0 }));
+      const kw = 10;
+      B.add(GEO.box(kw, 8, 7), M(cx, top + 4, zc - 2), L.wall, { ol: 0.1, ao: 0.12 });
+      for (let x = cx - kw / 2 + 0.6; x < cx + kw / 2; x += 2.2) B.add(GEO.box(1.1, 1.2, 1.1), M(x, top + 8.6, zc + 1.2), L.wall, { ol: 0.05 });
+      window3(B, cx, top + 4.2, zc + 1.55, 1.6, 2.4);
+      const flag = (x, y, z, c) => { B.add(GEO.cyl(0.1, 0.1, 3.4, 5), M(x, y + 1.7, z), INKC, { ol: 0 }); B.add(GEO.box(2.2, 1.3, 0.12), M(x + 1.15, y + 2.7, z), c, { ol: 0.04 }); };
+      flag(cx, top + 8, zc - 2, COL.yellow);
+      [bx0 + 1.4, bx1 - 1.4].forEach((x, i) => {
+        const tz = zf - 3.2;
+        B.add(GEO.cyl(3, 3.3, 15, 14), M(x, 7.5, tz), L.wall, { ol: 0.12, ao: 0.15 });
+        B.add(GEO.cyl(3.4, 3.4, 0.6, 14), M(x, 15, tz), '#bdb2cc', { ol: 0.06 });
+        B.add(GEO.cone(3.6, 5.4, 14), M(x, 18, tz), L.roof, { ol: 0.1 });
+        window3(B, x, 10, tz + 3.05, 1.2, 1.8);
+        flag(x, 20.6, tz, i ? '#e4572e' : '#ff8fb1');
+        addCircleSolid(x, tz, 3.4);
+      });
+      B.add(GEO.cyl(2.3, 2.3, 0.6, 14, 1), M(cx, 5.3, zf + 0.3, 0, Math.PI / 2), COL.woodDark, { ol: 0.07 });
+      doorW = 4.6; doorH = 5.4; signY = 8.8;
+      break;
+    }
+    case 'boathouse': {
+      // a wooden boathouse by its own little slip of water, with a rowboat
+      planks('#8a5a34');
+      gable(B, cx, zc, w, s.d, top, L.roof, 1, 0.7, L.wall);
+      window3(B, cx - w * 0.3, 4, zf + 0.26, 2.4, 2.2);
+      B.add(GEO.torus(0.9, 0.28, 16), M(cx + w * 0.3, 4.2, zf + 0.4, 0, Math.PI / 2), '#e4572e', { ol: 0.04 });
+      [-0.6, 0.6].forEach(a => B.add(GEO.box(0.25, 5, 0.15), M(cx + w * 0.3, 4.2, zf + 0.6, 0, 0, a), COL.wood, { ol: 0.02 }));
+      const x0 = bx1 + 1.2, x1 = bx1 + 9.4, z0 = f.z0 + 0.5, z1 = zf + 0.5, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      B.add(GEO.box(x1 - x0 + 1.4, 0.5, z1 - z0 + 1.4), M(mx, 0.25, mz), '#c9a06a', { ol: 0.07 });
+      B.add(GEO.box(x1 - x0, 0.1, z1 - z0), M(mx, 0.52, mz), '#6fc3e8', { ol: 0 });
+      B.add(GEO.ring(0.7, 0.75, 24), M(mx, 0.58, mz, 0, 0, 0, (x1 - x0) / 2, 1, (z1 - z0) / 2), '#bfefff', { ol: 0 });
+      rowboat(B, mx, 0.6, mz + 1, Math.PI / 2, '#e4572e');
+      [[x0 - 0.4, z1 + 0.4], [x1 + 0.4, z1 + 0.4], [x1 + 0.4, z0 - 0.4]].forEach(([x, z]) => B.add(GEO.cyl(0.3, 0.3, 1.6, 6), M(x, 0.8, z), COL.woodDark, { ol: 0.04 }));
+      addBoxSolid(x0 - 0.7, z0 - 0.7, x1 + 0.7, z1 + 0.7);
+      signY = top + 1.7;
+      break;
+    }
+    case 'sawmill': {
+      // a plank shed with log piles on one side and a big round saw on the other
+      planks('#a0673b');
+      gable(B, cx, zc, w, s.d, top, L.roof, 1, 0.55, L.wall);
+      window3(B, cx - w * 0.32, 4, zf + 0.26, 2.4, 2.2); window3(B, cx + w * 0.32, 4, zf + 0.26, 2.4, 2.2);
+      const lx = bx0 - 2.6;
+      [[0, 0.6], [1.2, 0.6], [-1.2, 0.6], [0.6, 1.65], [-0.6, 1.65], [0, 2.7]].forEach(([dx, y]) => { B.add(GEO.cyl(0.6, 0.6, 7, 9), M(lx + dx, y, zc, 0, Math.PI / 2), '#b07a4a', { ol: 0.05 }); B.add(GEO.disc(0.5, 9), M(lx + dx, y, zc + 3.51, 0, -Math.PI / 2), '#f1d3a0', { ol: 0 }); });
+      addBoxSolid(lx - 2, zc - 3.6, lx + 2, zc + 3.6);
+      const sx = bx1 + 3.2;
+      B.add(GEO.box(3.4, 1.8, 6), M(sx, 0.9, zc), COL.woodDark, { ol: 0.07 });
+      B.add(GEO.cyl(2.3, 2.3, 0.18, 22), M(sx, 2.2, zc - 0.4, 0, 0, Math.PI / 2), '#cfd8e3', { ol: 0.05 });
+      B.add(GEO.cyl(0.4, 0.4, 0.3, 8), M(sx, 2.2, zc - 0.4, 0, 0, Math.PI / 2), INKC, { ol: 0 });
+      B.add(GEO.cyl(0.75, 0.75, 5.2, 9), M(sx - 1, 2.55, zc + 0.2, 0, Math.PI / 2), '#b07a4a', { ol: 0.05 });
+      B.add(GEO.sph(1.2, 10, 6, true), M(sx + 1.6, 0, zc + 3.6, 0, 0, 0, 1, 0.5, 1), '#f1d3a0', { ol: 0.04 });
+      addBoxSolid(sx - 1.9, zc - 3.2, sx + 1.9, zc + 3.2);
+      bushes = false; signY = top + 1.4;
+      break;
+    }
+    case 'treehouse': {
+      // a little house on a deck in a giant tree, a ladder and a swing
+      const tx = cx + 2, tz = zc;
+      B.add(GEO.cyl(1.8, 2.6, 16, 10), M(tx, 8, tz), '#8a5a34', { ol: 0.12, ao: 0.2 });
+      [0, 2.1, 4.2].forEach(a => B.add(GEO.cone(1, 2.4, 5), M(tx + Math.sin(a) * 2.2, 0.6, tz + Math.cos(a) * 2.2, a, 0.9), '#8a5a34', { ol: 0.05 }));
+      B.add(GEO.cyl(6.4, 6.4, 0.6, 16), M(tx, 9, tz), COL.wood, { ol: 0.08 });
+      for (let i = 0; i < 9; i++) { const a = -0.2 + i * 0.4; B.add(GEO.box(0.2, 1.3, 0.2), M(tx + Math.cos(a) * 6.1, 9.9, tz + Math.sin(a) * 6.1), COL.woodDark, { ol: 0 }); }
+      B.add(GEO.rbox(8, 4.6, 6.4, 0.3, 1), M(tx, 11.6, tz - 0.6), L.wall, { ol: 0.1, ao: 0.1 });
+      gable(B, tx, tz - 0.6, 8, 6.4, 13.9, L.roof, 0.8, 0.6, L.wall);
+      window3(B, tx - 2, 11.8, tz + 2.86, 1.8, 1.8);
+      B.add(GEO.rbox(1.8, 3, 0.4, 0.2, 1), M(tx + 1.8, 11, tz + 2.75), COL.woodDark, { ol: 0.05 });
+      [[0, 21, -0.5, 6.2, '#6fb84a'], [-5, 18.5, 1, 4.4, '#7fbb52'], [5.4, 18.8, 0.2, 4.6, '#8cc45e'], [0.5, 25, 0.2, 3.6, '#94cc66'], [-2, 16.6, 3, 3.2, '#8cc45e']].forEach(([dx, y, dz, r, c]) => B.add(GEO.ico(r, 1), M(tx + dx, y, tz + dz), c, { ol: 0.12 }));
+      const lx = tx - 6.8, lz = tz + 1;
+      [-0.6, 0.6].forEach(dz => B.add(GEO.box(0.25, 9.4, 0.25), M(lx, 4.7, lz + dz), COL.woodDark, { ol: 0.03 }));
+      for (let y = 1; y < 9; y += 1.1) B.add(GEO.box(0.2, 0.18, 1.4), M(lx, y, lz), COL.wood, { ol: 0 });
+      addCircleSolid(lx, lz, 0.9);
+      const wx0 = tx + 4.4, wz0 = tz + 3.4;
+      [-0.9, 0.9].forEach(dx => B.add(GEO.cyl(0.05, 0.05, 6.8, 4), M(wx0 + dx, 5.1, wz0), '#e0c070', { ol: 0 }));
+      B.add(GEO.box(2.3, 0.25, 0.9), M(wx0, 1.7, wz0), '#e4572e', { ol: 0.04 });
+      addCircleSolid(tx, tz, 2.8);
+      solid = false; door = false; bushes = false; signX = tx; signY = 5; signZ = tz + 2.9;
+      break;
+    }
+    case 'observatory': {
+      // a round drum with a big dome, a slit and a telescope peeking out at the sky
+      flat(); rows(1, 4, 3.4);
+      [[-9, 4.8], [9.5, 4.3], [-5, 5.6]].forEach(([dx, y]) => B.add(GEO.star(0.55, 0.24, 0.16), M(cx + dx, y, zf + 0.35), COL.yellow, { ol: 0.03 }));
+      const dy = top + 0.6, R = 5.4;
+      B.add(GEO.cyl(R, R, 3, 24), M(cx, dy + 1.5, zc), '#f7f1e3', { ol: 0.1 });
+      B.add(GEO.sph(R + 0.1, 22, 12, true), M(cx, dy + 3, zc), '#cfd8e3', { ol: 0.12 });
+      const th = 0.62;
+      B.add(GEO.box(1.6, 0.3, 4.4), M(cx, dy + 3 + (R + 0.12) * Math.cos(th), zc + (R + 0.12) * Math.sin(th), 0, th), '#1f1a2e', { ol: 0 });
+      const tl = 0.55, td = R + 1;
+      B.add(GEO.cyl(0.62, 0.85, 4.6, 12), M(cx, dy + 3 + td * Math.cos(tl), zc + td * Math.sin(tl), 0, tl), COL.blue, { ol: 0.06 });
+      B.add(GEO.cyl(0.7, 0.7, 0.4, 12), M(cx, dy + 3 + (td + 2.3) * Math.cos(tl), zc + (td + 2.3) * Math.sin(tl), 0, tl), COL.yellow, { ol: 0.04 });
+      signY = top + 1.5; signZ = zf + 0.9;
+      break;
+    }
+    case 'mart': {
+      // a small market stall: back wall, a counter full of crates, a striped awning
+      B.add(GEO.box(w, 5.6, 0.6), M(cx, 3.1, f.z0 + 0.4), L.wall, { ol: 0.1, ao: 0.15 });
+      [[bx0 + 0.4, f.z0 + 0.4], [bx1 - 0.4, f.z0 + 0.4], [bx0 + 0.4, zf - 0.6], [bx1 - 0.4, zf - 0.6]].forEach(([x, z]) => B.add(GEO.cyl(0.25, 0.25, 5.4, 6), M(x, 3, z), COL.woodDark, { ol: 0.03 }));
+      const n = 6, sw = (w + 1) / n;
+      for (let i = 0; i < n; i++) {
+        const x = cx - (w + 1) / 2 + sw * (i + 0.5);
+        B.add(GEO.box(sw, 0.3, s.d + 1.6), M(x, 6.0, zc + 0.5, 0, 0.16), i % 2 ? '#fff8e8' : L.roof, { ol: 0.06 });
+        B.add(GEO.cyl(sw / 2, sw / 2, 0.3, 10, 1), M(x, 4.9, zf + 1.2, 0, Math.PI / 2), i % 2 ? '#fff8e8' : L.roof, { ol: 0.05 });
+      }
+      B.add(GEO.box(w - 1.2, 1.6, 2), M(cx, 1.1, zf - 1.2), COL.wood, { ol: 0.08, ao: 0.15 });
+      B.add(GEO.box(w - 0.8, 0.25, 2.3), M(cx, 2.0, zf - 1.2), '#e0b27f', { ol: 0.05 });
+      [['#e4572e', -5.4], ['#f08a3c', -1.8], [COL.yellow, 1.8], ['#8cd05a', 5.4]].forEach(([c, dx]) => {
+        B.add(GEO.box(2.8, 0.9, 1.7), M(cx + dx, 2.55, zf - 1.3), '#c98a52', { ol: 0.05 });
+        for (let k = 0; k < 3; k++) B.add(GEO.ico(0.46, 1), M(cx + dx - 0.8 + k * 0.8, 3.1, zf - 1.3 + (k % 2) * 0.3), c, { ol: 0.03 });
+      });
+      door = false; signY = 8.3; signZ = zc;
+      [-4, 4].forEach(dx => B.add(GEO.box(0.2, 1.8, 0.2), M(cx + dx, 6.9, zc), COL.woodDark, { ol: 0 }));
+      break;
+    }
     case 'cafe': case 'arcade': default:
       flat(); rows(2, 4);
       for (let i = 0; i < 7; i++) B.add(GEO.box((w + 1) / 7, 0.3, 2.6), M(cx - (w + 1) / 2 + (w + 1) / 14 * (2 * i + 1), 5.6, zf + 1.1, 0, 0.4), i % 2 ? '#fff8e8' : L.roof, { ol: 0.06 });
@@ -1498,6 +1816,31 @@ function buildNature(B, D, trees) {
       around(26, 26, 44, ['oak', 'pine']);
       break;
     }
+    case 'canyon': {
+      // a red rise with a lookout on top, flat-topped mesas, a rock arch, crystals, a telescope and a camera
+      const q = { x: cx, z: cz + 4, h: 6.5, s: 7.5 };
+      HILLS.push(q);
+      terrain(B, 'canyon' + D.k, [q], 0.9, paintCanyon);
+      const v = sp(0) || { x: q.x, z: q.z }, vy = hillH(v.x, v.z);
+      for (let i = 0; i < 9; i++) {
+        const a = Math.PI / 2 + 0.55 + i * (2 * Math.PI - 1.1) / 8, px = v.x + Math.cos(a) * 4.2, pz = v.z + Math.sin(a) * 4.2, py = hillH(px, pz);
+        B.add(GEO.box(0.3, 1.8, 0.3), M(px, py + 0.8, pz), COL.woodDark, { ol: 0.03 });
+        if (i < 8) { const b = a + (2 * Math.PI - 1.1) / 8, qx = v.x + Math.cos(b) * 4.2, qz = v.z + Math.sin(b) * 4.2, len = Math.hypot(qx - px, qz - pz); B.add(GEO.box(len, 0.22, 0.2), M((px + qx) / 2, (py + hillH(qx, qz)) / 2 + 1.55, (pz + qz) / 2, -Math.atan2(qz - pz, qx - px)), COL.wood, { ol: 0.02 }); }
+      }
+      const bx = v.x + 1.8, bz = v.z - 2.2, by = hillH(bx, bz);
+      B.add(GEO.cyl(0.18, 0.22, 2.4, 6), M(bx, by + 1.2, bz), INKC, { ol: 0 });
+      B.add(GEO.rbox(1.4, 0.8, 1.1, 0.25, 1), M(bx, by + 2.7, bz), COL.teal, { ol: 0.05 });
+      [-0.35, 0.35].forEach(dx => B.add(GEO.cyl(0.26, 0.26, 0.6, 10), M(bx + dx, by + 2.8, bz + 0.7, 0, Math.PI / 2), INKC, { ol: 0 }));
+      addCircleSolid(bx, bz, 0.5);
+      const MESAS = [[-8, -27, 7, 11], [23, -19, 6, 9], [39, 3, 5, 7.5], [-41, 3, 5, 8.5], [-31, 38, 4, 5.5]];
+      MESAS.forEach(([dx, dz, r, h], i) => mesa(B, cx + dx, cz + dz, r, h, i + D.k));
+      redArch(B, cx + 14, cz - 38, 0.2);
+      D.spots.forEach(p => { const x = wx(p.x), z = wz(p.y), y = hillH(x, z); if (p.type === 'gem') { crystals(B, x + 1.6, z - 1, y); redRock(B, x + 4, z - 2.5, 1.2, 1); redRock(B, x - 2.6, z - 3, 0.9, 2); } if (p.type === 'photo') tripod(B, x + 2, z); if (p.type === 'stars') telescope(B, x + 3, z, y); });
+      const r = rng(D.k * 131 + 7), clear = (x, z) => MESAS.every(([dx, dz, rr]) => Math.hypot(x - cx - dx, z - cz - dz) > rr + 2.5) && D.spots.every(p => Math.hypot(x - wx(p.x), z - wz(p.y)) > 5.5) && Math.hypot(x - q.x, z - q.z) > 12 && Math.hypot(x - cx + 6, z - cz - 30) > 8;
+      for (let i = 0, n = 0; i < 80 && n < 16; i++) { const a = r() * 6.283, d = 18 + r() * 28, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 1.2; if (!clear(x, z)) continue; n++; trees.push({ kind: 'cactus', x, z, s: 0.8 + r() * 0.5, r: i + D.k * 50 }); }
+      for (let i = 0; i < 10; i++) { const a = r() * 6.283, d = 14 + r() * 30, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 1.2; if (clear(x, z)) redRock(B, x, z, 0.6 + r() * 0.8, i); }
+      break;
+    }
     case 'meadow': default: {
       for (let i = 0; i < 40; i++) { const r = rng(D.k * 5 + i), x = cx - 30 + r() * 60, z = cz - 30 + r() * 60; B.add(GEO.ico(0.35, 0), M(x, 0.5, z), ['#ff8fb1', COL.yellow, '#b98cff', '#fff8e8'][i % 4], { ol: 0 }); }
       D.spots.forEach(p => { const x = wx(p.x), z = wz(p.y); if (p.type === 'berry') berryBush(B, x + 2.4, z); if (p.type === 'photo') tripod(B, x + 2, z); if (p.type === 'camp') { B.add(GEO.box(4, 0.06, 3), M(x, 0.08, z - 2), '#ff8fb1', { ol: 0 }); } if (p.type === 'view') bench(B, x + 2, z - 1, 0); });
@@ -1505,7 +1848,7 @@ function buildNature(B, D, trees) {
       break;
     }
   }
-  sign(B, cx - 6, 3.4, cz + 30, `🌲 ${D.natureName}`, { post: true, th: 1.5 });
+  sign(B, cx - 6, 3.4, cz + 30, `${D.nature === 'canyon' ? '🏜️' : '🌲'} ${D.natureName}`, { post: true, th: 1.5 });
 }
 
 /* ------------------------------------------------------------------ home life: the Sunrise Pool, the tap, the Duck Pond */
@@ -1652,19 +1995,790 @@ function updateHome(t) {
   });
 }
 
+/* ------------------------------------------------------------------ every town looks like its kind */
+// Terrain for a group of hills: one mesh whose height is the sum of the hills (the same as hillH, so walking
+// matches what you see), painted by height with per-vertex colours (grass, rock, snow; or canyon stripes).
+const terrainCache = new Map();
+function terrainGeo(key, hills, x0, z0, x1, z1, cell, paint) {
+  if (terrainCache.has(key)) return terrainCache.get(key);
+  const make = () => {
+    const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const g = new THREE.PlaneGeometry(w, d, Math.max(2, Math.round(w / cell)), Math.max(2, Math.round(d / cell))).rotateX(-Math.PI / 2);
+    const p = g.attributes.position, col = new Float32Array(p.count * 3), c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i) + cx, z = p.getZ(i) + cz;
+      let h = 0, best = 0, top = 0;
+      for (const q of hills) { const dx = x - q.x, dz = z - q.z, v = q.h * Math.exp(-(dx * dx + dz * dz) / (2 * q.s * q.s)); h += v; if (v > best) { best = v; top = q.h; } }
+      p.setY(i, h - 0.05);
+      paint(c, h, top ? h / top : 0, x, z);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    return g.toNonIndexed();
+  };
+  const g = make(); g.computeBoundingBox();
+  const e = { g, dirs: null, minY: g.boundingBox.min.y, maxY: g.boundingBox.max.y };
+  terrainCache.set(key, e);
+  return e;
+}
+function terrain(B, key, hills, cell, paint) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  hills.forEach(q => { x0 = Math.min(x0, q.x - 3.2 * q.s); x1 = Math.max(x1, q.x + 3.2 * q.s); z0 = Math.min(z0, q.z - 3.2 * q.s); z1 = Math.max(z1, q.z + 3.2 * q.s); });
+  B.add(terrainGeo(key, hills, x0, z0, x1, z1, cell, paint), M((x0 + x1) / 2, 0, (z0 + z1) / 2), '#ffffff', { ol: 0, vc: true });
+}
+const _pc = new THREE.Color();
+const MTN = { grass: new THREE.Color('#a8d46c'), meadow: new THREE.Color('#9cc478'), rock: new THREE.Color('#b9ae9f'), rock2: new THREE.Color('#a39888'), snow: new THREE.Color('#f7fbff') };
+function paintMountain(c, h, f, x, z) {
+  const n = Math.sin(x * 0.7) * 0.05 + Math.sin(z * 0.9 + x * 0.3) * 0.05;
+  if (h < 0.25) c.copy(MTN.grass);
+  else if (f + n > 0.68) c.copy(MTN.snow);
+  else if (f + n > 0.3) c.copy(MTN.rock).lerp(MTN.rock2, Math.max(0, Math.min(1, (f - 0.3) * 3)));
+  else c.copy(MTN.grass).lerp(MTN.meadow, Math.min(1, f * 2.5));
+}
+const CANYON = ['#d9895a', '#c8643c', '#e8a878', '#b8552f'].map(h => new THREE.Color(h)), SANDC = new THREE.Color('#e9c98f');
+function paintCanyon(c, h, f) {
+  if (h < 0.3) { c.copy(SANDC); return; }
+  c.copy(f > 0.9 ? CANYON[2] : CANYON[Math.floor(h / 1.3) % CANYON.length]);
+}
+// a flat-topped mesa in red rock layers
+function mesa(B, x, z, r, h, seed) {
+  const k = 1 + (seed % 3) * 0.14, L = [['#c8643c', 0.4], ['#d9895a', 0.32], ['#b8552f', 0.28]];
+  let y = 0, rr = r;
+  L.forEach(([c, f], i) => { const hh = h * f, r2 = rr * 0.9; B.add(GEO.cyl(r2, rr, hh, 9), M(x, y + hh / 2, z, seed, 0, 0, k, 1, 1), c, { ol: 0.12, ao: i ? 0.05 : 0.2 }); y += hh; rr = r2; });
+  B.add(GEO.cyl(rr * 0.96, rr, 0.35, 9), M(x, y + 0.17, z, seed, 0, 0, k, 1, 1), '#e8a878', { ol: 0.06 });
+  addCircleSolid(x, z, r * (1 + k) / 2);
+}
+function redRock(B, x, z, s, seed, y = 0) {
+  B.add(GEO.ico(1.3 * s, 0), M(x, y + 0.6 * s, z, seed, 0, 0, 1.2, 0.8, 1), seed % 2 ? '#c8643c' : '#b8552f', { ol: 0.08 });
+  B.add(GEO.ico(0.7 * s, 0), M(x + 1.2 * s, y + 0.3 * s, z + 0.6 * s, seed + 1), '#d9895a', { ol: 0.06 });
+  addCircleSolid(x, z, 1.3 * s);
+}
+function greyRock(B, x, z, s, seed, y = 0) {
+  B.add(GEO.ico(1.2 * s, 0), M(x, y + 0.5 * s, z, seed, 0, 0, 1.2, 0.75, 1), seed % 2 ? '#b9ae9f' : '#a39888', { ol: 0.08 });
+  B.add(GEO.ico(0.6 * s, 0), M(x - 1.1 * s, y + 0.25 * s, z + 0.5 * s, seed + 2), '#cfc6d8', { ol: 0.05 });
+  addCircleSolid(x, z, 1.2 * s);
+}
+function redArch(B, x, z, ry) {
+  const at = (dx) => ({ x: x + Math.cos(ry) * dx, z: z - Math.sin(ry) * dx });
+  [-4.2, 4.2].forEach(dx => { const p = at(dx); B.add(GEO.rbox(2.8, 5.4, 2.6, 0.5, 1), M(p.x, 2.7, p.z, ry), '#c8643c', { ol: 0.1, ao: 0.2 }); addCircleSolid(p.x, p.z, 1.6); });
+  B.add(GEO.arch(4.2, 1.35, 16), M(x, 5.2, z, ry, 0, 0, 1, 1, 1.4), '#d9895a', { ol: 0.1 });
+}
+function rowboat(B, x, y, z, ry, color) {
+  const r = new THREE.Matrix4().makeRotationY(ry), put = (e, dx, dy, dz, c, o = {}) => { const p = new THREE.Vector3(dx, 0, dz).applyMatrix4(r); B.add(e, M(x + p.x, y + dy, z + p.z, ry, o.rx || 0, o.rz || 0), c, { ol: o.ol ?? 0.06 }); };
+  put(GEO.rbox(4.8, 0.9, 1.9, 0.44, 1), 0, 0.35, 0, color, { ol: 0.08 });
+  put(GEO.box(4.0, 0.1, 1.4), 0, 0.76, 0, '#8a5a34', { ol: 0 });
+  [-0.9, 0.9].forEach(dx => put(GEO.box(0.5, 0.18, 1.6), dx, 0.85, 0, '#c98a52', { ol: 0.03 }));
+  [-1, 1].forEach(sd => put(GEO.box(0.2, 0.1, 3.4), 0.2, 0.85, sd * 1.1, '#c98a52', { rz: 0, ol: 0.02 }));
+}
+// a little house facing +z. o: { w, d, h, wall, roof, pitch, over, door, stripe, logs, timber, chimney }
+function house(B, x, z, o) {
+  const w = o.w || 10, d = o.d || 8, h = o.h || 5.5, zf = z + d / 2;
+  B.add(GEO.rbox(w + 0.8, 0.4, d + 0.8, 0.2, 1), M(x, 0.2, z), o.base || '#d9cbb0', { ol: 0.07 });
+  B.add(GEO.rbox(w, h, d, 0.3, 1), M(x, h / 2 + 0.3, z), o.wall, { ol: 0.12, ao: 0.16 });
+  if (o.logs) {
+    for (let y = 1.0; y < h; y += 0.9) B.add(GEO.cyl(0.3, 0.3, w + 0.6, 6), M(x, y, zf + 0.04, 0, 0, Math.PI / 2), o.logs, { ol: 0 });
+    [-1, 1].forEach(sd => B.add(GEO.cyl(0.42, 0.42, h, 7), M(x + sd * (w / 2), h / 2 + 0.3, zf - 0.1), o.logs, { ol: 0.04 }));
+  }
+  if (o.timber) {
+    const t = o.timber, mid = h * 0.5 + 0.3;
+    [-w / 2 + 0.2, -w / 6, w / 6, w / 2 - 0.2].forEach(dx => B.add(GEO.box(0.35, h, 0.1), M(x + dx, h / 2 + 0.3, zf + 0.05), t, { ol: 0 }));
+    [0.5, mid, h + 0.1].forEach(y => B.add(GEO.box(w, 0.35, 0.1), M(x, y, zf + 0.06), t, { ol: 0 }));
+    const pw = w / 2 - w / 6 - 0.2, ph = h + 0.1 - mid, a = Math.atan2(pw, ph), L = Math.hypot(pw, ph);
+    [-1, 1].forEach(sd => [-1, 1].forEach(s2 => B.add(GEO.box(0.28, L, 0.08), M(x + sd * (w / 6 + pw / 2 + 0.1), (mid + h + 0.1) / 2, zf + 0.07, 0, 0, s2 * a), t, { ol: 0 })));
+    B.add(GEO.box(w + 0.7, 0.4, d + 0.7), M(x, mid, z), t, { ol: 0.05 });
+  }
+  const rise = gable(B, x, z, w, d, h + 0.3, o.roof, o.over ?? 0.8, o.pitch ?? 0.6, o.wall, o.stripe || null);
+  door3(B, x + (o.doorX || 0), zf + 0.25, o.door || COL.woodDark, 2.4, Math.min(4, h - 0.6));
+  if (w >= 8) { const wy = Math.min(3.2, h * 0.55); window3(B, x - w * 0.3, wy, zf + 0.26, 2, 2); window3(B, x + w * 0.3, wy, zf + 0.26, 2, 2); }
+  if (o.chimney) B.add(GEO.box(1.1, 2.4, 1.1), M(x + w * 0.28, h + 0.3 + rise * 0.55 + 0.8, z - d * 0.2), o.chimney, { ol: 0.07 });
+  addBoxSolid(x - w / 2 - 0.3, z - d / 2 - 0.3, x + w / 2 + 0.3, zf + 0.35);
+  return rise;
+}
+function hedgeLine(B, ax, az, bx, bz, o = {}) {   // axis-aligned; o.h, o.t (thickness), o.color
+  const h = o.h || 1.5, t = o.t || 1.2, len = Math.abs(bx - ax) + Math.abs(bz - az);
+  if (len < 0.5) return;
+  const along = Math.abs(bx - ax) > Math.abs(bz - az), mx = (ax + bx) / 2, mz = (az + bz) / 2;
+  B.add(GEO.rbox(along ? len : t, h, along ? t : len, Math.min(0.5, t / 2 - 0.01), 1), M(mx, h / 2, mz), o.color || '#6fae4a', { ol: 0.09, ao: 0.18 });
+  addBoxSolid(mx - (along ? len : t) / 2, mz - (along ? t : len) / 2, mx + (along ? len : t) / 2, mz + (along ? t : len) / 2);
+}
+function fenceLine(B, ax, az, bx, bz, color = COL.wood, rail = '#e0b27f') {
+  const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 3.2)), ang = Math.atan2(bz - az, bx - ax);
+  for (let i = 0; i <= n; i++) B.add(GEO.box(0.42, 1.9, 0.42), M(ax + (bx - ax) * i / n, 0.95, az + (bz - az) * i / n), color, { ol: 0.06 });
+  [0.7, 1.4].forEach(y => B.add(GEO.box(len, 0.22, 0.16), M((ax + bx) / 2, y, (az + bz) / 2, -ang), rail, { ol: 0.05 }));
+  addBoxSolid(Math.min(ax, bx) - 0.3, Math.min(az, bz) - 0.3, Math.max(ax, bx) + 0.3, Math.max(az, bz) + 0.3);
+}
+function planter(B, x, z) {
+  B.add(GEO.rbox(3.2, 1.2, 3.2, 0.2, 1), M(x, 0.6, z), '#cfc6b4', { ol: 0.07 });
+  B.add(GEO.ico(1.5, 1), M(x, 2.0, z), '#7fbf55', { ol: 0.08 });
+  addCircleSolid(x, z, 1.8);
+}
+function smallFountain(B, x, z) {
+  B.add(GEO.cyl(2.8, 3.0, 0.9, 20), M(x, 0.45, z), '#e9e2d0', { ol: 0.1, ao: 0.15 });
+  B.add(GEO.torus(2.75, 0.26, 20), M(x, 0.95, z), '#f7f1e3', { ol: 0.05 });
+  B.add(GEO.disc(2.6, 20), M(x, 0.86, z), '#8fdcf2', { ol: 0 });
+  B.add(GEO.cyl(0.4, 0.55, 2.2, 10), M(x, 1.6, z), '#e9e2d0', { ol: 0.06 });
+  B.add(GEO.cyl(1.2, 0.5, 0.5, 14), M(x, 2.8, z), '#f7f1e3', { ol: 0.06 });
+  B.add(GEO.ico(0.45, 1), M(x, 3.4, z), '#bfefff', { ol: 0.04 });
+  addCircleSolid(x, z, 3.0);
+}
+function flowerBed(B, x, z, w, d, colors, seed, soil = '#7a4a2a') {
+  B.add(GEO.rbox(w, 0.4, d, 0.3, 1), M(x, 0.2, z), soil, { ol: 0.06 });
+  const n = Math.max(4, Math.round(w * d / 3)), r = rng(seed);
+  for (let i = 0; i < n; i++) {
+    const fx = x + (r() - 0.5) * (w - 1), fz = z + (r() - 0.5) * (d - 1);
+    B.add(GEO.ico(0.5, 0), M(fx, 0.6, fz), '#6fb84a', { ol: 0 });
+    B.add(GEO.ico(0.3, 0), M(fx + 0.1, 1.0, fz + 0.1), colors[i % colors.length], { ol: 0.03 });
+  }
+}
+function topiary(B, x, z, cone) {
+  B.add(GEO.cyl(0.9, 1.1, 1, 10), M(x, 0.5, z), '#c8745a', { ol: 0.06 });
+  if (cone) B.add(GEO.cone(1.3, 3.6, 10), M(x, 2.9, z), '#5f9e57', { ol: 0.08 });
+  else { B.add(GEO.cyl(0.15, 0.15, 1.6, 5), M(x, 1.6, z), COL.woodDark, { ol: 0 }); B.add(GEO.sph(1.2, 12, 8), M(x, 2.9, z), '#6aab5e', { ol: 0.08 }); }
+  addCircleSolid(x, z, 1.1);
+}
+function sunflower(B, x, z, h) {
+  B.add(GEO.cyl(0.1, 0.12, h, 5), M(x, h / 2, z), '#6fb84a', { ol: 0 });
+  B.add(GEO.cyl(0.75, 0.75, 0.16, 12), M(x, h + 0.2, z + 0.1, 0, 1.2), COL.yellow, { ol: 0.04 });
+  B.add(GEO.cyl(0.35, 0.35, 0.2, 10), M(x, h + 0.22, z + 0.18, 0, 1.2), '#8a5a34', { ol: 0 });
+}
+function tower(B, x, z, w, d, h, wall, glass, style, r) {
+  B.add(GEO.rbox(w + 1.4, 0.5, d + 1.4, 0.2, 1), M(x, 0.25, z), '#cfc6b4', { ol: 0.07 });
+  B.add(GEO.rbox(w, h, d, 0.35, 1), M(x, h / 2 + 0.4, z), wall, { ol: 0.14, ao: 0.1 });
+  if (style === 0) for (let y = 4.2; y < h - 1.2; y += 2.6) B.add(GEO.box(w + 0.12, 1.25, d + 0.12), M(x, y, z), glass, { ol: 0 });
+  else {
+    const n = Math.max(2, Math.round(w / 3.2)), m = Math.max(2, Math.round(d / 3.2));
+    for (let i = 0; i < n; i++) B.add(GEO.box(w / n * 0.52, h - 4.4, d + 0.12), M(x - w / 2 + (i + 0.5) * w / n, h / 2 + 2.4, z), glass, { ol: 0 });
+    for (let j = 0; j < m; j++) B.add(GEO.box(w + 0.12, h - 4.4, d / m * 0.52), M(x, h / 2 + 2.4, z - d / 2 + (j + 0.5) * d / m), glass, { ol: 0 });
+  }
+  B.add(GEO.box(w * 0.46, 3, 0.2), M(x, 1.9, z + d / 2 + 0.08), '#1f1a2e', { ol: 0 });
+  B.add(GEO.box(w * 0.6, 0.35, 2), M(x, 3.6, z + d / 2 + 1), '#8a8f99', { ol: 0.05 });
+  B.add(GEO.rbox(w + 0.6, 0.9, d + 0.6, 0.2, 1), M(x, h + 0.7, z), '#8a8f99', { ol: 0.1 });
+  const k = r();
+  if (k < 0.4) { B.add(GEO.rbox(w * 0.4, 1.8, d * 0.35, 0.2, 1), M(x - w * 0.15, h + 2, z - d * 0.1), '#cfd8e3', { ol: 0.07 }); B.add(GEO.cyl(1.1, 1.1, 2.2, 12), M(x + w * 0.25, h + 2.2, z + d * 0.15), '#c98a52', { ol: 0.07 }); }
+  else if (k < 0.75) { B.add(GEO.box(w * 0.6, 3, d * 0.6), M(x, h + 2.6, z), wall, { ol: 0.1, ao: 0.1 }); B.add(GEO.cyl(0.14, 0.2, 6, 6), M(x, h + 7, z), INKC, { ol: 0 }); B.add(GEO.ico(0.35, 0), M(x, h + 10.1, z), COL.roof, { ol: 0.03 }); }
+  else { B.add(GEO.cyl(3, 3, 0.3, 18), M(x, h + 1.3, z), '#5a5f6b', { ol: 0.05 }); B.add(GEO.ring(1.8, 2.2, 18), M(x, h + 1.47, z), COL.yellow, { ol: 0 }); }
+  addBoxSolid(x - w / 2 - 0.3, z - d / 2 - 0.3, x + w / 2 + 0.3, z + d / 2 + 0.4);
+}
+function billboard(B, x, z) {
+  [-5, 5].forEach(dx => { B.add(GEO.cyl(0.35, 0.45, 9, 8), M(x + dx, 4.5, z), '#5a5f6b', { ol: 0.05 }); addCircleSolid(x + dx, z, 0.6); });
+  B.add(GEO.rbox(16, 8, 0.9, 0.3, 1), M(x, 12.5, z), '#1f1a2e', { ol: 0.1 });
+  B.add(GEO.box(15, 7, 0.2), M(x, 12.5, z + 0.45), '#ff8fb1', { ol: 0 });
+  B.add(GEO.box(15, 2.2, 0.1), M(x, 10.1, z + 0.56), '#ffd23f', { ol: 0 });
+  B.add(GEO.ico(1.4, 0), M(x - 5.2, 13.6, z + 0.6), '#fff8e8', { ol: 0 });
+  addText(label('📈 Buy low, sell high!'), M(x + 1.2, 13.4, z + 0.62), 1.5);
+  addText(label('Small World Stock Exchange'), M(x, 10.1, z + 0.62), 1.0);
+}
+function sidewalks(B, D, color) {
+  const x0 = wx(D.x0), x1 = wx(D.x1);
+  [1698, 1822].forEach(gy => B.add(GEO.box(x1 - x0, 0.07, 2.4), M((x0 + x1) / 2, 0.035, wz(gy)), color, { ol: 0 }));
+}
+function mansion(B, x, z, wall, roof, seed) {
+  // x, z: the middle of a hedged yard (34 x 26); the house at the back, a fountain and roses in front
+  const w = 18, d = 10, h = 8.5, hz = z - 4, zf = hz + d / 2;
+  B.add(GEO.rbox(w + 1, 0.5, d + 1, 0.25, 1), M(x, 0.25, hz), '#d9cbb0', { ol: 0.08 });
+  B.add(GEO.rbox(w, h, d, 0.4, 1), M(x, h / 2 + 0.3, hz), wall, { ol: 0.13, ao: 0.14 });
+  [-1, 1].forEach(sd => {
+    B.add(GEO.rbox(6, 5.6, 8.4, 0.3, 1), M(x + sd * 12, 3.1, hz + 0.4), wall, { ol: 0.12, ao: 0.14 });
+    B.add(GEO.box(6.6, 0.6, 9), M(x + sd * 12, 6.2, hz + 0.4), '#fff8e8', { ol: 0.07 });
+    window3(B, x + sd * 12, 3.4, hz + 4.86, 2.4, 2.4);
+  });
+  const rise = gable(B, x, hz, w, d, h + 0.3, roof, 0.9, 0.5, wall);
+  [-6.5, 6.5].forEach(dx => B.add(GEO.box(1.3, 3, 1.3), M(x + dx, h + rise * 0.5 + 1.2, hz - 1.5), '#c8745a', { ol: 0.07 }));
+  [-3.6, -1.9, 1.9, 3.6].forEach(dx => B.add(GEO.cyl(0.42, 0.5, h - 0.5, 10), M(x + dx, (h - 0.5) / 2 + 0.3, zf + 1.6), '#ffffff', { ol: 0.07 }));
+  B.add(GEO.box(9, 0.8, 2.8), M(x, h + 0.1, zf + 1.4), '#ffffff', { ol: 0.08 });
+  B.add(GEO.prism(9, 1.8, 2.8), M(x, h + 0.5, zf + 1.4), '#ffffff', { ol: 0.08 });
+  [-6.5, 6.5].forEach(dx => { window3(B, x + dx, 3.4, zf + 0.26, 2.2, 2.4); window3(B, x + dx, 7.0, zf + 0.26, 2.2, 2.2); });
+  door3(B, x, zf + 0.3, '#34233f', 2.8, 4.6);
+  addBoxSolid(x - 15.3, hz - d / 2 - 0.4, x + 15.3, zf + 0.4);
+  addBoxSolid(x - 4.2, zf, x + 4.2, zf + 2.3);
+  B.add(GEO.box(3, 0.05, 10), M(x, 0.05, zf + 7.5), '#e9d9b0', { ol: 0 });
+  smallFountain(B, x, z + 8);
+  flowerBed(B, x - 10, z + 8, 7, 4, ['#e4572e', '#ff8fb1', '#fff8e8'], seed * 7 + 1);
+  flowerBed(B, x + 10, z + 8, 7, 4, ['#e4572e', '#ff8fb1', '#fff8e8'], seed * 7 + 2);
+  const X0 = x - 17, X1 = x + 17, Z0 = z - 12, Z1 = z + 13;
+  hedgeLine(B, X0, Z0, X1, Z0); hedgeLine(B, X0, Z0, X0, Z1); hedgeLine(B, X1, Z0, X1, Z1);
+  hedgeLine(B, X0, Z1, x - 2.5, Z1); hedgeLine(B, x + 2.5, Z1, X1, Z1);
+  [[X0, Z1], [X1, Z1], [x - 2.5, Z1], [x + 2.5, Z1]].forEach(([px, pz]) => B.add(GEO.sph(0.8, 10, 6), M(px, 1.9, pz), '#5f9e57', { ol: 0.06 }));
+}
+function tennis(B, x, z) {
+  B.add(GEO.rbox(28, 0.12, 15, 0.3, 1), M(x, 0.06, z), '#7fb86a', { ol: 0.05 });
+  B.add(GEO.box(24, 0.1, 11), M(x, 0.1, z), '#5b8fd8', { ol: 0 });
+  [[0, -5.5, 24, 0.22], [0, 5.5, 24, 0.22], [0, -4.1, 24, 0.14], [0, 4.1, 24, 0.14], [-12, 0, 0.22, 11], [12, 0, 0.22, 11], [-6.4, 0, 0.16, 8.2], [6.4, 0, 0.16, 8.2], [0, 0, 12.8, 0.14]].forEach(([dx, dz, lw, ld]) => B.add(GEO.box(lw, 0.04, ld), M(x + dx, 0.17, z + dz), '#ffffff', { ol: 0 }));
+  [-6.3, 6.3].forEach(dz => B.add(GEO.cyl(0.14, 0.14, 1.6, 6), M(x, 0.8, z + dz), INKC, { ol: 0 }));
+  B.add(GEO.box(0.08, 1.0, 12.4), M(x, 0.65, z), '#4a3d5c', { ol: 0 });
+  B.add(GEO.box(0.14, 0.18, 12.4), M(x, 1.2, z), '#ffffff', { ol: 0 });
+  addBoxSolid(x - 0.3, z - 6.4, x + 0.3, z + 6.4);
+  for (let i = 0; i <= 8; i++) B.add(GEO.cyl(0.1, 0.1, 3.2, 5), M(x - 14 + i * 3.5, 1.6, z - 7.5), INKC, { ol: 0 });
+  B.add(GEO.box(28, 0.14, 0.14), M(x, 3.1, z - 7.5), INKC, { ol: 0 });
+  B.add(GEO.box(28, 2.6, 0.05), M(x, 1.7, z - 7.5), '#6b8f6a', { ol: 0 });
+  addBoxSolid(x - 14, z - 7.8, x + 14, z - 7.2);
+  B.add(GEO.ico(0.3, 1), M(x - 7, 0.5, z + 2), '#d8f25a', { ol: 0.03 });
+}
+function cropField(B, x, z, w, d, crop, seed) {
+  B.add(GEO.rbox(w, 0.3, d, 0.3, 1), M(x, 0.15, z), '#8f5d36', { ol: 0.06 });
+  const r = rng(seed);
+  for (let rz = z - d / 2 + 1.4; rz < z + d / 2 - 0.8; rz += 2.3) {
+    if (crop === 'wheat') B.add(GEO.box(w - 1.6, 1.1, 1.3), M(x, 0.8, rz), '#e8c95a', { ol: 0.04 });
+    else if (crop === 'corn') { B.add(GEO.box(w - 1.6, 2.2, 1.0), M(x, 1.3, rz), '#7fbf55', { ol: 0.04 }); for (let cx = x - w / 2 + 2; cx < x + w / 2 - 1; cx += 2.6) B.add(GEO.capsule(0.22, 0.5), M(cx, 1.9, rz + 0.55), COL.yellow, { ol: 0 }); }
+    else if (crop === 'cabbage') for (let cx = x - w / 2 + 1.5; cx < x + w / 2 - 1; cx += 1.7) B.add(GEO.ico(0.62, 0), M(cx, 0.6, rz), r() < 0.5 ? '#9dd46e' : '#8cc45e', { ol: 0.03 });
+    else { B.add(GEO.box(w - 1.6, 0.35, 0.9), M(x, 0.45, rz), '#6fb84a', { ol: 0 }); for (let cx = x - w / 2 + 2; cx < x + w / 2 - 1; cx += 3.1) if (r() < 0.7) B.add(GEO.sph(0.7, 10, 6), M(cx + r(), 0.8, rz, 0, 0, 0, 1.2, 0.85, 1.2), '#f08a3c', { ol: 0.05 }); }
+  }
+  fence(B, x - w / 2 - 0.8, z - d / 2 - 0.8, x + w / 2 + 0.8, z + d / 2 + 0.8, 5);
+}
+function barn(B, x, z) {
+  B.add(GEO.rbox(10, 7, 9, 0.3, 1), M(x, 3.5, z), '#d9534f', { ol: 0.12, ao: 0.18 });
+  gable(B, x, z, 10, 9, 7, '#7d5a44', 0.7, 0.75, '#d9534f');
+  B.add(GEO.box(4.2, 4.6, 0.3), M(x, 2.3, z + 4.55), '#f7f1e3', { ol: 0.07 });
+  B.add(GEO.box(0.25, 5.8, 0.1), M(x, 2.3, z + 4.72, 0, 0, 0.72), '#9a3b2a', { ol: 0 });
+  B.add(GEO.box(0.25, 5.8, 0.1), M(x, 2.3, z + 4.72, 0, 0, -0.72), '#9a3b2a', { ol: 0 });
+  B.add(GEO.box(2.2, 1.6, 0.3), M(x, 8.4, z + 4.55), '#f7f1e3', { ol: 0.05 });
+  addBoxSolid(x - 5.2, z - 4.8, x + 5.2, z + 4.8);
+}
+function silo(B, x, z, h) {
+  B.add(GEO.cyl(2.3, 2.4, h, 16), M(x, h / 2, z), '#dfe6ee', { ol: 0.1, ao: 0.15 });
+  for (let y = 3; y < h; y += 3.4) B.add(GEO.cyl(2.42, 2.42, 0.28, 16), M(x, y, z), '#9aa3b5', { ol: 0 });
+  B.add(GEO.sph(2.4, 16, 8, true), M(x, h, z), '#e4572e', { ol: 0.08 });
+  addCircleSolid(x, z, 2.6);
+}
+const spinners = [];   // windmill sails: turned a little every frame
+function windmill(B, x, z) {
+  B.add(GEO.cyl(1.4, 2.4, 10, 8), M(x, 5, z), '#fff3d6', { ol: 0.12, ao: 0.15 });
+  B.add(GEO.cone(2.2, 2.4, 8), M(x, 11.2, z), '#9a3b2a', { ol: 0.09 });
+  door3(B, x, z + 2.2, COL.woodDark, 1.8, 3);
+  B.add(GEO.cyl(0.3, 0.3, 1.6, 8), M(x, 9.6, z + 1.6, 0, Math.PI / 2), INKC, { ol: 0 });
+  addCircleSolid(x, z, 2.5);
+  const S2 = new Builder();
+  for (let i = 0; i < 4; i++) {
+    const a = i * Math.PI / 2, R = new THREE.Matrix4().makeRotationZ(a);
+    S2.add(GEO.box(0.3, 6, 0.2), R.clone().multiply(M(0, 3.3, 0)), COL.woodDark, { ol: 0.03 });
+    S2.add(GEO.box(1.5, 4.8, 0.12), R.clone().multiply(M(0.9, 3.8, 0)), '#fff8e8', { ol: 0.05 });
+  }
+  S2.add(GEO.ico(0.6, 0), M(0, 0, 0.2), '#e4572e', { ol: 0.04 });
+  const m = S2.mesh(); m.position.set(x, 9.6, z + 2.5); scene.add(m); spinners.push(m);
+}
+function hay(B, x, z, ry) { B.add(GEO.cyl(1.2, 1.2, 1.8, 12), M(x, 1.2, z, ry, 0, Math.PI / 2), '#f4d27a', { ol: 0.07 }); addCircleSolid(x, z, 1.3); }
+function tractor(B, x, z, ry, color) {
+  const r = new THREE.Matrix4().makeRotationY(ry), put = (e, dx, y, dz, c, rz = 0, ol = 0.07) => { const p = new THREE.Vector3(dx, 0, dz).applyMatrix4(r); B.add(e, M(x + p.x, y, z + p.z, ry, 0, rz), c, { ol }); };
+  put(GEO.rbox(2.4, 1.6, 4.4, 0.3, 1), 0, 1.6, 0.4, color);
+  put(GEO.rbox(2.6, 2.6, 2.4, 0.2, 1), 0, 3.4, -1.1, '#9ff3ff', 0, 0.06);
+  put(GEO.rbox(2.9, 0.3, 2.7, 0.1, 1), 0, 4.8, -1.1, color, 0, 0.05);
+  [-1, 1].forEach(sd => { put(GEO.cyl(1.5, 1.5, 0.9, 14), sd * 1.5, 1.5, -1.2, INKC, Math.PI / 2, 0); put(GEO.cyl(0.9, 0.9, 0.7, 12), sd * 1.3, 0.9, 2.1, INKC, Math.PI / 2, 0); put(GEO.cyl(0.5, 0.5, 0.95, 10), sd * 1.52, 1.5, -1.2, COL.yellow, Math.PI / 2, 0); });
+  put(GEO.cyl(0.14, 0.14, 1.6, 6), 0.6, 3, 1.8, INKC, 0, 0);
+  addCircleSolid(x, z, 2.6);
+}
+function surfboard(B, x, z, color, ry) {
+  B.add(GEO.capsule(0.6, 3.0), M(x, 2.0, z, ry, 0, 0.12, 1, 1, 0.28), color, { ol: 0.05 });
+  B.add(GEO.box(0.2, 3.6, 0.2), M(x - 0.05, 2.0, z, ry, 0, 0.12), '#fff8e8', { ol: 0 });
+  addCircleSolid(x, z, 0.6);
+}
+function lifeguard(B, x, z) {
+  [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]].forEach(([dx, dz]) => B.add(GEO.box(0.3, 4.6, 0.3), M(x + dx, 2.3, z + dz), '#fff8e8', { ol: 0.04 }));
+  B.add(GEO.box(3.4, 0.4, 3.4), M(x, 4.7, z), COL.wood, { ol: 0.06 });
+  B.add(GEO.box(3, 2.2, 2.6), M(x, 6, z - 0.2), '#e4572e', { ol: 0.08 });
+  B.add(GEO.box(3.6, 0.3, 3.4), M(x, 7.3, z - 0.1), '#fff8e8', { ol: 0.06 });
+  B.add(GEO.cyl(0.07, 0.07, 3, 4), M(x + 1.6, 8.6, z), INKC, { ol: 0 });
+  B.add(GEO.box(1.4, 0.8, 0.08), M(x + 2.3, 9.6, z), '#e4572e', { ol: 0.03 });
+  for (let i = 0; i < 4; i++) B.add(GEO.box(1.6, 0.14, 0.3), M(x, 0.9 + i * 1.0, z + 2.2, 0, 0.5), COL.wood, { ol: 0 });
+  addBoxSolid(x - 1.6, z - 1.6, x + 1.6, z + 1.6);
+}
+function clockTower(B, x, z, wall, roof, trim, H) {
+  B.add(GEO.rbox(6.4, 0.6, 6.4, 0.2, 1), M(x, 0.3, z), '#d9cbb0', { ol: 0.07 });
+  B.add(GEO.box(5.2, H, 5.2), M(x, H / 2 + 0.5, z), wall, { ol: 0.12, ao: 0.15 });
+  [H * 0.36, H * 0.68].forEach(y => B.add(GEO.box(5.5, 0.4, 5.5), M(x, y, z), trim, { ol: 0 }));
+  B.add(GEO.box(5.9, 0.7, 5.9), M(x, H + 0.8, z), trim, { ol: 0.07 });
+  B.add(GEO.box(3, 2.4, 5.4), M(x, H - 0.9, z), '#3a2c4a', { ol: 0 });
+  B.add(GEO.box(5.4, 2.4, 3), M(x, H - 0.9, z), '#3a2c4a', { ol: 0 });
+  B.add(GEO.sph(0.8, 10, 8), M(x, H - 1.2, z), COL.gold, { ol: 0.04 });
+  const cy = H * 0.52;
+  B.add(GEO.cyl(1.9, 1.9, 0.3, 20), M(x, cy, z + 2.65, 0, Math.PI / 2), '#fff8e8', { ol: 0.07 });
+  B.add(GEO.box(0.2, 1.4, 0.1), M(x, cy + 0.55, z + 2.86), INKC, { ol: 0 });
+  B.add(GEO.box(1.1, 0.18, 0.1), M(x + 0.45, cy, z + 2.86), INKC, { ol: 0 });
+  B.add(GEO.cyl(1.9, 1.9, 0.3, 20), M(x + 2.65, cy, z, 0, 0, Math.PI / 2), '#fff8e8', { ol: 0.07 });
+  B.add(GEO.cone(4.6, 5, 4), M(x, H + 3.7, z, Math.PI / 4), roof, { ol: 0.1 });
+  B.add(GEO.ico(0.4, 0), M(x, H + 6.4, z), COL.gold, { ol: 0.04 });
+  door3(B, x, z + 2.9, COL.woodDark, 2.2, 3.6);
+  addBoxSolid(x - 2.9, z - 2.9, x + 2.9, z + 3);
+}
+function brickHall(B, x, z, w, d, h, seed) {
+  const brick = seed % 2 ? '#c8664a' : '#b95c44', zf = z + d / 2;
+  B.add(GEO.rbox(w + 1, 0.5, d + 1, 0.25, 1), M(x, 0.25, z), '#d9cbb0', { ol: 0.08 });
+  B.add(GEO.rbox(w, h, d, 0.3, 1), M(x, h / 2 + 0.3, z), brick, { ol: 0.13, ao: 0.15 });
+  B.add(GEO.box(w + 0.1, 0.35, d + 0.1), M(x, h * 0.5 + 0.4, z), '#f7f1e3', { ol: 0 });
+  B.add(GEO.box(w + 0.5, 0.6, d + 0.5), M(x, h + 0.2, z), '#f7f1e3', { ol: 0.06 });
+  const n = Math.floor(w / 4.2);
+  for (let i = 0; i < n; i++) { const wx0 = x - w / 2 + (i + 0.5) * w / n; [3.2, h * 0.5 + 2.4].forEach((y, row) => { if (row === 0 && Math.abs(wx0 - x) < 2.6) return; window3(B, wx0, y, zf + 0.26, 2, 2.4); B.add(GEO.box(2.4, 0.25, 0.4), M(wx0, y - 1.35, zf + 0.35), '#f7f1e3', { ol: 0 }); }); }
+  const rise = gable(B, x, z, w, d, h + 0.5, '#34233f', 0.8, 0.5, brick);
+  B.add(GEO.box(2.4, 2.2, 2.4), M(x, h + 0.5 + rise + 0.6, z), '#f7f1e3', { ol: 0.07 });
+  B.add(GEO.cone(1.9, 2.2, 4), M(x, h + 0.5 + rise + 2.8, z, Math.PI / 4), '#8fc2b0', { ol: 0.07 });
+  door3(B, x, zf + 0.3, '#34233f', 3, 4.4);
+  B.add(GEO.prism(4.4, 1, 0.8), M(x, 4.9, zf + 0.5), '#f7f1e3', { ol: 0.05 });
+  [[-w / 2 + 1, 2.5], [w / 2 - 1.4, 3.4]].forEach(([dx, y]) => { B.add(GEO.ico(1.3, 1), M(x + dx, y, zf + 0.3, 0, 0, 0, 1, 1.6, 0.5), '#5f9e57', { ol: 0.05 }); });
+  addBoxSolid(x - w / 2 - 0.3, z - d / 2 - 0.3, x + w / 2 + 0.3, zf + 0.4);
+}
+function quad(B, x, z, w, d, trees, seed) {
+  B.add(GEO.rrect(w, d, 2.5), M(x, 0.04, z), '#c3e58f', { ol: 0 });
+  B.add(GEO.box(w - 1, 0.05, 2.6), M(x, 0.05, z), '#e9d9b0', { ol: 0 });
+  B.add(GEO.box(2.6, 0.05, d - 1), M(x, 0.05, z), '#e9d9b0', { ol: 0 });
+  B.add(GEO.disc(4.6, 24), M(x, 0.056, z), '#e9d9b0', { ol: 0 });
+  B.add(GEO.rbox(2.4, 2.6, 2.4, 0.2, 1), M(x, 1.3, z), '#e9e2d0', { ol: 0.07 });
+  B.add(GEO.capsule(0.6, 1.3), M(x, 3.6, z), COL.gold, { ol: 0.06 });
+  B.add(GEO.sph(0.55, 10, 8), M(x, 5.1, z), COL.gold, { ol: 0.05 });
+  B.add(GEO.box(1.2, 0.2, 1.2), M(x, 5.7, z, 0.4), INKC, { ol: 0 });
+  addCircleSolid(x, z, 1.8);
+  bench(B, x - 7.5, z + 3.2, 0); bench(B, x + 7.5, z + 3.2, 0);
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz], i) => trees.push({ kind: 'oak', x: x + sx * w * 0.3, z: z + sz * d * 0.3, s: 0.8, r: seed * 10 + i }));
+  [[-1, 1], [1, 1]].forEach(([sx]) => flowerBed(B, x + sx * w * 0.3, z - d * 0.3 + 4.3, 5, 2, ['#c8664a', COL.yellow, '#fff8e8'], seed + sx));
+}
+function cobbles(B, x, z, w, d, r) {
+  B.add(GEO.rrect(w, d, Math.min(w, d) * 0.2), M(x, 0.045, z), '#c9c0b0', { ol: 0 });
+  const n = Math.round(w * d / 9);
+  for (let i = 0; i < n; i++) B.add(GEO.box(1 + r() * 0.6, 0.04, 0.7 + r() * 0.4), M(x + (r() - 0.5) * (w - 2.4), 0.065, z + (r() - 0.5) * (d - 2.4), r() * 3), r() < 0.5 ? '#b3a898' : '#dcd4c6', { ol: 0 });
+}
+function stoneWall(B, ax, az, bx, bz, h = 3.4) {   // axis-aligned
+  const along = Math.abs(bx - ax) > Math.abs(bz - az), len = along ? Math.abs(bx - ax) : Math.abs(bz - az), mx = (ax + bx) / 2, mz = (az + bz) / 2;
+  if (len < 1) return;
+  B.add(GEO.box(along ? len : 1.6, h, along ? 1.6 : len), M(mx, h / 2, mz), '#bdb2a4', { ol: 0.1, ao: 0.2 });
+  const n = Math.floor(len / 2.2);
+  for (let i = 0; i < n; i++) { const t = ((i + 0.5) / n - 0.5) * len; B.add(GEO.box(1.1, 0.9, 1.1), M(mx + (along ? t : 0), h + 0.45, mz + (along ? 0 : t)), '#c9bfb2', { ol: 0.05 }); }
+  addBoxSolid(mx - (along ? len / 2 : 0.8), mz - (along ? 0.8 : len / 2), mx + (along ? len / 2 : 0.8), mz + (along ? 0.8 : len / 2));
+}
+function wallTower(B, x, z, roof) {
+  B.add(GEO.cyl(2.5, 2.8, 7, 12), M(x, 3.5, z), '#bdb2a4', { ol: 0.1, ao: 0.2 });
+  B.add(GEO.cyl(2.8, 2.8, 0.5, 12), M(x, 7.2, z), '#c9bfb2', { ol: 0.05 });
+  B.add(GEO.cone(3, 3.6, 12), M(x, 9.2, z), roof, { ol: 0.09 });
+  window3(B, x, 4.6, z + 2.6, 0.9, 1.6);
+  addCircleSolid(x, z, 2.9);
+}
+function well(B, x, z) {
+  B.add(GEO.cyl(1.8, 1.9, 1.4, 14), M(x, 0.7, z), '#bdb2a4', { ol: 0.08 });
+  B.add(GEO.disc(1.5, 14), M(x, 1.42, z), '#5b7cfa', { ol: 0 });
+  [-1.6, 1.6].forEach(dx => B.add(GEO.box(0.3, 3.4, 0.3), M(x + dx, 2.4, z), COL.woodDark, { ol: 0.03 }));
+  B.add(GEO.prism(4.2, 1.2, 3), M(x, 4.1, z), '#9a3b2a', { ol: 0.07 });
+  addCircleSolid(x, z, 2);
+}
+function dock(B, x, za, zb, w = 2.6) {   // planks from za to zb along z, over the water
+  const z0 = Math.min(za, zb), z1 = Math.max(za, zb), zc = (z0 + z1) / 2;
+  B.add(GEO.box(w, 0.3, z1 - z0), M(x, 0.5, zc), COL.wood, { ol: 0.06 });
+  for (let k = z0 + 0.7; k < z1 - 0.3; k += 1.1) B.add(GEO.box(w + 0.02, 0.04, 0.08), M(x, 0.66, k), COL.woodDark, { ol: 0 });
+  [z0 + 0.4, zc, z1 - 0.4].forEach(pz => [-1, 1].forEach(sd => B.add(GEO.cyl(0.2, 0.2, 1.5, 6), M(x + sd * (w / 2 - 0.1), 0.35, pz), COL.woodDark, { ol: 0.04 })));
+  DECKS.push({ x0: x - w / 2 - 0.05, z0, x1: x + w / 2 + 0.05, z1, y: 0.65 });
+}
+function fallenLog(B, x, z, ry) {
+  B.add(GEO.cyl(0.8, 0.8, 5.5, 9), M(x, 0.8, z, ry, 0, Math.PI / 2), '#8a5a34', { ol: 0.07 });
+  B.add(GEO.ico(0.5, 0), M(x + 1, 1.7, z, 0), '#8cc45e', { ol: 0.03 });
+  const p = { x: x + Math.cos(ry) * 4.5, z: z - Math.sin(ry) * 4.5 };
+  B.add(GEO.cyl(0.8, 1.0, 1.0, 9), M(p.x, 0.5, p.z), '#9a6a44', { ol: 0.08 });
+  B.add(GEO.disc(0.7, 9), M(p.x, 1.01, p.z), '#f1d3a0', { ol: 0 });
+  addCircleSolid(x, z, 1.4); addCircleSolid(p.x, p.z, 1);
+}
+
+// what each kind of town builds in its free land (zones in game px from the town's west edge)
+const ZN = { ne: [1060, -110, 1990, 840], e: [1600, 850, 1990, 1300], se: [1560, 1830, 1990, 2300], s: [20, 2310, 1990, 2720], sw: [20, 1830, 140, 2300], sand: [20, 2300, 1990, 2400] };
+const BEACH_SAND = 2292, BEACH_SHORE = 2418;
+const KIND_LOOK = {
+  downtown: { trees: 12, kinds: ['oak'], flowers: 40, gap: 90 },
+  uptown: { trees: 45, kinds: ['oak', 'oak', 'pine'], flowers: 160, gap: 80, fcols: ['#ff8fb1', '#e4572e', '#fff8e8', '#b98cff'] },
+  rural: { trees: 45, kinds: ['oak'], flowers: 130, gap: 85 },
+  beach: { trees: 26, kinds: ['palm', 'palm', 'oak'], flowers: 60, gap: 90 },
+  mountain: { trees: 120, kinds: ['pine'], flowers: 50, gap: 55 },
+  college: { trees: 40, kinds: ['oak', 'oak', 'pine'], flowers: 110, gap: 85 },
+  oldtown: { trees: 40, kinds: ['oak', 'pine'], flowers: 100, gap: 85 },
+  lake: { trees: 70, kinds: ['pine', 'pine', 'oak'], flowers: 100, gap: 70 },
+  desert: { trees: 40, kinds: ['cactus'], flowers: 0, gap: 90, ground: '#e9c98f', patch: ['#e2bd7f', '#f0d29c'] },
+  forest: { trees: 170, kinds: ['pine', 'pine', 'pine', 'oak'], flowers: 60, gap: 48 },
+};
+const TREE_R = { oak: 1.2, pine: 1.2, snowpine: 1.2, palm: 0.7, cactus: 0.8, shroom: 0.45 };
+const KIND_BUILD = {
+  downtown(B, D, C) {
+    const { r, put } = C;
+    sidewalks(B, D, '#d8d2c4');
+    const WALLS = ['#d6e4f0', '#e9eef5', '#cfd8e3', '#f3eddd', '#e8dcc8', '#dcd3f0', '#c9dbe6'], GLASS = ['#8fd3ee', '#7fb8d8', '#9ff3ff', '#a9c8f0'], made = [];
+    for (let i = 0; i < 7; i++) { const tw = 12 + r() * 5, td = 11 + r() * 5, p = put(tw * 10 + 70, td * 10 + 70, [ZN.ne, ZN.ne, ZN.e], { pad: 8 }); if (p) made.push([p, tw, td, 26 + r() * 19]); }
+    // further south they stay lower, so they never hide the main road, the lots or you
+    for (let i = 0; i < 7; i++) { const tw = 11 + r() * 4, td = 10 + r() * 4, p = put(tw * 10 + 70, td * 10 + 70, [[20, 2390, 1990, 2720]], { pad: 8 }); if (p) made.push([p, tw, td, 13 + r() * 6]); }
+    made.forEach(([p, tw, td, h], i) => { const x = wx(p.x), z = wz(p.y); B.add(GEO.rrect(tw + 6, td + 6, 1.5), M(x, 0.045, z), i % 2 ? '#d8d2c4' : '#e3dccb', { ol: 0 }); tower(B, x, z, tw, td, h, WALLS[i % WALLS.length], GLASS[(i * 3) % GLASS.length], r() < 0.5 ? 0 : 1, r); });
+    for (let i = 0; i < 2; i++) { const p = put(230, 170, [ZN.ne, ZN.s, ZN.se]); if (!p) continue; const x = wx(p.x), z = wz(p.y); B.add(GEO.rrect(22, 16, 2), M(x, 0.045, z), '#e3dccb', { ol: 0 }); planter(B, x - 6, z - 3.5); planter(B, x + 6, z - 3.5); bench(B, x, z + 2.5, 0); lamp(B, x - 8.5, z + 5); lamp(B, x + 8.5, z + 5); }
+    for (let dx = 110; dx < 2000; dx += 200) if (Math.abs(dx - 1000) > 90) lamp(B, wx(D.x0 + dx), wz(1828));
+    const bb = put(190, 60, [ZN.e, ZN.ne], { pad: 10 }); if (bb) billboard(B, wx(bb.x), wz(bb.y));
+  },
+  uptown(B, D, C) {
+    const { r, put } = C, WALLS = ['#fff3d6', '#f7e0ff', '#e0f5d0', '#ffe2c6', '#d6f1ff'], ROOFS = ['#5b6b8a', '#34233f', '#8a5a6a', '#6b5a78'];
+    for (let i = 0; i < 5; i++) { const p = put(350, 270, [ZN.ne, ZN.s, ZN.se, ZN.ne]); if (p) mansion(B, wx(p.x), wz(p.y), WALLS[i % 5], ROOFS[i % 4], D.k * 10 + i); }
+    const t = put(290, 160, [ZN.ne, ZN.s, ZN.e]); if (t) tennis(B, wx(t.x), wz(t.y));
+    for (let i = 0; i < 2; i++) { const p = put(80, 80, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) smallFountain(B, wx(p.x), wz(p.y)); }
+    for (let i = 0; i < 4; i++) { const p = put(90, 60, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) flowerBed(B, wx(p.x), wz(p.y), 7, 4, ['#e4572e', '#ff8fb1', '#fff8e8'], D.k * 31 + i); }
+    for (let i = 0; i < 4; i++) { const p = put(40, 40, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) topiary(B, wx(p.x), wz(p.y), i % 2); }
+  },
+  rural(B, D, C) {
+    const { r, put } = C, CROPS = ['wheat', 'corn', 'cabbage', 'pumpkin'];
+    for (let i = 0; i < 5; i++) { const p = put(260, 180, [ZN.ne, ZN.s, ZN.se, ZN.ne]); if (p) cropField(B, wx(p.x), wz(p.y), 22, 14, CROPS[(i + D.k) % 4], D.k * 13 + i); }
+    for (let i = 0; i < 2; i++) { const p = put(210, 150, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) { barn(B, wx(p.x) - 2.5, wz(p.y)); silo(B, wx(p.x) + 6.5, wz(p.y) - 1.5, 11); } }
+    const wm = put(110, 110, [ZN.ne, ZN.s, ZN.e]); if (wm) windmill(B, wx(wm.x), wz(wm.y));
+    for (let i = 0; i < 5; i++) { const p = put(70, 60, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) { hay(B, wx(p.x), wz(p.y), r() * 3); if (r() < 0.5) hay(B, wx(p.x) + 2.8, wz(p.y) + 1, r() * 3); } }
+    const tr = put(90, 80, [ZN.s, ZN.se, ZN.ne]); if (tr) tractor(B, wx(tr.x), wz(tr.y), r() * 6, i2c(D.k));
+  },
+  beach(B, D, C) {
+    const { r, put, trees } = C, x0 = wx(D.x0), x1 = wx(D.x1), zs = wz(BEACH_SAND), zEnd = wz(SLAB.y1), mx = (x0 + x1) / 2;
+    // sand along the south edge, then the sea beyond a wavy shore: you can swim in it
+    B.add(GEO.box(x1 - x0, 0.05, zEnd - zs), M(mx, 0.02, (zs + zEnd) / 2), '#f4e3b5', { ol: 0 });
+    const sea = { x0, x1, z0: wz(BEACH_SHORE), z1: zEnd, y: 0.13 };
+    SEAS.push(sea);
+    [[-2.4, 0.05, '#e6cd98'], [-0.8, 0.1, '#f4fdff'], [0, 0.13, '#8fdcf2'], [5, 0.135, '#6fc3e8'], [14, 0.14, '#5bb2de']].forEach(([off, y, c], i) => B.add(seaGeo(`sea${D.k}.${i}`, sea, off, mx, zEnd), M(mx, y, zEnd), c, { ol: 0 }));
+    const HUT = [['#ffd9e0', '#e4572e'], ['#d6f1ff', '#2fa4b5'], ['#fff1a8', '#f08a3c'], ['#e0f5d0', '#8cbf5a']];
+    for (let i = 0; i < 4; i++) { const p = put(80, 70, [ZN.sand], { pad: 12 }); if (p) house(B, wx(p.x), wz(p.y) - 0.5, { w: 6, d: 5, h: 3.8, wall: HUT[i][0], roof: HUT[i][1], stripe: '#fff8e8', pitch: 0.5, over: 0.5 }); }
+    for (let i = 0; i < 5; i++) { const p = put(70, 60, [ZN.sand], { pad: 6 }); if (!p) continue; const x = wx(p.x), z = wz(p.y), c = ['#ff8fb1', '#8fdcf2', COL.yellow, '#b98cff', '#8cbf5a'][i]; umbrella(B, x, z - 1, c, COL.paper); B.add(GEO.box(2, 0.05, 3.4), M(x + 1.8, 0.08, z + 0.3, 0.2), c, { ol: 0 }); }
+    for (let i = 0; i < 3; i++) { const p = put(60, 30, [ZN.sand], { pad: 6 }); if (!p) continue; const x = wx(p.x), z = wz(p.y); ['#e4572e', '#5b7cfa', COL.yellow].forEach((c, j) => surfboard(B, x - 1.6 + j * 1.6, z, c, (j - 1) * 0.15)); }
+    const lg = put(60, 50, [[20, 2340, 1990, 2400]], { pad: 4 }); if (lg) lifeguard(B, wx(lg.x), wz(lg.y));
+    for (let gx = D.x0 + 60 + r() * 60; gx < D.x1 - 40; gx += 100 + r() * 60) { const gy = 2318 + r() * 24; if (Math.abs(gx - D.x0 - 1000) < 80 || !C.clearRect(gx - 22, gy - 22, gx + 22, gy + 22)) continue; C.taken.push([gx - 15, gy - 15, gx + 15, gy + 15]); trees.push({ kind: 'palm', x: wx(gx), z: wz(gy), s: 0.85 + r() * 0.3, r: Math.floor(gx) }); }
+    for (let i = 0; i < 2; i++) { const p = put(40, 40, [ZN.sand], { pad: 4 }); if (!p) continue; const x = wx(p.x), z = wz(p.y); B.add(GEO.cyl(1.2, 1.4, 1.1, 8), M(x, 0.55, z), '#e8cf94', { ol: 0.06 }); [[-1, -1], [1, -1], [0, 1]].forEach(([dx, dz]) => { B.add(GEO.cyl(0.45, 0.5, 1.6, 6), M(x + dx, 1.4, z + dz), '#e8cf94', { ol: 0.05 }); B.add(GEO.cone(0.55, 0.8, 6), M(x + dx, 2.6, z + dz), '#e8cf94', { ol: 0.04 }); }); B.add(GEO.box(0.6, 0.4, 0.05), M(x, 3.4, z + 1), COL.roof, { ol: 0 }); addCircleSolid(x, z, 1.6); }
+  },
+  mountain(B, D, C) {
+    const { r, put, trees } = C, X = dx => wx(D.x0 + dx);
+    const hills = [[280, 20, 20, 8], [760, -30, 16, 7], [1480, 340, 25, 8.6], [1770, 110, 19, 7.4], [1800, 650, 16, 7]].map(([dx, gy, h, s]) => ({ x: X(dx), z: wz(gy), h, s }));
+    hills.forEach(q => HILLS.push(q));
+    terrain(B, 'mtW' + D.k, hills.slice(0, 2), 1.3, paintMountain);
+    terrain(B, 'mtE' + D.k, hills.slice(2), 1.3, paintMountain);
+    // a ski lift from the valley to the top of the big peak
+    const a = { x: X(1290), z: wz(740) }, b = { x: hills[2].x - 1.2, z: hills[2].z + 2 }, N = 5, tops = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t, y = hillH(x, z), end = i === 0 || i === N;
+      if (end) { B.add(GEO.rbox(5, 3.4, 4, 0.3, 1), M(x, y + 1.5, z), '#a0673b', { ol: 0.1 }); B.add(GEO.prism(5.8, 1.6, 4.8), M(x, y + 3.3, z), '#fff8e8', { ol: 0.08 }); B.add(GEO.cyl(1.4, 1.4, 0.4, 14), M(x, y + 5.4, z), INKC, { ol: 0 }); addBoxSolid(x - 2.6, z - 2.1, x + 2.6, z + 2.1); tops.push({ x, y: y + 5.4, z }); }
+      else { B.add(GEO.cyl(0.25, 0.35, 7.5, 6), M(x, y + 3.7, z), '#5a5f6b', { ol: 0.03 }); B.add(GEO.box(2.6, 0.3, 0.3), M(x, y + 7.4, z, -Math.atan2(b.z - a.z, b.x - a.x) + Math.PI / 2), '#5a5f6b', { ol: 0 }); addCircleSolid(x, z, 0.5); tops.push({ x, y: y + 7.4, z }); }
+    }
+    for (let i = 0; i < tops.length - 1; i++) {
+      const p = tops[i], q = tops[i + 1], dx = q.x - p.x, dy = q.y - p.y, dz = q.z - p.z, h = Math.hypot(dx, dz), L = Math.hypot(h, dy), ry = -Math.atan2(dz, dx), rz = Math.atan2(dy, h);
+      B.add(GEO.box(L, 0.12, 0.12), M((p.x + q.x) / 2, (p.y + q.y) / 2, (p.z + q.z) / 2, ry, 0, rz), INKC, { ol: 0 });
+      const cxh = (p.x + q.x) / 2, czh = (p.z + q.z) / 2, cyh = (p.y + q.y) / 2;
+      B.add(GEO.box(0.1, 1.6, 0.1), M(cxh, cyh - 0.8, czh), INKC, { ol: 0 });
+      B.add(GEO.rbox(1.8, 0.3, 1.1, 0.1, 1), M(cxh, cyh - 1.7, czh, ry), ['#e4572e', COL.blue, COL.yellow][i % 3], { ol: 0.04 });
+      B.add(GEO.box(1.8, 0.9, 0.2), M(cxh, cyh - 1.3, czh - 0.5, ry), ['#e4572e', COL.blue, COL.yellow][i % 3], { ol: 0.03 });
+    }
+    // rocks on the slopes, chalets in the valley
+    for (let i = 0; i < 16; i++) { const q = hills[i % hills.length], a2 = r() * 6.283, d = q.s * (0.5 + r() * 1.3), x = q.x + Math.cos(a2) * d, z = q.z + Math.sin(a2) * d; if (Math.hypot(x - a.x, z - a.z) < 6) continue; greyRock(B, x, z, 0.7 + r() * 0.7, i, hillH(x, z) - 0.3); }
+    const WALL = ['#a0673b', '#b07a4a', '#8a5a34'];
+    for (let i = 0; i < 6; i++) { const p = put(110, 100, [ZN.s, ZN.se, ZN.sw, ZN.e, ZN.ne], { flat: true }); if (p) house(B, wx(p.x), wz(p.y), { w: 9, d: 8, h: 4.4, wall: WALL[i % 3], logs: '#7d4a2e', roof: ['#9a3b2a', '#fff8e8', '#5f7f4a'][i % 3], pitch: 0.82, over: 1, chimney: '#8a8f99' }); }
+  },
+  college(B, D, C) {
+    const { r, put, trees } = C;
+    const q = put(420, 320, [ZN.ne, ZN.s]);
+    if (q) quad(B, wx(q.x), wz(q.y), 38, 28, trees, D.k);
+    for (let i = 0; i < 4; i++) { const w = 24 + r() * 6, p = put(w * 10 + 40, 140, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) brickHall(B, wx(p.x), wz(p.y), w, 10, 9 + r() * 2, i); }
+    const ct = put(90, 90, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (ct) clockTower(B, wx(ct.x), wz(ct.y), '#c8664a', '#34233f', '#f7f1e3', 20);
+    for (let i = 0; i < 3; i++) { const p = put(60, 40, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (p) bench(B, wx(p.x), wz(p.y), 0); }
+  },
+  oldtown(B, D, C) {
+    const { r, put } = C, WALL = ['#fff3d6', '#f7ecd8', '#ffe9d0'], ROOF = ['#9a3b2a', '#6b5a78', '#7d4a2e'];
+    for (let i = 0; i < 3; i++) { const p = put(260, 200, [ZN.ne, ZN.s, ZN.se]); if (!p) continue; const x = wx(p.x), z = wz(p.y); cobbles(B, x, z, 24, 18, r); if (i === 0) well(B, x, z); else if (i === 1) smallFountain(B, x, z); else { bench(B, x - 4, z, 0); bench(B, x + 4, z, 0); } }
+    for (let i = 0; i < 8; i++) { const p = put(120, 110, [ZN.ne, ZN.s, ZN.se, ZN.e, ZN.sw]); if (!p) continue; const x = wx(p.x), z = wz(p.y); cobbles(B, x, z + 5.5, 11, 3, r); house(B, x, z - 0.5, { w: 9, d: 7.5, h: 6.4, wall: WALL[i % 3], timber: '#5a3b28', roof: ROOF[i % 3], pitch: 0.9, over: 0.6, chimney: '#8a8f99' }); }
+    const ct = put(90, 90, [ZN.ne, ZN.s, ZN.se, ZN.e]); if (ct) clockTower(B, wx(ct.x), wz(ct.y), '#cfc6b8', '#5b7cfa', '#e9e2d0', 18);
+    // the old city wall along the south edge, with a gate where the road goes through, and a piece in the north-east
+    const zw = wz(2668), rx = wx(D.x0 + 1000);
+    stoneWall(B, wx(D.x0) + 1, zw, rx - 7, zw); stoneWall(B, rx + 7, zw, wx(D.x1) - 1, zw);
+    wallTower(B, rx - 7, zw, '#9a3b2a'); wallTower(B, rx + 7, zw, '#9a3b2a');
+    const nw = put(420, 50, [[1400, -120, 1990, 60]], { pad: 4 }); if (nw) { stoneWall(B, wx(nw.x - 200), wz(nw.y), wx(nw.x + 200), wz(nw.y)); wallTower(B, wx(nw.x + 200), wz(nw.y), '#6b5a78'); }
+  },
+  lake(B, D, C) {
+    const { r, put } = C;
+    for (let i = 0; i < 6; i++) { const p = put(120, 110, [ZN.ne, ZN.s, ZN.se, ZN.e, ZN.sw]); if (p) house(B, wx(p.x), wz(p.y), { w: 10, d: 8, h: 4.6, wall: '#b07a4a', logs: '#8a5a34', roof: ['#5f7f4a', '#2fa4b5', '#9a3b2a'][i % 3], pitch: 0.62, chimney: '#8a8f99' }); }
+    if (D.nature === 'lake') {
+      const cx = wx(D.nat.x), cz = wz(D.nat.y);
+      dock(B, cx + 9, cz - 18, cz - 8.5);
+      rowboat(B, cx + 12, 0.1, cz - 10.4, Math.PI / 2, '#e4572e'); addCircleSolid(cx + 12, cz - 10.4, 1.6);
+      rowboat(B, cx - 7, 0.1, cz + 3, 0.5, '#5b7cfa'); addCircleSolid(cx - 7, cz + 3, 2);
+      rowboat(B, cx + 5, 0.1, cz + 7.5, -0.7, '#fff8e8'); addCircleSolid(cx + 5, cz + 7.5, 2);
+      [[-27.5, 1.5], [-26.5, 5], [26.5, -5]].forEach(([dx, dz], i) => { rowboat(B, cx + dx, 0.2, cz + dz, 1.4 + i * 0.3, ['#f4b942', '#8cbf5a', '#ff8fb1'][i]); addCircleSolid(cx + dx, cz + dz, 1.8); });
+    }
+  },
+  desert(B, D, C) {
+    const { r, put } = C;
+    // the tall rocks stay in the north and far south, so they never hide the road, the lots or you
+    const FAR = [20, 2470, 1990, 2730];
+    for (let i = 0; i < 5; i++) { const rr = 5 + r() * 4, p = put(rr * 22 + 40, rr * 22 + 40, [ZN.ne, ZN.e, FAR]); if (p) mesa(B, wx(p.x), wz(p.y), rr, 7 + r() * 9, i + D.k); }
+    for (let i = 0; i < 2; i++) { const p = put(150, 70, [ZN.ne, FAR, ZN.e]); if (p) redArch(B, wx(p.x), wz(p.y), (r() - 0.5) * 0.6); }
+    for (let i = 0; i < 14; i++) { const p = put(40, 40, [ZN.ne, ZN.s, ZN.se, ZN.e, ZN.sw], { pad: 6 }); if (p) redRock(B, wx(p.x), wz(p.y), 0.6 + r() * 0.8, i); }
+    const wt = put(80, 80, [ZN.s, ZN.se, ZN.e]);
+    if (wt) { const x = wx(wt.x), z = wz(wt.y); [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]].forEach(([dx, dz]) => B.add(GEO.box(0.35, 7, 0.35), M(x + dx, 3.5, z + dz), COL.woodDark, { ol: 0.04 })); B.add(GEO.cyl(2.6, 2.6, 3.4, 12), M(x, 8.6, z), '#b07a4a', { ol: 0.1 }); B.add(GEO.cone(2.9, 1.6, 12), M(x, 11.1, z), '#8a5a34', { ol: 0.08 }); addBoxSolid(x - 2, z - 2, x + 2, z + 2); }
+  },
+  forest(B, D, C) {
+    const { r, put, trees } = C;
+    for (let i = 0; i < 4; i++) { const p = put(120, 110, [ZN.ne, ZN.s, ZN.se, ZN.e, ZN.sw]); if (p) house(B, wx(p.x), wz(p.y), { w: 10, d: 8, h: 4.6, wall: '#9a6a44', logs: '#7d4a2e', roof: '#5f7f4a', pitch: 0.7, chimney: '#8a8f99' }); }
+    for (let i = 0; i < 6; i++) { const p = put(90, 50, [ZN.ne, ZN.s, ZN.se, ZN.e], { pad: 6 }); if (p) fallenLog(B, wx(p.x), wz(p.y), r() * 3); }
+    for (let i = 0, n = 0; i < 400 && n < 60; i++) { const gx = D.x0 + 30 + r() * (T.DW - 60), gy = SLAB.y0 + 250 + r() * (SLAB.y1 - SLAB.y0 - 320); if (C.decorBlocked(gx, gy, 10)) continue; n++; trees.push({ kind: 'shroom', x: wx(gx), z: wz(gy), s: 0.6 + r() * 0.7, r: i }); }
+  },
+};
+const i2c = (k) => ['#e4572e', '#8cbf5a', '#5b7cfa', '#f4b942'][k % 4];
+// the sea's top edge follows the wavy shore; off moves it (negative = up the beach)
+function seaGeo(key, sea, off, mx, zEnd) {
+  return prep(key, () => {
+    const s = new THREE.Shape();
+    s.moveTo(sea.x0 - mx, 0);
+    for (let x = sea.x0; x <= sea.x1 + 0.01; x += 1.25) s.lineTo(x - mx, -(shoreZ(sea, x) + off - zEnd));
+    s.lineTo(sea.x1 - mx, 0);
+    return new THREE.ShapeGeometry(s, 1).rotateX(-Math.PI / 2);
+  });
+}
+
+/* ------------------------------------------------------------------ the welcome gate on the main road */
+const GATE = { downtown: ['#9aa3b5', '#5b7cfa'], uptown: ['#f7f1e3', '#b98cff'], rural: ['#c98a52', '#e4572e'], beach: ['#fff8e8', '#2fa4b5'], mountain: ['#8a8f99', '#fff8e8'],
+  college: ['#c8664a', '#34233f'], oldtown: ['#bdb2a4', '#9a3b2a'], lake: ['#b07a4a', '#2fa4b5'], desert: ['#d9895a', '#c8643c'], forest: ['#8a5a34', '#5f9e57'] };
+function buildGate(B, D) {
+  const [post, top] = GATE[D.kind] || GATE.rural, x = wx(D.gate.x), z = wz(D.gate.y), H = 11.2;
+  [-1, 1].forEach(sd => {
+    const pz = z + sd * 6.4;
+    B.add(GEO.rbox(2.6, 0.8, 2.6, 0.2, 1), M(x, 0.4, pz), '#d9cbb0', { ol: 0.07 });
+    B.add(GEO.rbox(1.8, H, 1.8, 0.3, 1), M(x, H / 2 + 0.5, pz), post, { ol: 0.1, ao: 0.15 });
+    B.add(GEO.cone(1.5, 1.8, 4), M(x, H + 2.3, pz, Math.PI / 4), top, { ol: 0.07 });
+    addCircleSolid(x, pz, 1.4);
+  });
+  B.add(GEO.box(1.6, 1.3, 15.6), M(x, H + 0.6, z), top, { ol: 0.1 });   // bottom at ~11.1: the bus and the train fit under it
+  const FL = ['#ff8fb1', COL.yellow, '#8fdcf2', '#b98cff', '#8cbf5a'];
+  for (let i = 0; i < 9; i++) B.add(GEO.cone(0.4, 0.9, 3), M(x, H - 0.3, z - 5.6 + i * 1.4, 0, Math.PI), FL[i % FL.length], { ol: 0.03 });
+  sign(B, x, H + 2.75, z, `${D.icon} ${D.name}`, { th: 1.9 });
+}
+
+/* ------------------------------------------------------------------ a Small World Garden in every town, with the logo in the middle */
+let logoTex = null;
+const logoMats = new Map();
+function logoMark(gx, gy, w, tint = '#ffffff', y = 0.05) {
+  if (!logoTex) { logoTex = new THREE.TextureLoader().load('icons/smallworld-mark.png'); logoTex.colorSpace = THREE.SRGBColorSpace; logoTex.anisotropy = 8; }
+  let mat = logoMats.get(tint);
+  if (!mat) { mat = new THREE.MeshToonMaterial({ map: logoTex, color: tint, gradientMap: ramp, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }); logoMats.set(tint, mat); }
+  const mark = new THREE.Mesh(new THREE.PlaneGeometry(w * S, w * 228 / 640 * S).rotateX(-Math.PI / 2), mat);
+  mark.position.set(wx(gx), y, wz(gy)); mark.receiveShadow = true; mark.renderOrder = -1;
+  scene.add(mark);
+  return mark;
+}
+const GARDEN = {
+  downtown: { floor: '#dcd5c6', border: 'planter', flowers: ['#ff8fb1', '#fff8e8', COL.yellow], accent: 'planters' },
+  uptown: { floor: '#c6e89a', border: 'hedge', flowers: ['#e4572e', '#ff8fb1', '#fff8e8'], accent: 'topiary' },
+  rural: { floor: '#c3e58f', border: 'picket', flowers: [COL.yellow, '#ff9f6b', '#fff8e8'], accent: 'sunflowers' },
+  beach: { floor: '#f4e3b5', border: 'rope', flowers: ['#ff8fb1', '#8fdcf2', COL.yellow], accent: 'palms', tint: '#fff4dc' },
+  mountain: { floor: '#e8f0f6', border: 'stone', flowers: ['#b98cff', '#fff8e8', '#8fdcf2'], accent: 'snowpines', tint: '#eaf4ff' },
+  college: { floor: '#c3e58f', border: 'hedge', flowers: ['#c8664a', COL.yellow, '#fff8e8'], accent: 'topiary' },
+  oldtown: { floor: '#d8d0c2', border: 'stone', flowers: ['#e4572e', '#ff8fb1', '#b98cff'], accent: 'urns' },
+  lake: { floor: '#bfe38a', border: 'hedge', flowers: ['#8fdcf2', '#b98cff', '#fff8e8'], accent: 'pond' },
+  desert: { floor: '#ecd3a2', border: 'adobe', flowers: ['#ff8fb1', COL.yellow], accent: 'cacti', tint: '#fff0d8' },
+  forest: { floor: '#a9d27a', border: 'log', flowers: ['#fff8e8', '#b98cff'], accent: 'shrooms' },
+};
+function gardenBorder(B, ax, az, bx, bz, kind) {
+  const along = Math.abs(bx - ax) > Math.abs(bz - az), len = along ? Math.abs(bx - ax) : Math.abs(bz - az);
+  if (len < 0.5) return;
+  const mx = (ax + bx) / 2, mz = (az + bz) / 2, bw = along ? len : 1.1, bd = along ? 1.1 : len;
+  switch (kind) {
+    case 'picket': {
+      const n = Math.round(len / 0.75);
+      for (let i = 0; i <= n; i++) { const t = i / n - 0.5, px = mx + (along ? t * len : 0), pz = mz + (along ? 0 : t * len); B.add(GEO.box(0.32, 1.4, 0.18), M(px, 0.7, pz), '#fff8e8', { ol: 0.03 }); }
+      [0.5, 1.1].forEach(y => B.add(GEO.box(along ? len : 0.14, 0.18, along ? 0.14 : len), M(mx, y, mz), '#fff8e8', { ol: 0.02 }));
+      break;
+    }
+    case 'rope': {
+      const n = Math.max(1, Math.round(len / 3));
+      for (let i = 0; i <= n; i++) { const t = i / n - 0.5; B.add(GEO.cyl(0.22, 0.26, 1.6, 6), M(mx + (along ? t * len : 0), 0.8, mz + (along ? 0 : t * len)), COL.wood, { ol: 0.04 }); }
+      B.add(GEO.box(along ? len : 0.12, 0.12, along ? 0.12 : len), M(mx, 1.3, mz), '#e0c070', { ol: 0 });
+      break;
+    }
+    case 'stone': B.add(GEO.rbox(bw, 1.1, bd, 0.3, 1), M(mx, 0.55, mz), '#bdb2a4', { ol: 0.08, ao: 0.2 }); break;
+    case 'adobe': B.add(GEO.rbox(bw, 1.2, bd, 0.45, 1), M(mx, 0.6, mz), '#e0a878', { ol: 0.08, ao: 0.15 }); break;
+    case 'log': B.add(GEO.cyl(0.55, 0.55, len, 8), M(mx, 0.55, mz, along ? 0 : Math.PI / 2, 0, Math.PI / 2), '#8a5a34', { ol: 0.06 }); break;
+    case 'planter': B.add(GEO.rbox(bw, 1.1, bd, 0.2, 1), M(mx, 0.55, mz), '#cfc6b4', { ol: 0.07 }); B.add(GEO.rbox(along ? len - 0.4 : 0.8, 0.9, along ? 0.8 : len - 0.4, 0.4, 1), M(mx, 1.3, mz), '#7fbf55', { ol: 0.06 }); break;
+    default: B.add(GEO.rbox(bw, 1.5, bd, 0.5, 1), M(mx, 0.75, mz), '#6fae4a', { ol: 0.09, ao: 0.18 });
+  }
+  addBoxSolid(mx - bw / 2, mz - bd / 2, mx + bw / 2, mz + bd / 2);
+}
+function buildGarden(B, g, kindName, trees) {
+  const K = GARDEN[kindName] || GARDEN.uptown, x0 = wx(g.x - g.w / 2), x1 = wx(g.x + g.w / 2), z0 = wz(g.y - g.h / 2), z1 = wz(g.y + g.h / 2);
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = x1 - x0, d = z1 - z0, gap = 3.4, lz = cz + 1;
+  B.add(GEO.rrect(w, d, 2), M(cx, 0.036, cz), K.floor, { ol: 0 });
+  gardenBorder(B, x0, z0, cx - gap, z0, K.border); gardenBorder(B, cx + gap, z0, x1, z0, K.border);
+  gardenBorder(B, x0, z0, x0, z1, K.border); gardenBorder(B, x1, z0, x1, z1, K.border); gardenBorder(B, x0, z1, x1, z1, K.border);
+  [-1, 1].forEach(sd => { B.add(GEO.rbox(1.4, 2.2, 1.4, 0.2, 1), M(cx + sd * gap, 1.1, z0), '#e9e2d0', { ol: 0.06 }); B.add(GEO.sph(0.6, 10, 6), M(cx + sd * gap, 2.5, z0), K.flowers[0], { ol: 0.04 }); addCircleSolid(cx + sd * gap, z0, 0.9); });
+  const path = kindName === 'desert' || kindName === 'beach' ? '#e0c792' : '#e9d9b0';
+  B.add(GEO.box(4, 0.05, lz - 4.5 - z0), M(cx, 0.045, (z0 + lz - 4.5) / 2), path, { ol: 0 });
+  B.add(GEO.rrect(24, 10, 3), M(cx, 0.042, lz), path, { ol: 0 });
+  B.add(GEO.rrect(22, 8.6, 2.6), M(cx, 0.048, lz), kindName === 'desert' ? '#f3e2bd' : '#eef6dd', { ol: 0 });
+  logoMark(gxOf(cx), gyOf(lz), 190, K.tint || '#ffffff', 0.06);
+  // four corner beds in the town's style, benches facing the logo, the sign by the gate
+  const corners = [[x0 + 4.6, z0 + 5.4], [x1 - 4.6, z0 + 5.4], [x0 + 4.6, z1 - 5.4], [x1 - 4.6, z1 - 5.4]];
+  corners.forEach(([bx, bz], i) => {
+    const seed = hash(kindName) + i;
+    switch (K.accent) {
+      case 'topiary': flowerBed(B, bx, bz, 6, 4.4, K.flowers, seed); topiary(B, bx, bz, i % 2); break;
+      case 'sunflowers': flowerBed(B, bx, bz, 6, 4.4, K.flowers, seed); for (let k = 0; k < 4; k++) sunflower(B, bx - 1.8 + k * 1.2, bz - 1 + (k % 2) * 1.4, 3 + (k % 2) * 0.8); break;
+      case 'palms': B.add(GEO.disc(2.8, 16), M(bx, 0.05, bz), '#e8cf94', { ol: 0 }); if (i >= 2) trees.push({ kind: 'palm', x: bx, z: bz, s: 0.75, r: seed }); else for (let k = 0; k < 4; k++) B.add(GEO.sph(0.4, 8, 5, true), M(bx - 1.2 + k * 0.8, 0.06, bz + (k % 2) * 0.8), ['#ffd9e0', '#fff8e8', '#ffe2c6'][k % 3], { ol: 0.03 }); break;
+      case 'snowpines': trees.push({ kind: 'snowpine', x: bx, z: bz, s: 0.55, r: seed }); greyRock(B, bx + 2.4, bz + 1.2, 0.5, i); break;
+      case 'urns': flowerBed(B, bx, bz, 6, 4.4, K.flowers, seed, '#8a6a5a'); B.add(GEO.cyl(0.9, 0.6, 1.4, 12), M(bx, 1.1, bz), '#cfc6b8', { ol: 0.06 }); B.add(GEO.ico(0.9, 1), M(bx, 2.2, bz), '#e4572e', { ol: 0.05 }); addCircleSolid(bx, bz, 1); break;
+      case 'pond': if (i >= 2) { B.add(GEO.disc(1, 20), M(bx, 0.05, bz, 0, 0, 0, 3.4, 1, 2.4), '#e9d9b0', { ol: 0 }); B.add(GEO.disc(1, 20), M(bx, 0.07, bz, 0, 0, 0, 2.8, 1, 1.9), '#7fd0ea', { ol: 0 }); B.add(GEO.lily(0.6), M(bx + 0.8, 0.09, bz, 1), '#8cc45e', { ol: 0 }); addCircleSolid(bx, bz, 2.4); } else flowerBed(B, bx, bz, 6, 4.4, K.flowers, seed); break;
+      case 'cacti': B.add(GEO.disc(2.6, 14), M(bx, 0.05, bz), '#e0c792', { ol: 0 }); trees.push({ kind: 'cactus', x: bx, z: bz, s: 0.6 + (i % 2) * 0.15, r: seed }); redRock(B, bx + 2, bz + 1, 0.4, i); break;
+      case 'shrooms': B.add(GEO.disc(2.6, 14), M(bx, 0.05, bz), '#8fbf5e', { ol: 0 }); [[0, 0, 0.9], [1.4, 0.8, 0.6], [-1.3, 0.6, 0.55]].forEach(([dx, dz, s], k) => trees.push({ kind: 'shroom', x: bx + dx, z: bz + dz, s, r: seed + k })); break;
+      case 'planters': planter(B, bx, bz); B.add(GEO.rrect(6, 4.4, 1), M(bx, 0.05, bz), '#cfc6b4', { ol: 0 }); break;
+      default: flowerBed(B, bx, bz, 6, 4.4, K.flowers, seed);
+    }
+  });
+  bench(B, x0 + 2.2, lz, Math.PI / 2); bench(B, x1 - 2.2, lz, -Math.PI / 2);
+  sign(B, cx - 8.2, 2.8, z0 + 1.6, '🌱 Small World Garden', { post: true, th: 1.3 });
+}
+function buildOldGarden() {
+  // the logo lawn beside the plaza, now a garden: hedges on three sides, open to the plaza
+  const g = T.GARDEN0 || { x: LOGO.x, y: LOGO.y, w: 300, h: 190 }, B = W;
+  const x0 = wx(4400), x1 = wx(Math.min(g.x + g.w / 2, 4644)), z0 = wz(1247), z1 = wz(1393), lx = wx(LOGO.x), lz = wz(LOGO.y);
+  B.add(GEO.rrect(LOGO.w * S + 3, LOGO.h * S + 2.6, 1.8), M(lx, 0.034, lz), '#e9f4d4', { ol: 0 });
+  hedgeLine(B, x0, z0, x1, z0, { t: 1.1, h: 1.4 }); hedgeLine(B, x0, z0, x0, z1, { t: 1.1, h: 1.4 }); hedgeLine(B, x0, z1, x1, z1, { t: 1.1, h: 1.2 });
+  [[x1, z0], [x1, z1]].forEach(([px, pz]) => { B.add(GEO.rbox(1.4, 2.2, 1.4, 0.2, 1), M(px, 1.1, pz), '#e9e2d0', { ol: 0.06 }); B.add(GEO.sph(0.6, 10, 6), M(px, 2.5, pz), '#ff8fb1', { ol: 0.04 }); addCircleSolid(px, pz, 0.9); });
+  flowerBed(B, wx(4488), wz(1268), 7, 3, ['#ff8fb1', COL.yellow, '#b98cff'], 901);
+  flowerBed(B, wx(4600), wz(1268), 7, 3, ['#ff8fb1', COL.yellow, '#b98cff'], 902);
+  topiary(B, wx(4544), wz(1266), false);
+  bench(B, wx(4424), lz, Math.PI / 2);
+  sign(B, wx(4430), 2.9, wz(1262), '🌱 Small World Garden', { th: 1.2 });
+  B.add(GEO.box(0.3, 1.8, 0.3), M(wx(4430), 0.9, wz(1262) - 0.3), COL.woodDark, { ol: 0.04 });
+}
+
+/* ------------------------------------------------------------------ gathering: cows, hens, apple trees and ore rocks */
+function cow(B, x, z, ry) {
+  const r = new THREE.Matrix4().makeRotationY(ry), put = (e, dx, y, dz, c, o = {}) => { const p = new THREE.Vector3(dx, 0, dz).applyMatrix4(r); B.add(e, M(x + p.x, y, z + p.z, ry, 0, o.rz || 0, o.sx || 1, o.sy || o.sx || 1, o.sz || o.sx || 1), c, { ol: o.ol ?? 0.07 }); };
+  put(GEO.rbox(3.4, 1.8, 1.8, 0.6, 1), 0, 2.2, 0, '#fff8e8', { ol: 0.09 });
+  [[-0.6, 2.6, 0.92], [0.8, 2.0, -0.92], [0.3, 3.1, 0.2]].forEach(([dx, y, dz]) => put(GEO.sph(0.5, 8, 6), dx, y, dz, INKC, { sx: 1.3, sy: 0.8, sz: 0.3, ol: 0 }));
+  put(GEO.rbox(1.3, 1.2, 1.3, 0.35, 1), 2.1, 2.9, 0, '#fff8e8', { ol: 0.07 });
+  put(GEO.rbox(0.5, 0.7, 1.1, 0.2, 1), 2.8, 2.6, 0, '#ffb3c8', { ol: 0.04 });
+  [-0.45, 0.45].forEach(dz => { put(GEO.cone(0.14, 0.5, 5), 2.1, 3.7, dz, '#f4dca0', { ol: 0.02 }); put(GEO.sph(0.1, 6, 4), 2.6, 3.15, dz * 0.9, INKC, { ol: 0 }); put(GEO.box(0.2, 0.3, 0.5), 1.7, 3.3, dz * 1.7, '#fff8e8', { ol: 0.02 }); });
+  [[-1.2, -0.6], [1.2, -0.6], [-1.2, 0.6], [1.2, 0.6]].forEach(([dx, dz]) => put(GEO.cyl(0.24, 0.22, 1.4, 6), dx, 0.7, dz, '#fff8e8', { ol: 0.04 }));
+  put(GEO.box(0.12, 1.4, 0.12), -1.8, 2.0, 0, INKC, { rz: 0.3, ol: 0 });
+  put(GEO.sph(0.45, 8, 6), 0.2, 1.2, 0, '#ffb3c8', { ol: 0.03 });
+  addCircleSolid(x, z, 1.5);
+}
+function hen(B, x, z, ry) {
+  const r = new THREE.Matrix4().makeRotationY(ry), put = (e, dx, y, dz, c, o = {}) => { const p = new THREE.Vector3(dx, 0, dz).applyMatrix4(r); B.add(e, M(x + p.x, y, z + p.z, ry, 0, o.rz || 0, o.sx || 1, o.sy || o.sx || 1, o.sz || o.sx || 1), c, { ol: o.ol ?? 0.05 }); };
+  put(GEO.sph(0.75, 10, 8), 0, 1.1, 0, '#fff8e8', { sx: 1.2, sy: 1, sz: 0.95 });
+  put(GEO.sph(0.45, 10, 8), 0.7, 1.9, 0, '#fff8e8');
+  put(GEO.box(0.3, 0.35, 0.12), 0.7, 2.4, 0, '#e4572e', { ol: 0.02 });
+  put(GEO.cone(0.14, 0.35, 5), 1.15, 1.9, 0, COL.gold, { rz: -Math.PI / 2, ol: 0.02 });
+  put(GEO.cone(0.3, 0.6, 5), -0.9, 1.4, 0, '#fff8e8', { rz: 0.9, ol: 0.03 });
+  [-0.2, 0.2].forEach(dz => { put(GEO.cyl(0.06, 0.06, 0.6, 4), 0, 0.3, dz, COL.gold, { ol: 0 }); put(GEO.sph(0.07, 6, 4), 0.95, 2.0, dz * 1.3, INKC, { ol: 0 }); });
+  const p = nestOf(x, z);
+  B.add(GEO.torus(0.55, 0.26, 12), M(p.x, 0.25, p.z), '#e0c070', { ol: 0.03 });
+  B.add(GEO.disc(0.5, 10), M(p.x, 0.12, p.z), '#c9a04a', { ol: 0 });
+  addCircleSolid(x, z, 0.8);
+}
+const nestOf = (x, z) => ({ x: x + 0.4, z: z + 1.45 });
+function appleTree(B, x, z) {
+  B.add(GEO.cyl(0.45, 0.65, 3.2, 7), M(x, 1.6, z), '#9a6a44', { ol: 0.09, ao: 0.2 });
+  B.add(GEO.ico(2.5, 1), M(x, 4.7, z), '#7fbb52', { ol: 0.12 });
+  B.add(GEO.ico(1.7, 1), M(x + 1.5, 4.1, z + 0.5), '#8cc45e', { ol: 0.1 });
+  B.add(GEO.ico(1.6, 1), M(x - 1.5, 4.2, z - 0.2), '#94cc66', { ol: 0.1 });
+  addCircleSolid(x, z, 0.9);
+}
+const APPLE_AT = [[0.9, 5.9, 1.9], [-1.2, 5.2, 1.9], [2.3, 4.6, 1.6], [-2.4, 4.1, 1.1], [0.2, 4.0, 2.4], [1.4, 3.5, 1.9], [-0.6, 6.7, 1.2]];
+function oreRock(B, x, z, seed) {
+  B.add(GEO.ico(1.9, 0), M(x, 0.9, z, seed, 0, 0, 1.15, 0.8, 1), '#9a8f86', { ol: 0.1 });
+  B.add(GEO.ico(1.0, 0), M(x + 1.5, 0.5, z + 0.8, seed + 1), '#b8aca0', { ol: 0.06 });
+  B.add(GEO.ico(0.7, 0), M(x - 1.6, 0.35, z + 0.9, seed + 2), '#a89c90', { ol: 0.05 });
+  [[0.8, 1.5, 1.1], [-0.6, 1.1, 1.2]].forEach(([dx, y, dz]) => B.add(GEO.ico(0.2, 0), M(x + dx, y, z + dz), '#6b5a78', { ol: 0 }));
+  addCircleSolid(x, z, 1.9);
+}
+function buildWorkStatic(B, D) {
+  const byPlace = {};
+  D.work.forEach(w => (byPlace[w.place] = byPlace[w.place] || []).push(w));
+  Object.entries(byPlace).forEach(([place, list]) => {
+    const xs = list.map(w => wx(w.x)), zN = wz(1382), zS = wz(1446), xa = Math.min(...xs) - 5.5, xb = Math.max(...xs) + 5.5, zc = wz(list[0].y);
+    if (place === 'ranch') {
+      B.add(GEO.rrect(xb - xa, zS - zN + 3, 2), M((xa + xb) / 2, 0.035, (zN + zS) / 2 + 1.5), '#c8d98a', { ol: 0 });
+      fenceLine(B, xa, zN, xb, zN); fenceLine(B, xa, zN, xa, zS); fenceLine(B, xb, zN, xb, zS);
+      const hens = list.filter(w => w.type === 'hen');
+      if (hens.length) { const hx = hens.reduce((a, w) => a + wx(w.x), 0) / hens.length; house(B, hx, zN + 2.2, { w: 3.6, d: 2.6, h: 2.2, wall: '#fff3d6', roof: '#e4572e', pitch: 0.6, over: 0.3, base: '#c9a06a' }); }
+      B.add(GEO.cyl(1.2, 1.1, 0.8, 12), M(xa + 1.7, 0.4, zN + 1.5), '#9aa3b5', { ol: 0.06 }); B.add(GEO.disc(1.05, 12), M(xa + 1.7, 0.78, zN + 1.5), '#8fdcf2', { ol: 0 }); addCircleSolid(xa + 1.7, zN + 1.5, 1.2);
+    } else if (place === 'orchard') {
+      B.add(GEO.rrect(xb - xa, 9, 2), M((xa + xb) / 2, 0.035, zc), '#b5d97a', { ol: 0 });
+      fenceLine(B, xa, zN + 0.2, xb, zN + 0.2, '#fff8e8', '#fff8e8');
+      [[xa - 1, zc + 3.2], [xb + 1, zc + 3.4]].forEach(([x, z]) => { B.add(GEO.box(2, 1.1, 1.5), M(x, 0.55, z), COL.wood, { ol: 0.06 }); for (let k = 0; k < 3; k++) B.add(GEO.ico(0.38, 1), M(x - 0.55 + k * 0.55, 1.3, z), '#e4572e', { ol: 0.03 }); addCircleSolid(x, z, 1.1); });
+    } else if (place === 'mine') {
+      B.add(GEO.rrect(xb - xa, 10, 2.5), M((xa + xb) / 2, 0.035, zc), '#c9bfb2', { ol: 0 });
+      [-0.6, 0.6].forEach(dz => B.add(GEO.box(xb - xa - 2, 0.14, 0.18), M((xa + xb) / 2, 0.12, zc + 3.2 + dz), '#8a8f99', { ol: 0 }));
+      for (let x = xa + 1.5; x < xb - 1; x += 1.3) B.add(GEO.box(0.4, 0.08, 1.8), M(x, 0.07, zc + 3.2), COL.woodDark, { ol: 0 });
+      B.add(GEO.rbox(2.4, 1.2, 1.8, 0.3, 1), M(xb - 2, 1.0, zc + 3.2), '#8a8f99', { ol: 0.07 }); [-0.8, 0.8].forEach(dx => B.add(GEO.cyl(0.35, 0.35, 2, 8), M(xb - 2 + dx, 0.4, zc + 3.2, 0, Math.PI / 2), INKC, { ol: 0 })); addCircleSolid(xb - 2, zc + 3.2, 1.3);
+    }
+    list.forEach((w, i) => {
+      const x = wx(w.x), z = wz(w.y), ry = i % 2 ? Math.PI - 0.3 : 0.3;
+      if (w.type === 'cow') cow(B, x, z, ry);
+      else if (w.type === 'hen') hen(B, x, z, i % 2 ? 0.5 : -0.5 + Math.PI);
+      else if (w.type === 'apple') appleTree(B, x, z);
+      else if (w.type === 'ore') oreRock(B, x, z, i);
+    });
+  });
+}
+// what is ready to gather right now, shown on top of the static animals, trees and rocks
+function buildWorkState(B, D, mask) {
+  D.work.forEach((w, i) => {
+    if (!(mask & (1 << i))) return;
+    const x = wx(w.x), z = wz(w.y);
+    if (w.type === 'apple') APPLE_AT.forEach(([dx, y, dz], k) => { B.add(GEO.ico(0.36, 1), M(x + dx, y, z + dz), '#e4572e', { ol: 0.04 }); if (k % 3 === 0) B.add(GEO.box(0.06, 0.25, 0.06), M(x + dx, y + 0.4, z + dz), COL.woodDark, { ol: 0 }); });
+    else if (w.type === 'ore') { [[0, 2.0, 0.3, 0.55, 1.6, 0], [0.55, 1.75, 0.6, 0.4, 1.1, 0.4], [-0.5, 1.7, 0.7, 0.35, 1.0, -0.4]].forEach(([dx, y, dz, r, h, a]) => B.add(GEO.cone(r, h, 5), M(x + dx, y + h * 0.3, z + dz, a, 0, a * 0.5), '#ffd23f', { ol: 0.05 })); B.add(GEO.ico(0.3, 0), M(x - 0.9, 2.9, z + 0.6), '#fff8e8', { ol: 0 }); B.add(GEO.ico(0.22, 0), M(x + 1.1, 3.2, z + 0.4), '#fff8e8', { ol: 0 }); }
+    else if (w.type === 'hen') { const n = nestOf(x, z); B.add(GEO.sph(0.42, 10, 8), M(n.x - 0.15, 0.62, n.z, 0, 0.2, 0, 1, 1.3, 1), '#fff8e8', { ol: 0.05 }); B.add(GEO.sph(0.36, 10, 8), M(n.x + 0.35, 0.55, n.z + 0.1, 0, -0.3, 0, 1, 1.3, 1), '#f4dca0', { ol: 0.05 }); }
+    else if (w.type === 'cow') {
+      B.add(GEO.cyl(0.42, 0.46, 1.1, 10), M(x, 5.4, z), '#ffffff', { ol: 0.05 });
+      B.add(GEO.cyl(0.24, 0.34, 0.4, 10), M(x, 6.15, z), '#ffffff', { ol: 0.04 });
+      B.add(GEO.cyl(0.27, 0.27, 0.2, 10), M(x, 6.45, z), COL.blue, { ol: 0.03 });
+      B.add(GEO.box(0.86, 0.35, 0.05), M(x, 5.3, z + 0.44), '#8fdcf2', { ol: 0 });
+      [[-1, 6.3, 0.3], [1.05, 5.1, 0.2], [0.8, 6.8, 0.15]].forEach(([dx, y, s]) => B.add(GEO.star(s * 2.2, s, 0.08), M(x + dx, y, z + 0.3), COL.yellow, { ol: 0 }));
+    }
+  });
+}
+const workMask = new Map();
+let workT = 0;
+function updateWork() {
+  const town = townNow, now = hooks.now(), wk = town && town.work;
+  for (const k of builtDistricts) {
+    const D = T.district(k), list = D.work;
+    if (!list.length) continue;
+    let m = 0;
+    for (let i = 0; i < list.length; i++) { const t = wk ? wk[list[i].id] : 0; if (!t || now - t >= T.WORK_REGROW) m |= 1 << i; }
+    if (workMask.get(k) === m) continue;
+    workMask.set(k, m);
+    setPart('work:' + k, m, B => buildWorkState(B, D, m));
+  }
+}
+
+// instanced kits for the new kinds of trees: palms, cactus, mushrooms, snowy pines
+function ensureKits() {
+  if (TK.palm || !TK.oak) return;
+  const palmK = new Builder(); palmParts(palmK, 0, 0);
+  const cactus = new Builder();
+  cactus.add(GEO.capsule(0.62, 4.2), M(0, 2.7, 0), '#6fae5a', { ol: 0.1 });
+  cactus.add(GEO.cyl(0.36, 0.36, 1.4, 7), M(1.0, 2.4, 0, 0, 0, Math.PI / 2), '#6fae5a', { ol: 0.08 });
+  cactus.add(GEO.capsule(0.36, 1.3), M(1.62, 3.1, 0), '#77b865', { ol: 0.08 });
+  cactus.add(GEO.cyl(0.32, 0.32, 1.2, 7), M(-0.9, 3.1, 0, 0, 0, Math.PI / 2), '#6fae5a', { ol: 0.08 });
+  cactus.add(GEO.capsule(0.32, 1.0), M(-1.45, 3.7, 0), '#77b865', { ol: 0.08 });
+  cactus.add(GEO.ico(0.3, 0), M(0, 5.35, 0), '#ff8fb1', { ol: 0.04 });
+  const shroom = new Builder();
+  shroom.add(GEO.cyl(0.28, 0.36, 1.1, 8), M(0, 0.55, 0), '#fff3d6', { ol: 0.05 });
+  shroom.add(GEO.sph(0.95, 12, 6, true), M(0, 0.95, 0, 0, 0, 0, 1, 0.75, 1), '#e4572e', { ol: 0.07 });
+  [[0.4, 1.45, 0.3], [-0.45, 1.4, -0.2], [0.05, 1.62, -0.45], [-0.2, 1.5, 0.5]].forEach(([x, y, z]) => shroom.add(GEO.ico(0.13, 0), M(x, y, z), '#fff8e8', { ol: 0 }));
+  const snowpine = new Builder();
+  snowpine.add(GEO.cyl(0.45, 0.6, 2.4, 6), M(0, 1.2, 0), '#8a5a34', { ol: 0.1 });
+  [[3.0, 3.6, 3.6, '#4f8a57'], [2.4, 3.2, 5.6, '#5a9760'], [1.7, 2.8, 7.4, '#64a468']].forEach(([r, h, cy, c]) => {
+    snowpine.add(GEO.cone(r, h, 8), M(0, cy, 0), c, { ol: 0.12, ao: 0.15 });
+    const k = 0.62, rr = r * k * 1.05, hh = h * k;
+    snowpine.add(GEO.cone(rr, hh, 8), M(0, cy + h / 2 - hh / 2 + 0.08, 0), '#f7fbff', { ol: 0 });
+  });
+  Object.assign(TK, { palm: palmK, cactus, shroom, snowpine });
+}
+
 /* ------------------------------------------------------------------ building a new district */
 const builtDistricts = new Set(), distRight = { x: SLAB.x1 };
 function buildDistrict(k) {
   if (builtDistricts.has(k)) return;
   builtDistricts.add(k);
-  const D = T.district(k), B = new Chunked(CELL), atlas = new TextAtlas(1024, 1024), prevText = curText;
+  try { buildTown(k); } finally { RK = 2; }
+}
+function buildTown(k) {
+  ensureKits();
+  const D = T.district(k), B = new Chunked(CELL), atlas = new TextAtlas(1024, 1024), prevText = curText, KL = KIND_LOOK[D.kind] || KIND_LOOK.rural;
   curText = atlas;
   const x0 = wx(D.x0), x1 = wx(D.x1), z0 = wz(SLAB.y0), z1 = wz(SLAB.y1), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = x1 - x0, d = z1 - z0;
-  B.add(GEO.box(w, 1.4, d), M(cx, -0.7, cz), COL.grass, { ol: 0 });
+  B.add(GEO.box(w, 1.4, d), M(cx, -0.7, cz), KL.ground || COL.grass, { ol: 0 });
   B.add(GEO.box(w, 5, d - 0.6), M(cx, -3.8, cz), '#a0673b', { ol: 0, ao: 0.35 });
   B.add(GEO.box(w, 2.2, d - 1.2), M(cx, -7.3, cz), '#7d5a44', { ol: 0, ao: 0.3 });
-  const r = rng(k * 977 + 3);
-  for (let i = 0; i < 26; i++) { const px = D.x0 + r() * T.DW, py = SLAB.y0 + r() * (SLAB.y1 - SLAB.y0), rr = (60 + r() * 90) * S; B.add(GEO.disc(1, 20), M(wx(px), 0.02 + (i % 5) * 0.002, wz(py), i * 0.7, 0, 0, rr, 1, rr * 0.6), i % 3 ? COL.grass2 : COL.grass3, { ol: 0 }); }
+  const r = rng(k * 977 + 3), PC = KL.patch || [COL.grass2, COL.grass3];
+  for (let i = 0; i < 26; i++) { const px = D.x0 + r() * T.DW, py = SLAB.y0 + r() * (SLAB.y1 - SLAB.y0), rr = (60 + r() * 90) * S; B.add(GEO.disc(1, 20), M(wx(px), 0.02 + (i % 5) * 0.002, wz(py), i * 0.7, 0, 0, rr, 1, rr * 0.6), i % 3 ? PC[0] : PC[1], { ol: 0 }); }
   D.roads.forEach(([ax, ay, bx, by]) => {
     const len = Math.hypot(bx - ax, by - ay) * S, ang = Math.atan2(by - ay, bx - ax), mx = wx((ax + bx) / 2), mz = wz((ay + by) / 2);
     B.add(GEO.box(len, 0.06, 9.6), M(mx, 0.03, mz, -ang), COL.roadEdge, { ol: 0 });
@@ -1686,7 +2800,10 @@ function buildDistrict(k) {
   buildNature(B, D, trees2);
   // the soccer field next to the stadium
   if (D.landmarks.some(L => L.type === 'stadium')) buildField(B, D.x0 + 1450, 420);
-  // a few trees and flowers
+  // what must stay clear: the nature corner, roads, rail, the station and landmarks (and their doorsteps), plots, the bus stop,
+  // the welcome gate, the garden, the gathering spots, and whatever this town already built
+  const taken = [], G = D.garden, WB = [];
+  D.landmarks.forEach(L => { const ws = D.work.filter(q => q.place === L.type); if (ws.length) WB.push([Math.min(...ws.map(q => q.x)) - 90, 1350, Math.max(...ws.map(q => q.x)) + 90, 1500]); });
   const inZone = (gx, gy, pad) => (gx > D.x0 + 20 - pad && gx < D.x0 + 960 + pad && gy > -160 - pad && gy < 1440 + pad);
   const blocked = (gx, gy, pad) => {
     if (gy < T.RAIL_Y + 60 + pad || gy > SLAB.y1 - 40) return true;
@@ -1696,25 +2813,63 @@ function buildDistrict(k) {
     for (const p of D.plots) if (gx > p.x - pad && gx < p.x + p.w + pad && gy > p.y - pad && gy < p.y + p.h + pad) return true;
     if (Math.hypot(gx - D.stop.x, gy - D.stop.y) < 120 + pad) return true;
     if (D.landmarks.some(L => L.type === 'stadium') && gx > D.x0 + 1150 - pad && gx < D.x0 + 1750 + pad && gy > 200 - pad && gy < 640 + pad) return true;
+    if (D.gate && Math.hypot(gx - D.gate.x, gy - D.gate.y) < 130 + pad) return true;
+    if (G && Math.abs(gx - G.x) < G.w / 2 + 25 + pad && Math.abs(gy - G.y) < G.h / 2 + 25 + pad) return true;
+    for (const b of WB) if (gx > b[0] - pad && gx < b[2] + pad && gy > b[1] - pad && gy < b[3] + pad) return true;
+    for (const t of taken) if (gx > t[0] - pad && gx < t[2] + pad && gy > t[1] - pad && gy < t[3] + pad) return true;
     return false;
   };
+  const decorBlocked = (gx, gy, pad) => blocked(gx, gy, pad) || (D.kind === 'beach' && gy > BEACH_SAND - 10 - pad);
+  const clearRect = (a, b, c, e, flat) => {
+    for (const t of taken) if (c > t[0] && a < t[2] && e > t[1] && b < t[3]) return false;
+    const nx = Math.max(1, Math.ceil((c - a) / 30)), ny = Math.max(1, Math.ceil((e - b) / 30));
+    for (let i = 0; i <= nx; i++) for (let j = 0; j <= ny; j++) {
+      const gx = a + (c - a) * i / nx, gy = b + (e - b) * j / ny;
+      if (blocked(gx, gy, 0) || (flat && hillH(wx(gx), wz(gy)) > 0.3)) return false;
+    }
+    return true;
+  };
+  // find a clear spot (game px) for something pw x ph in one of the zones; it is then taken
+  const put = (pw, ph, zones, o = {}) => {
+    const pad = o.pad ?? 20;
+    for (let t = 0; t < (o.tries || 40); t++) {
+      const zn = zones[Math.floor(r() * zones.length)], ax = D.x0 + zn[0] + pw / 2 + pad, bx2 = D.x0 + zn[2] - pw / 2 - pad, ay = zn[1] + ph / 2 + pad, by = zn[3] - ph / 2 - pad;
+      if (bx2 < ax || by < ay) continue;
+      const gx = ax + r() * (bx2 - ax), gy = ay + r() * (by - ay);
+      if (!clearRect(gx - pw / 2 - pad, gy - ph / 2 - pad, gx + pw / 2 + pad, gy + ph / 2 + pad, o.flat)) continue;
+      taken.push([gx - pw / 2, gy - ph / 2, gx + pw / 2, gy + ph / 2]);
+      return { x: gx, y: gy };
+    }
+    return null;
+  };
+  RK = 1;   // from here on: the town's own scenery (the station, landmarks and bus stop above look exactly as before)
+  buildGate(B, D);
+  if (G) buildGarden(B, G, D.kind, trees2);
+  buildWorkStatic(B, D);
+  if (KIND_BUILD[D.kind]) KIND_BUILD[D.kind](B, D, { r, put, trees: trees2, taken, blocked, decorBlocked, clearRect });
+  // trees and flowers, the way this kind of town has them
   const decor = [];
-  for (let i = 0; i < 500 && decor.length < 60; i++) {
-    const edge = r() < 0.55, gx = D.x0 + r() * T.DW, gy = edge ? (r() < 0.5 ? SLAB.y1 - 30 - r() * 60 : SLAB.y0 + 200 + r() * 40) : SLAB.y0 + r() * (SLAB.y1 - SLAB.y0);
-    if (blocked(gx, gy, 30) || decor.some(q => Math.hypot(q[0] - gx, q[1] - gy) < 80)) continue;
+  for (let i = 0; i < KL.trees * 12 && decor.length < KL.trees; i++) {
+    const edge = r() < 0.5, gx = D.x0 + r() * T.DW, gy = edge ? (r() < 0.5 ? SLAB.y1 - 30 - r() * 60 : SLAB.y0 + 200 + r() * 40) : SLAB.y0 + r() * (SLAB.y1 - SLAB.y0);
+    if (decorBlocked(gx, gy, 30) || decor.some(q => Math.hypot(q[0] - gx, q[1] - gy) < KL.gap)) continue;
     decor.push([gx, gy]);
-    trees2.push({ kind: r() < 0.6 ? 'oak' : 'pine', x: wx(gx), z: wz(gy), s: 0.85 + r() * 0.45, r: i + k * 1000 });
+    trees2.push({ kind: KL.kinds[Math.floor(r() * KL.kinds.length)], x: wx(gx), z: wz(gy), s: 0.85 + r() * 0.45, r: i + k * 1000 });
   }
-  trees2.forEach(t => addCircleSolid(t.x, t.z, 1.2 * t.s));
-  const fls = [];
-  for (let i = 0; i < 600 && fls.length < 120; i++) { const gx = D.x0 + r() * T.DW, gy = SLAB.y0 + 250 + r() * (SLAB.y1 - SLAB.y0 - 300); if (blocked(gx, gy, 6)) continue; const c = ['#ff8fb1', '#fff8e8', COL.yellow, '#b98cff'][Math.floor(r() * 4)]; for (let j = 0; j < 3; j++) fls.push({ x: wx(gx) + (r() - 0.5) * 3, z: wz(gy) + (r() - 0.5) * 3, c }); }
+  trees2.forEach(t => {
+    const h = hillH(t.x, t.z);
+    if (h > 0.2) { const sl = slopeAt(t.x, t.z); t.y = h - Math.min(1.2, Math.hypot(sl.gx, sl.gz) * 0.9) - 0.05; if (D.kind === 'mountain' && t.kind === 'pine' && h > 2.5) t.kind = 'snowpine'; }
+    addCircleSolid(t.x, t.z, (TREE_R[t.kind] || 1.2) * t.s);
+  });
+  const fls = [], FC = KL.fcols || ['#ff8fb1', '#fff8e8', COL.yellow, '#b98cff'];
+  for (let i = 0; i < KL.flowers * 5 && fls.length < KL.flowers; i++) { const gx = D.x0 + r() * T.DW, gy = SLAB.y0 + 250 + r() * (SLAB.y1 - SLAB.y0 - 300); if (decorBlocked(gx, gy, 6) || hillH(wx(gx), wz(gy)) > 0.2) continue; const c = FC[Math.floor(r() * FC.length)]; for (let j = 0; j < 3; j++) fls.push({ x: wx(gx) + (r() - 0.5) * 3, z: wz(gy) + (r() - 0.5) * 3, c }); }
   B.meshes().forEach(m => { m.matrixAutoUpdate = false; m.children.forEach(c => { c.matrixAutoUpdate = false; }); scene.add(m); });
   curText = prevText;
   const tm = atlas.mesh(); if (tm) scene.add(tm);
   if (TK.oak) {
-    instanced(TK.oak, trees2.filter(t => t.kind === 'oak'), (it, m, c) => TK.tint(it, m, c, 0.16));
-    instanced(TK.pine, trees2.filter(t => t.kind === 'pine'), (it, m, c) => TK.tint(it, m, c, 0.14));
-    instanced(TK.fl, fls, (it, m, c) => { m.makeTranslation(it.x, 0, it.z); c.set(it.c); }, 1000).forEach(m => { m.castShadow = false; });
+    const byKind = {};
+    trees2.forEach(t => (byKind[t.kind] = byKind[t.kind] || []).push(t));
+    Object.entries(byKind).forEach(([kind, list]) => { if (TK[kind]) instanced(TK[kind], list, (it, m, c) => TK.tint(it, m, c, kind === 'oak' ? 0.16 : 0.14)); });
+    if (fls.length) instanced(TK.fl, fls, (it, m, c) => { m.makeTranslation(it.x, 0, it.z); c.set(it.c); }, 1000).forEach(m => { m.castShadow = false; });
   }
   [D.station, ...D.landmarks].forEach(addKeeper);
   // things to kick around
@@ -2037,6 +3192,10 @@ function buildAll() {
   buildTownFarm();
   buildForestStatic();
   buildDecor();
+  // the logo lawn is a garden now: no stray flowers or tufts inside its hedges
+  const inGarden = it => { const gx = gxOf(it.x), gy = gyOf(it.z); return gx > 4392 && gx < 4654 && gy > 1238 && gy < 1400; };
+  for (const L of [flowers, tufts]) for (let i = L.length - 1; i >= 0; i--) if (inGarden(L[i])) L.splice(i, 1);
+  buildOldGarden();
   buildHome();
   buildRail(W, SLAB.x0, SLAB.x1);
   buildLandmark(W, T.STATION);
@@ -2096,6 +3255,7 @@ function updateTown(town) {
   if (town) townNow = town;
   town = townNow;
   for (let k = 1; k <= ((town && town.districts) || 0); k++) buildDistrict(k);
+  updateWork();
   updateFrontier(town);
   T.allPlots(town).forEach(p => { const st = town && town.plots[p.id]; setPart('plot:' + p.id, plotSig(p, st, now), B => buildPlot(B, p, st, now)); });
   setPart('townfarm', townFarmSig(town, now), B => {
@@ -2642,6 +3802,8 @@ function frame() {
   syncOthers(dt, t);
   try { hooks.tick(dt); } catch (e) { console.error(e); }
   if ((townT -= dt) <= 0) { townT = 1; updateTown(); }   // crops grow, saplings become trees
+  else if ((workT -= dt) <= 0) { workT = 0.25; updateWork(); }   // apples, eggs, milk and ore come back
+  for (let i = 0; i < spinners.length; i++) spinners[i].rotation.z -= dt * 0.9;   // windmills turn
   // camera follows with a little lead in the walking direction
   const lead = 0.35, k = 1 - Math.exp(-dt * 4.5);
   camTarget.x += (player.x + player.vx * lead - camTarget.x) * k;
