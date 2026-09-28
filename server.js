@@ -28,10 +28,10 @@ const lastPost = new Map();
 /* ---------- the leaderboard: one record per player, many ways to shine ---------- */
 // Every board counts something that only goes up, so nobody drops down for spending or for a bad day.
 const SW_BOARD_FILE = path.join(DATA_DIR, 'swboard.json');
-const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', noodles: 'noodles', trophies: 'race wins', perfect: 'perfect days', kinds: 'kinds of towns', nights: 'nights', week: 'stars this week' };
-const SW_STATS = ['xp', 'earned', 'mem', 'noodles', 'perfect', 'kinds', 'nights'];
+const SW_BOARDS = { xp: 'stars', earned: 'coins earned', mem: 'memories', noodles: 'noodles', trophies: 'race wins', perfect: 'perfect days', kinds: 'kinds of towns', far: 'farthest from home (m)', disc: 'discoveries', nights: 'nights', week: 'stars this week' };
+const SW_STATS = ['xp', 'earned', 'mem', 'noodles', 'perfect', 'kinds', 'nights', 'far', 'disc'];
 // how much each number may grow per minute since the last update (plus a start allowance), so one bad post cannot jump to the top
-const SW_GROW = { xp: [60, 40], earned: [600, 400], mem: [15, 5], noodles: [5, 2], perfect: [3, 1], kinds: [10, 3], nights: [5, 2] };
+const SW_GROW = { xp: [60, 40], earned: [600, 400], mem: [15, 5], noodles: [5, 2], perfect: [3, 1], kinds: [10, 3], nights: [5, 2], far: [2000, 1500], disc: [10, 6] };
 let swBoard = {};
 try { swBoard = JSON.parse(fs.readFileSync(SW_BOARD_FILE, 'utf8')) || {}; } catch (e) { swBoard = {}; }
 let swDirty = false, swCache = new Map();

@@ -25,6 +25,13 @@ const NOODLE_DEX = [
   { id: 'bubble', name: 'Soup Bubble', rarity: 'rare', shape: 'bubble', color: '#e9f6ff', hint: "Cook something in Grandma's kitchen." },
   { id: 'slowudon', name: 'Slow Udon', rarity: 'rare', shape: 'slow', color: '#f7e2b5', hint: 'Welcome the Udon Snail home.' },
   { id: 'thunder', name: 'Thunder Noodle', rarity: 'legendary', shape: 'thunder', color: '#ffd23f', hint: 'Win a Crunch Race.' },
+  { id: 'trail', name: 'Trail Noodle', rarity: 'common', shape: 'straight', color: '#8cbf5a', hint: 'Walk 1 km out in the Wild.' },
+  { id: 'compass', name: 'Compass Curl', rarity: 'rare', shape: 'curl', color: '#f4b942', hint: 'Find 10 discoveries in the Wild.' },
+  { id: 'frost', name: 'Frosty Vermicelli', rarity: 'rare', shape: 'ice', color: '#bfe9ff', hint: 'Reach the Snowlands, far to the north.' },
+  { id: 'sand', name: 'Desert Crackle', rarity: 'rare', shape: 'crackle', color: '#ecd29a', hint: 'Reach a desert, towards the equator.' },
+  { id: 'wave', name: 'Ocean Wave Noodle', rarity: 'rare', shape: 'wave', color: '#6cc4e6', hint: 'Swim out into the ocean.' },
+  { id: 'polar', name: 'Polar Noodle', rarity: 'legendary', shape: 'snow', color: '#eef4fb', hint: 'Stand at a pole of the planet.' },
+  { id: 'globe', name: 'Round-the-World Ramen', rarity: 'secret', shape: 'bubble', color: '#8fdcf2', hint: 'Go all the way round the planet.' },
   { id: 'peak', name: 'Summit Soba', rarity: 'legendary', shape: 'peak', color: '#9a7b5b', hint: 'Visit all ten kinds of towns.' },
 ];
 const NOODLE_BY_ID = Object.fromEntries(NOODLE_DEX.map(n => [n.id, n]));

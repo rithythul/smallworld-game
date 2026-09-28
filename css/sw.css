@@ -428,3 +428,30 @@ button.sure { background: #ffe08a !important; }
 .acct-row input { flex: 1 1 120px; min-width: 0; border: 3px solid var(--ink); border-radius: 12px; padding: 8px 10px; font: inherit; font-weight: 700; }
 .acct-row .pin-in { flex: 0 0 110px; letter-spacing: 4px; text-align: center; }
 .sheet-sub.bad, .small.bad { color: #c0392b; }
+
+/* the compass in the Wild */
+#wildBar { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 112px); left: 50%; transform: translateX(-50%); z-index: 29; display: flex; align-items: center; gap: 8px; background: var(--paper, #fff8e8); border: 3px solid var(--ink); border-radius: 16px; padding: 4px 12px; font: inherit; font-weight: 800; color: var(--ink); box-shadow: 0 3px 0 var(--ink); cursor: pointer; }
+#wildBar .wb-arrow { display: inline-block; font-size: 20px; color: #e4572e; transition: transform .3s; }
+#wildBar b { font-size: 16px; }
+#wildBar small { font-size: 12px; opacity: .75; }
+body:has(#raceBar) #wildBar { top: calc(env(safe-area-inset-top, 0px) + 204px); }
+
+/* the planet view */
+#globe { position: fixed; inset: 0; z-index: 1000; background: radial-gradient(ellipse at 50% 40%, #2b2f63 0%, #151735 60%, #0b0c1f 100%); }
+#globe::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(1.5px 1.5px at 12% 20%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 70% 12%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 85% 70%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 30% 80%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 55% 45%, #fffbe0 50%, transparent 51%), radial-gradient(1.5px 1.5px at 20% 60%, #fff 50%, transparent 51%); opacity: .7; pointer-events: none; }
+#globe canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#globe .gl-top { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 12px); left: 16px; right: 16px; display: flex; align-items: center; gap: 10px; color: #fff8e8; font-weight: 800; }
+#globe .gl-top b { font-family: var(--display); font-size: 22px; }
+#globe .gl-where { opacity: .8; font-size: 14px; }
+#globe .gl-close { margin-left: auto; border: 3px solid var(--ink); border-radius: 14px; background: var(--paper, #fff8e8); font: inherit; font-weight: 800; padding: 6px 14px; color: var(--ink); cursor: pointer; }
+#globe .gl-pick { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 64px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--paper, #fff8e8); border: 3px solid var(--ink); border-radius: 16px; padding: 6px 8px 6px 14px; font-weight: 800; max-width: calc(100% - 32px); box-shadow: 0 3px 0 var(--ink); }
+#globe .gl-go { border: 3px solid var(--ink); border-radius: 12px; background: #8cbf5a; font: inherit; font-weight: 800; padding: 4px 12px; cursor: pointer; }
+#globe .gl-hint { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); text-align: center; color: #fff8e8; opacity: .75; font-weight: 700; margin: 0; }
+
+/* travelling through the clouds */
+#travelFade { position: fixed; inset: 0; z-index: 80; pointer-events: none; opacity: 0; transition: opacity .6s ease; background: radial-gradient(ellipse at 50% 50%, #ffffff 0%, #f1f7ff 55%, #dbe9fb 100%); display: flex; align-items: center; justify-content: center; gap: 6vw; font-size: 16vmin; }
+#travelFade.on { opacity: 1; }
+#travelFade span { animation: cloudDrift 2.4s ease-in-out infinite alternate; }
+#travelFade span:nth-child(2) { animation-delay: -.8s; font-size: .7em; }
+#travelFade span:nth-child(3) { animation-delay: -1.6s; }
+@keyframes cloudDrift { from { transform: translateX(-3vw); } to { transform: translateX(3vw); } }

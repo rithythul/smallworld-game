@@ -55,6 +55,23 @@ Small Town is only the first town. Six more are open from the very first minute 
 
 Every town has a 🛒 local market that pays more for what that town wants (Downtown pays ×1.5 for milk; the mountains pay more for fish), so it pays to carry things where they are wanted. Every town also has a 🌱 Small World Garden with the Small World mark in the middle. New dreams: Traveler, Rancher, Mountaineer, Investor and Graduate.
 
+### A whole planet
+
+Small World is a round planet, about 100 km around, and every bit of it is made from numbers as you walk (`js/planet.js`). There are no walls: walk off the edge of town in any direction and you are in **the Wild**.
+
+- **The same planet for everyone.** The land comes from fixed numbers, not from a server, so friends see the same hills, seas and discoveries, and it is all still there when you come back.
+- **Climate by latitude.** Small Town sits at 30°N. Walk north (up the screen) through forests and pine woods into the Snowlands and on to the North Pole; walk south towards the warm equator for deserts and jungle, and on to the South Pole. Mountain ranges have snowy tops, and oceans and seas lie between the continents: swim across them.
+- **All the way round.** East and west wrap: walk far enough east (about an hour and a half) and you come back home from the west.
+- **Discoveries:** about four chunks in ten hold something to find (stone circles, old ruins, wishing wells, campsites, Squareface statues, watchtowers, giant mushrooms, crystal caves, snow forts, red arches, mesas, lighthouses and the poles). Each is ⭐ +2 (ten a day) and a memory, with a noodle brick beside it. New noodles for exploring: Trail, Compass, Frosty, Desert, Ocean Wave, Polar and Round-the-World.
+- **Never lost.** In the Wild a compass shows how far home is and which way, and the minimap turns into a compass. Tap it for 🎈 **Fly home**. Leaderboards for the farthest from home and the most discoveries.
+- **🌍 See the planet** (map screen): a globe like Google Earth, painted from the same numbers. It opens close above you and pulls back to the whole planet; drag to spin, pinch or scroll to zoom, and tap anywhere to set a destination the arrow will point to.
+- **The ground curves away** to the horizon, like a little planet.
+- **How it stays fast:** the Wild is built in 100 m chunks near you, one small piece per frame, and chunks far behind are thrown away, so walking for hours uses the same memory as walking for a minute. Far-away townsfolk rest instead of animating. Slow devices get a thinner Wild.
+
+### Travel you can watch
+
+Every trip is a little film. A plane taxis, takes off, climbs, flies through the clouds on a long trip and lands; a boat sails out and in with spray behind it; the rocket launches with flames and touches down; the balloon rises, drifts and floats down with you in the basket; the bus and train drive along the road and the rails. The camera follows the whole way.
+
 ### Small Town Days (from Noodle Universe)
 
 - **🌅 Morning swim** in the Sunrise Pool by the Apartments, **🌇 a sunset sip** at the water tap, **🛏️ bedtime** at home. Each gives ⭐ and a few coins in its time window; the pool and tap work all day. All three make a Healthy Day. At bedtime you dream: catch stars and count them while the night passes. Older kids who slept work 10% better the next day, and teens see tomorrow's budget before bed.
@@ -131,6 +148,8 @@ When the container is stopped (for example on a redeploy) the server saves towns
 | `index.html`, `css/sw.css` | Small World page and styles |
 | `js/world3d.js` | The 3D town (three.js): buildings, farms, forest, projects, Squarefaces, name tags, day and night, walking |
 | `js/sw.js` | Small World game: HUD, places, jobs, school, bank, market, land, dreams, rooms |
+| `js/planet.js` | The planet: continents, seas, mountains, climate and biomes, the same for every player |
+| `js/globe.js` | The planet view: a globe you can spin and tap |
 | `js/town.js` | Town rules shared by the browser and the server: land, crops, prices, forest, weather, taxes, votes, elections, growing districts |
 | `js/life.js` | Your life's rules: the rulebook by age, money, jobs and wages, certificates, bank, vehicles, companies, channel, memories, morning bills, rituals, stars, daily challenges, dreams |
 | `test/life.test.js` | `npm test`: checks the rules, like "a 6-year-old's coins only go down when they tap Buy" |

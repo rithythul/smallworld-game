@@ -6,7 +6,9 @@
 // The game logic lives in js/sw.js and talks to this file through window.World.
 import * as THREE from './vendor/three.module.min.js';
 // A planet, not a flat board: every vertex drops a little with its distance from the middle of the view, so the
-// ground curves away to the horizon. Only for the perspective camera: shadows (orthographic) are made flat.
+// ground curves away to the horizon. Only for the game's own camera: a perspective camera whose near plane is past
+// 1 unit (the game uses 2). Shadows (orthographic) stay flat, and so does anything else three.js draws on the
+// page, like the planet view's globe (near 0.01). near = P[3][2] / (P[2][2] - 1) for a perspective matrix.
 const BEND_K = 1 / 1800, BEND_OFF = 95;   // a 900 m bend radius for the eye; the view centre sits BEND_OFF in front of the camera
 THREE.ShaderChunk.project_vertex = `
 vec4 bwp = vec4( transformed, 1.0 );
@@ -17,7 +19,7 @@ bwp = batchingMatrix * bwp;
 bwp = instanceMatrix * bwp;
 #endif
 bwp = modelMatrix * bwp;
-if ( projectionMatrix[ 3 ][ 3 ] < 0.5 ) {
+if ( projectionMatrix[ 3 ][ 3 ] < 0.5 && projectionMatrix[ 3 ][ 2 ] / ( projectionMatrix[ 2 ][ 2 ] - 1.0 ) > 1.0 ) {
   vec2 bdd = bwp.xz - cameraPosition.xz + vec2( 0.0, ${BEND_OFF.toFixed(1)} );
   bwp.y -= dot( bdd, bdd ) * ${BEND_K.toFixed(8)};
 }
@@ -3152,6 +3154,139 @@ function stepRide(dt) {
   }
 }
 
+/* ------------------------------------------------------------------ travel: every trip is a little film */
+// A plane taxis, takes off, climbs and lands; a boat sails out and in; a rocket launches and touches down;
+// a balloon rises, drifts and floats down. Long trips pass through clouds half way (a short fade), so a
+// trip to the other side of the planet still takes only a few seconds. The camera follows the whole way.
+const travelKit = {};
+function travelMesh(kind) {
+  if (travelKit[kind]) return travelKit[kind];
+  const B = new Builder();
+  if (kind === 'plane') planeParts(B, 0, 0, 0, '#ffffff', 0);
+  if (kind === 'boat') {
+    B.add(GEO.rbox(5.2, 1.8, 11, 0.8, 1), M(0, 0.6, 0), COL.roof, { ol: 0.1 });
+    B.add(GEO.rbox(5.3, 0.5, 11.1, 0.25, 1), M(0, 1.6, 0), '#ffffff', { ol: 0.06 });
+    B.add(GEO.rbox(3.4, 2.4, 3.6, 0.4, 1), M(0, 3, -1.6), '#fff8e8', { ol: 0.08 });
+    B.add(GEO.rbox(3.6, 0.4, 3.8, 0.2, 1), M(0, 4.3, -1.6), COL.blue, { ol: 0.05 });
+    [-0.9, 0.9].forEach(dx => B.add(GEO.disc(0.45, 12), M(dx, 3.2, 0.21, 0, Math.PI / 2), '#9ff3ff', { ol: 0 }));
+    B.add(GEO.cyl(0.12, 0.12, 5, 6), M(0, 6.6, -1.6), INKC, { ol: 0 });
+    B.add(GEO.box(0.12, 1.4, 2.2), M(0, 8.2, -0.6), COL.yellow, { ol: 0.04 });
+  }
+  if (kind === 'rocket') {
+    B.add(GEO.cyl(2, 2.2, 10, 16), M(0, 6, 0), '#ffffff', { ol: 0.1 });
+    B.add(GEO.cone(2, 4, 16), M(0, 13, 0), COL.roof, { ol: 0.1 });
+    B.add(GEO.disc(0.9, 14), M(0, 8.5, 2.05, 0, Math.PI / 2), '#8fdcf2', { ol: 0.05 });
+    [0, 2.09, 4.19].forEach(a => B.add(GEO.box(0.3, 3.4, 2.2), M(Math.sin(a) * 2.2, 2.4, Math.cos(a) * 2.2, a), COL.roof, { ol: 0.06 }));
+  }
+  if (kind === 'balloon') {
+    const stripes = ['#e4572e', '#ffd23f', '#5b7cfa', '#8cbf5a', '#ff8fb1', '#b98cff'];
+    for (let i = 0; i < 6; i++) B.add(GEO.sph(5.2, 18, 14), M(0, 12, 0, i * Math.PI / 3, 0, 0, 1, 1.12, 1), stripes[i], { ol: i ? 0 : 0.14 });
+    B.add(GEO.cone(2.2, 3, 12), M(0, 5.4, 0, 0, Math.PI), '#e4572e', { ol: 0.07 });
+    [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]].forEach(([dx, dz]) => B.add(GEO.cyl(0.05, 0.05, 4.4, 4), M(dx, 3.4, dz), INKC, { ol: 0 }));
+    B.add(GEO.rbox(3.2, 1.8, 3.2, 0.3, 1), M(0, 0.9, 0), COL.wood, { ol: 0.08 });
+  }
+  const mesh = B.mesh(); mesh.visible = false; scene.add(mesh);
+  if (kind === 'rocket') {   // a flame under the rocket, flickering while it flies
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(1.4, 5, 10), new THREE.MeshBasicMaterial({ color: '#ffb347' }));
+    flame.rotation.x = Math.PI; flame.position.y = -2; flame.name = 'flame'; mesh.add(flame);
+  }
+  travelKit[kind] = mesh;
+  return mesh;
+}
+const fadeEl = (() => { const d = document.createElement('div'); d.id = 'travelFade'; d.innerHTML = '<span>☁️</span><span>☁️</span><span>☁️</span>'; document.body.appendChild(d); return d; })();
+let travelNow = null;
+// how each vehicle leaves and arrives: position along the way (0..1) -> {d: distance travelled, y: height}
+const TRAVEL = {
+  plane: { out: 4.2, in: 4.2, len: 150, alt: 34, leg: (k) => ({ d: k < 0.3 ? k * k * 1.6 : 0.144 + (k - 0.3) * 0.96, y: 34 * Math.max(0, Math.min(1, (k - 0.28) / 0.72)) ** 1.4 }) },
+  boat: { out: 4.5, in: 4.5, len: 80, alt: 0, leg: (k) => ({ d: k, y: 0 }) },
+  rocket: { out: 4, in: 3.6, len: 0, alt: 220, leg: (k) => ({ d: 0, y: 220 * k * k }) },
+  balloon: { out: 4, in: 4.6, len: 40, alt: 38, leg: (k) => ({ d: k, y: 38 * Math.sin(Math.min(1, k * 1.2) * Math.PI / 2) }) },
+};
+// jump to the end of a trip right now (a new trip, a jump to somewhere, or joining friends): nothing is left half done
+function finishTravel() {
+  const tn = travelNow; if (!tn) return;
+  travelNow = null;
+  if (!tn.b) { if (tn.o.mid) try { tn.o.mid(); } catch (e) { console.error(e); } const g = typeof tn.toG === 'function' ? tn.toG() : tn.toG; tn.b = { x: wx(g.x), z: wz(g.y) }; }
+  fadeEl.classList.remove('on'); tn.mesh.visible = false; flyH = 0;
+  player.sf.root.visible = true; player.vx = player.vz = 0; player.x = tn.b.x; player.z = tn.b.z; camTarget.x = player.x; camTarget.z = player.z;
+  if (tn.done) try { tn.done(); } catch (e) { console.error(e); }
+}
+function travel(kind, fromG, toG, done, o = {}) {
+  finishTravel();
+  if (rideNow) return false;
+  const K = TRAVEL[kind]; if (!K) return false;
+  const mesh = travelMesh(kind), a = { x: wx(fromG.x), z: wz(fromG.y) };
+  const b0 = typeof toG === 'function' ? null : { x: wx(toG.x), z: wz(toG.y) };
+  const span = b0 ? Math.hypot(b0.x - a.x, b0.z - a.z) : Infinity;
+  const far = !b0 || !!o.mid || span > K.len * 2.4;
+  // which way to set off: towards the destination, or (trips off the map) north, or out to sea for boats
+  const dir0 = b0 && span > 1 ? { x: (b0.x - a.x) / span, z: (b0.z - a.z) / span } : kind === 'boat' ? { x: 0, z: 1 } : { x: 0, z: -1 };
+  travelNow = { kind, mesh, K, a, b0, toG, far, dir: dir0, t: 0, stage: 'out', done, o, span };
+  mesh.visible = true;
+  player.vx = player.vz = 0;
+  player.sf.root.visible = kind === 'boat' || kind === 'balloon';
+  sleepTouch();
+  return true;
+}
+function sleepTouch() { keys.clear(); }
+function travelPos(tn, stage, k) {
+  const K = tn.K, L = K.leg(Math.max(0, Math.min(1, k)));
+  if (!tn.far) {   // a short hop: one smooth arc from here to there
+    const x = tn.a.x + (tn.b0.x - tn.a.x) * k, z = tn.a.z + (tn.b0.z - tn.a.z) * k;
+    return { x, z, y: tn.kind === 'boat' ? 0 : Math.sin(k * Math.PI) * K.alt * 0.7 };
+  }
+  const shore = tn.kind === 'boat' ? 16 : 0;   // a boat leaves from, and stops at, the water a little way off shore
+  if (stage === 'out') return { x: tn.a.x + tn.dir.x * (shore + K.len * L.d), z: tn.a.z + tn.dir.z * (shore + K.len * L.d), y: L.y };
+  // arriving: the same leg played backwards, ending at the destination
+  const b = tn.b, back = K.leg(1 - k);
+  return { x: b.x - tn.dir.x * (shore + K.len * back.d), z: b.z - tn.dir.z * (shore + K.len * back.d), y: back.y };
+}
+function stepTravel(dt) {
+  const tn = travelNow; if (!tn) return false;
+  tn.t += dt;
+  const K = tn.K, dur = tn.far ? (tn.stage === 'out' ? K.out : K.in) : Math.max(3, Math.min(7, tn.span / 30));
+  let k = Math.min(1, tn.t / dur);
+  if (tn.far && tn.stage === 'out' && k >= 1) {
+    // through the clouds: switch worlds if needed, then come in towards the destination
+    tn.stage = 'fade'; tn.t = 0; fadeEl.classList.add('on');
+    setTimeout(() => {
+      if (travelNow !== tn) return;   // finished early by something else
+      if (tn.o.mid) try { tn.o.mid(); } catch (e) { console.error(e); }
+      const g = typeof tn.toG === 'function' ? tn.toG() : tn.toG;
+      tn.b = { x: wx(g.x), z: wz(g.y) }; tn.stage = 'in'; tn.t = 0;
+      const p = travelPos(tn, 'in', 0); player.x = p.x; player.z = p.z; camTarget.x = p.x; camTarget.z = p.z;
+      wildReset();
+      setTimeout(() => fadeEl.classList.remove('on'), 150);
+    }, 650);
+    return true;
+  }
+  if (tn.stage === 'fade') return true;
+  const p = travelPos(tn, tn.stage, k), m = tn.mesh;
+  const ground = tn.kind === 'boat' ? 0.1 + Math.sin(now * 3) * 0.25 : Math.max(0, groundAt(p.x, p.z) + hillH(p.x, p.z));
+  const y = tn.kind === 'boat' ? ground : ground + p.y;   // height above the land below
+  m.position.set(p.x, y, p.z);
+  const heading = Math.atan2(tn.dir.x, tn.dir.z);
+  m.rotation.set(0, tn.kind === 'rocket' || tn.kind === 'balloon' ? 0 : heading, 0);
+  if (tn.kind === 'plane') { const climb = tn.far ? (tn.stage === 'out' ? 1 : -1) * (p.y > 1 && p.y < 33 ? 0.18 : 0) : 0; m.rotation.x = -climb; }
+  if (tn.kind === 'boat') { m.rotation.z = Math.sin(now * 2.2) * 0.06; if (Math.random() < dt * 8) burst(gxOf(p.x - tn.dir.x * 5), gyOf(p.z - tn.dir.z * 5), 'water', 3, 0.5); }
+  if (tn.kind === 'rocket') { const f = m.getObjectByName('flame'); if (f) { f.visible = p.y > 0.2 || tn.stage === 'out'; f.scale.set(1, 0.8 + Math.random() * 0.5, 1); } if (Math.random() < dt * 20 && p.y < 40) burst(gxOf(p.x), gyOf(p.z), 'confetti', 2, Math.max(0.5, p.y)); }
+  // you ride along: the camera follows, and it rises with the flight
+  // (the rocket is watched from the launch pad: it flies up and out of the picture)
+  player.x = p.x; player.z = p.z; flyH = tn.kind === 'rocket' ? Math.min(y, 14) : y * 0.9;
+  const sf = player.sf; sf.ground = y + (tn.kind === 'boat' ? 1.6 : tn.kind === 'balloon' ? 0.9 : 0);
+  sf.root.position.set(p.x, sf.y + sf.ground, p.z);
+  if (sf.root.visible) sf.targetFace = heading;
+  if (k >= 1) {
+    if (!tn.b) tn.b = tn.b0;
+    const done = tn.done; travelNow = null; m.visible = false; flyH = 0;
+    player.sf.root.visible = true; player.vx = player.vz = 0;
+    const g = tn.b || tn.b0; if (g) { player.x = g.x; player.z = g.z + (tn.kind === 'rocket' ? 5 : 0); }
+    collide(player);
+    if (done) try { done(); } catch (e) { console.error(e); }
+  }
+  return true;
+}
+
 /* ------------------------------------------------------------------ the guide: an arrow to where you need to go */
 let guideTarget = null;
 const guideEl = document.getElementById('guide');
@@ -3894,6 +4029,7 @@ let flyH = 0, swimming = false;
 let boost = 1;   // sw.js speeds up (or slows down) walking and swimming; wheels and wings keep their own speed
 function updatePlayer(dt, frozen) {
   const sf = player.sf;
+  if (travelNow) return;   // travelling: stepTravel moves you
   if (rideNow) { sf.root.position.x = player.x; sf.root.position.z = player.z; return; }
   let ix = 0, iz = 0;
   if (!frozen) {
@@ -4078,7 +4214,7 @@ function frame() {
   }
   updateHome(t); updatePickups(t); stepSleep(); stepRainbow(dt); stepShoots(dt, t);
   updateEffects(dt, t);
-  stepBalls(dt); stepFalling(dt); stepRide(dt); updateGuide(t);
+  stepBalls(dt); stepFalling(dt); stepRide(dt); stepTravel(dt); updateGuide(t);
   stepRain(dt, !!(hooks.raining && hooks.raining()) && !onTrip);
   player.sf.root.updateMatrixWorld(); npcs.forEach(n => { if (n.sf.root.visible) n.sf.root.updateMatrixWorld(); }); others.forEach(r => r.sf.root.updateMatrixWorld());
   updateLimbs();
@@ -4121,7 +4257,7 @@ window.World = {
   },
   hats: HATS,
   pos: () => ({ x: gxOf(player.x), y: gyOf(player.z) }),
-  place(gx, gy) { player.x = wx(gx); player.z = wz(gy); player.vx = player.vz = 0; collide(player); camTarget.set(player.x, 0, player.z); if (player.sf) player.sf.root.position.set(player.x, 0, player.z); },
+  place(gx, gy) { finishTravel(); player.x = wx(gx); player.z = wz(gy); player.vx = player.vz = 0; collide(player); camTarget.set(player.x, 0, player.z); if (player.sf) player.sf.root.position.set(player.x, 0, player.z); },
   state() { const sf = player.sf; return { moving: Math.hypot(player.vx, player.vz) > 1, face: sf ? Math.atan2(Math.sin(sf.face), Math.cos(sf.face)) / Math.PI : 0, hop: sf ? Math.round(sf.y * 10) : 0, mood: sf && now < sf.moodUntil ? sf.moodOverride : 'happy' }; },
   mood(m, secs = 1.5) { if (player.sf) { player.sf.moodOverride = m; player.sf.moodUntil = now + secs; } },
   npcMood(id, m, secs = 1.5) { const k = keepers.find(x => x.id === id); if (k) { k.sf.moodOverride = m; k.sf.moodUntil = now + secs; } },
@@ -4138,7 +4274,8 @@ window.World = {
   // physics and travel
   fellTree, addBall,
   ride(kind, from, to, done) { ride(kind, from, to, done); },
-  get riding() { return !!rideNow; },
+  get riding() { return !!rideNow || !!travelNow; },
+  travel,
   setVehicle(kind) { setVehicle(kind); },
   get vehicle() { return vehicleKind; },
   get flying() { return flyH > 2; },
@@ -4163,11 +4300,17 @@ window.World = {
   shootingStars(on) { setShootingStars(on); },
   guide(t) { guideTarget = t || null; },
   hillAt: (gx, gy) => hillH(wx(gx), wz(gy)),
-  goTrip(id) {
-    buildTrip(id); onTrip = id; gravity = id === 'moon' ? GRAV / 6 : GRAV;
-    const c = tripCenter(id); this.place(c.x, c.y + 280); return TRIP_SPOT[id];
+  goTrip(id, kind, done) {
+    const arrive = () => { buildTrip(id); onTrip = id; gravity = id === 'moon' ? GRAV / 6 : GRAV; };
+    const c = tripCenter(id), land = { x: c.x, y: c.y + 280 };
+    if (kind && travel(kind, { x: gxOf(player.x), y: gyOf(player.z) }, () => land, done, { mid: arrive })) return TRIP_SPOT[id];
+    finishTravel(); arrive(); this.place(land.x, land.y); if (done) done(); return TRIP_SPOT[id];
   },
-  endTrip(gx, gy) { onTrip = null; gravity = GRAV; this.place(gx, gy); },
+  endTrip(gx, gy, kind, done) {
+    const leave = () => { onTrip = null; gravity = GRAV; };
+    if (kind && travel(kind, { x: gxOf(player.x), y: gyOf(player.z) }, () => ({ x: gx, y: gy }), done, { mid: leave })) return;
+    finishTravel(); leave(); this.place(gx, gy); if (done) done();
+  },
   get trip() { return onTrip; },
   tripSpots: (id) => TRIP_SPOT[id] || [],
 };

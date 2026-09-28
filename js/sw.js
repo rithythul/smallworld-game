@@ -418,6 +418,8 @@
     { const d = dist(p, tap); if (d < (tap === HOME.tap ? 60 : 190)) add({ key: 'tap', label: 'Drink', icon: '💧', cls: 'water', run: () => sip() }, d, 10); }
     if (Life.ritualState(life, 'sleep', t) === 'open') { const h = homeDoor(), d = dist(p, h); if (d < (h.own ? 110 : 80)) add({ key: 'bed', label: 'Sleep', icon: '🛏️', cls: 'buy', run: () => goSleep() }, d, 30); }
     if (wonder && wonder.type === 'stars' && !life.wonders['wish:' + wonder.id]) add({ key: 'wish', label: 'Wish', icon: '🌠', cls: 'buy', run: () => makeWish() }, 90);   // anything close by comes first; otherwise the big button is a wish
+    // a discovery in the Wild
+    if (World.wildSpots && inWildNow()) World.wildSpots().forEach(q => { if (life.wild[q.id]) return; const d = dist(p, q); if (d < 130) { const [icon, name] = wildSpotName(q); add({ key: 'wild:' + q.id, label: life.band === 1 ? '' : name, icon, cls: 'buy', run: () => discover(q) }, d, 20); } });
     // a friend close by: see their card (anything else close by comes first)
     if (online()) Net.others.forEach(o => { const ox = o.tx ?? o.x, oy = o.ty ?? o.y; if (ox == null) return; const d = dist(p, { x: ox, y: oy }); if (d < 55) add({ key: 'card:' + o.id, label: o.name, icon: '👋', cls: 'talk', run: () => cardSheet(o) }, d + 40); });
     // bus stops
@@ -837,22 +839,22 @@
   }
 
   /* ---------------- trips: airport, harbor, space ---------------- */
-  let tripFrom = null;
+  let tripFrom = null, tripKind = 'plane';
   function goTrip(id, fromType) {
     const T = Life.TRIPS[id], k = nearest(World.keepers.filter(q => q.type === fromType), World.pos());
     tripFrom = k ? { x: k.x, y: k.y + 40 } : World.pos();
     closeSheet(); World.setVehicle(null);
     Sound.chord(6, 'bell');
-    World.goTrip(id); life.stats.trips++; touch();
-    later(() => toast(`<span class="t-small">${T.icon} ${esc(T.name)}</span>📸 → 🔶`, { big: true, life: 4 }));
+    tripKind = fromType === 'harbor' ? 'boat' : fromType === 'space' ? 'rocket' : 'plane';   // the trip is a little film: take-off, clouds, landing
+    World.goTrip(id, tripKind, () => { toast(`<span class="t-small">${T.icon} ${esc(T.name)}</span>📸 → 🔶`, { big: true, life: 4 }); startMusic(); });
+    life.stats.trips++; touch();
     memory(id); if (id !== 'moon') memory('flight');
     if (id === 'moon') fact('hop3');
     startMusic(); hud(); checkDream();
   }
-  function endTrip() {
-    World.endTrip(tripFrom ? tripFrom.x : 4800, tripFrom ? tripFrom.y : 1500);
-    spawnBricks(true);
-    Sound.bell(); startMusic(); hud(); touch();
+  function endTrip(quick) {
+    const after = () => { spawnBricks(true); Sound.bell(); startMusic(); hud(); touch(); };
+    World.endTrip(tripFrom ? tripFrom.x : 4800, tripFrom ? tripFrom.y : 1500, quick ? null : tripKind, after);
   }
   function airportSheet(msg = '') {
     sheet('✈️ Airport', (body) => {
@@ -1560,8 +1562,122 @@
     const list = [];
     for (let k = lo; k <= hi; k++) brickSpots(k).forEach(([x, y], i) => { const id = `nb:${day}:${k}:${i}`; if (!life.crunched.ids[id]) list.push({ id, x, y, kind: 'brick' }); });
     World.addPickups(list);
+    wildBricks(true);
     if (life.snail && !life.snail.done && snailArrived()) snailGift();
   }
+  /* ---------------- the planet: the Wild, its discoveries, and the way home ---------------- */
+  // Everything outside the towns is the Wild, made by js/planet.js as you walk (world3d streams it).
+  const WILD_INFO = { stones: ['🗿', 'Stone Circle'], ruins: ['🏛️', 'Old Ruins'], well: ['🪣', 'Wishing Well'], camp: ['⛺', 'Campsite'], statue: ['🗽', 'Squareface Statue'],
+    tower: ['🗼', 'Watchtower'], bigshroom: ['🍄', 'Giant Mushroom'], crystal: ['💎', 'Crystal Cave'], igloo: ['🧊', 'Snow Fort'], arch: ['🌉', 'Red Arch'], mesa: ['🏜️', 'Mesa'],
+    lighthouse: ['🗼', 'Lighthouse'], pole: ['🚩', 'Pole'] };
+  const HOME_G = { x: 4800, y: 1500 };   // Small Town's plaza, in game px
+  const toW = (p) => ({ x: (p.x - 4800) / 10, z: (p.y - 1300) / 10 });   // game px -> planet metres (world3d's units)
+  const inWildNow = () => !World.trip && !!World.inWild && World.inWild(World.pos().x, World.pos().y);
+  const homeInfo = () => { const w = toW(World.pos()), h = toW(HOME_G); return Planet.heading(w.x, w.z, h.x, h.z); };
+  const kmText = (m) => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+  const latText = (lat) => `${Math.abs(Math.round(lat))}°${lat >= 0 ? 'N' : 'S'}`;
+  function wildSpotName(q) { const [icon, name] = WILD_INFO[q.type] || ['❔', 'Something']; return q.type === 'pole' ? [icon, q.pole === 'N' ? 'North Pole' : 'South Pole'] : [icon, name]; }
+  function discover(q) {
+    if (!q || life.wild[q.id]) return;
+    life.wild[q.id] = life.day; life.stats.discoveries = (life.stats.discoveries || 0) + 1;
+    const today = life.today.count.disc || 0; life.today.count.disc = today + 1;
+    const [icon, name] = wildSpotName(q), star = today < 10;
+    if (star) Life.addStars(life, 2);
+    Sound.discover(); World.celebrate(14); World.mood('wow', 2);
+    toast(`<span class="t-small">🧭 Discovery #${life.stats.discoveries}${star ? ' · ⭐ +2' : ''}</span>${icon} ${esc(name)}`, { big: true, life: 4 });
+    memory('w_' + q.type);
+    if (q.type === 'pole') { findNoodle('polar'); memory('w_pole'); }
+    if (life.stats.discoveries >= 10) findNoodle('compass');
+    touch(); hud(); checkDream();
+  }
+  // a noodle brick beside every discovery nearby, once a day each
+  let wildBrickV = -1;
+  function wildBricks(force) {
+    if (!World.wildSpots || World.trip || !life || !life.day) return;
+    if (World.wildVersion === wildBrickV && !force) return; wildBrickV = World.wildVersion;
+    const day = life.day, spots = World.wildSpots(), have = new Set(World.pickups().map(q => q.id)), want = new Set();
+    const add = [];
+    spots.forEach(q => { const id = `nb:${day}:w:${q.id}`; want.add(id); if (!life.crunched.ids[id] && !have.has(id)) add.push({ id, x: q.x + 110, y: q.y + 90, kind: 'brick' }); });
+    have.forEach(id => { if (id.startsWith(`nb:${day}:w:`) && !want.has(id)) World.clearPickups(id); });
+    if (add.length) World.addPickups(add);
+  }
+  // what the Wild notices about you, twice a second
+  let biomeWas = null, wildWas = false, walkFrom = null, poleWas = false;
+  function planetTick() {
+    if (World.trip || !life) { walkFrom = null; return; }
+    const p = World.pos();
+    // metres walked (big jumps are rides, balloons or wrapping round the planet, not walking)
+    if (walkFrom) {
+      const dx = p.x - walkFrom.x, dy = p.y - walkFrom.y, d = Math.hypot(dx, dy);
+      if (Math.abs(dx) > 9e5) { life.stats.round = (life.stats.round || 0) + 1; memory('b_round'); findNoodle('globe'); toast('<span class="t-small">🌍 All the way round!</span>You walked round the whole planet!', { big: true, life: 6 }); World.celebrate(40); }
+      else if (d < 400) { life.stats.walked = (life.stats.walked || 0) + d / 10; if (wildWas) life.stats.wildWalked = (life.stats.wildWalked || 0) + d / 10; }
+    }
+    walkFrom = { x: p.x, y: p.y };
+    const inW = inWildNow();
+    if (inW !== wildWas) {
+      wildWas = inW; biomeWas = null;
+      if (inW) toast(`<span class="t-small">🌍 The Wild</span>🏡 ${kmText(homeInfo().dist)} · 🧭`, { life: 3 });
+    }
+    wildBar(inW);
+    if (!inW) return;
+    const h = homeInfo(); life.stats.farthest = Math.max(life.stats.farthest || 0, Math.round(h.dist));
+    if ((life.stats.wildWalked || 0) >= 1000) findNoodle('trail');
+    const s = World.planetAt(p.x, p.y), b = s.biome;
+    if (b !== biomeWas) {
+      const first = biomeWas !== null; biomeWas = b;
+      const B = Planet.BIOME[b];
+      if (first && B) toast(`${B.icon} ${esc(B.name)}`, { life: 2 });
+      if (b === 'snow') { memory('b_snow'); findNoodle('frost'); }
+      if (b === 'desert') { memory('b_desert'); findNoodle('sand'); }
+      if (b === 'jungle') memory('b_jungle');
+    }
+    if (b === 'sea' && World.swimming && h.dist > 300) { memory('b_sea'); findNoodle('wave'); }
+    const atPole = Math.abs(s.lat) > 88.6;
+    if (atPole && !poleWas) { findNoodle('polar'); memory('w_pole'); toast(`<span class="t-small">🚩 ${s.lat > 0 ? 'North' : 'South'} Pole!</span>You are at the top of the world!`, { big: true, life: 5 }); }
+    poleWas = atPole;
+    wildBricks();
+  }
+  // the compass: how far home is, and which way (the arrow points home; up the screen is north)
+  function wildBar(on) {
+    let el = document.getElementById('wildBar');
+    if (!on) { if (el) el.hidden = true; return; }
+    if (!el) {
+      el = document.createElement('button'); el.id = 'wildBar'; el.type = 'button'; el.setAttribute('aria-label', 'Compass: the way home');
+      el.addEventListener('click', () => { Sound.blip(); wildSheet(); });
+      document.body.append(el);
+    }
+    const h = homeInfo(), s = World.planetAt(World.pos().x, World.pos().y), B = Planet.BIOME[s.biome] || {};
+    el.hidden = false;
+    el.innerHTML = `<span class="wb-arrow" style="transform:rotate(${Math.round(h.deg)}deg)">⬆</span><b>🏡 ${kmText(h.dist)}</b><small>${B.icon || ''} ${latText(s.lat)}</small>`;
+  }
+  function wildSheet() {
+    const h = homeInfo(), p = World.pos(), s = World.planetAt(p.x, p.y), B = Planet.BIOME[s.biome] || {};
+    sheet('🧭', (body) => {
+      body.append(card(`<h3>${B.icon || '🌍'} ${esc(B.name || 'The Wild')} · ${latText(s.lat)}</h3><p class="small">${life.band === 1 ? `🏡 ${kmText(h.dist)}` : `Small Town is ${kmText(h.dist)} to the ${h.word}. Up the screen is north: walk north for snow, south towards the warm equator.`}</p>
+        <p class="small">🧭 ${life.stats.discoveries || 0} · 🥾 ${kmText(life.stats.walked || 0)} · 🏁 ${kmText(life.stats.farthest || 0)}</p>`));
+      body.append(row(button('🎈 Fly home', () => { closeSheet(); goHome(); }, 'choice'), button('🌍 Planet', () => { closeSheet(); planetView(); }, 'choice alt')));
+    });
+  }
+  // a balloon ride home (world3d animates it when it can)
+  function goHome() {
+    const to = { x: HOME_G.x, y: HOME_G.y + 60 };
+    Sound.chord(5, 'bell');
+    const done = () => { toast('<span class="t-small">🎈 Home again</span>🏡 Small Town', { big: true, life: 3 }); spawnBricks(true); hud(); };
+    if (World.travel) World.travel('balloon', World.pos(), to, done); else { World.place(to.x, to.y); done(); }
+  }
+  function planetView() {
+    if (!window.Globe) return toast('🌍 ⏳');
+    const w = toW(World.pos());
+    Globe.open({
+      me: { x: w.x, z: w.z, color: me.color },
+      friends: [...Net.others.values()].filter(o => o.x != null && o.y < 5e6).map(o => ({ ...toW({ x: o.tx ?? o.x, y: o.ty ?? o.y }), color: o.color, name: o.name })),
+      home: toW(HOME_G), towns: (town.districts || 0),
+      band: life.band,
+      // tapped a place on the globe: the arrow points there, however far
+      onPick: (at) => { guide = { x: at.x * 10 + 4800, y: at.z * 10 + 1300, h: 10, icon: '📍' }; const h = Planet.heading(w.x, w.z, at.x, at.z); toast(`<span class="t-small">📍 ${kmText(h.dist)} ${h.word}</span>Follow the arrow!`, { big: true, life: 4 }); },
+    });
+  }
+
   let combo = { n: 0, at: 0 };
   function crunchBrick(id) {
     const [, day, k] = id.split(':'), t = performance.now();
@@ -1761,6 +1877,8 @@
       if (snailArrived()) rows.push({ icon: '🐌', text: `Meet the Udon Snail in ${to.name}`, stars: '+5 🐚', state: 'now', note: 'it made it!', run: go(`kind:${to.kind}`, '🐌') });
       else rows.push({ icon: '🐌', text: `The Udon Snail is walking to ${to.name}`, stars: '+5 🐚', state: 'soon', note: `day ${snailDays()}/${SNAIL_DAYS}` });
     } else if (!life.snail) rows.push({ icon: '🐌', text: 'Reach level 3 to meet the Udon Snail', stars: '+5 🐚', state: 'later', note: '' });
+    { const spots = World.wildSpots ? World.wildSpots().filter(q => !life.wild[q.id]) : [], p = World.pos(), q = spots.length ? nearest(spots, p) : null;
+      rows.push({ icon: '🧭', text: 'Explore the Wild: find discoveries', stars: '+2 each', state: 'now', note: `${life.stats.discoveries || 0} found · walk off the edge of town`, run: () => { const t = q || { x: p.x, y: -900 }; guide = { x: t.x, y: t.y, h: 10, icon: '🧭' }; closeSheet(); toast('🧭 ➤', { life: 2 }); } }); }
     rows.push({ icon: '🎓', text: 'Take a class', stars: life.band === 1 ? '+1 a right answer' : '+1, +3 for a certificate', state: 'now', note: '', run: go('school', '🎓') });
     rows.push({ icon: '📸', text: 'New places and firsts', stars: '+5', state: 'soon', note: `${Life.memCount(life)}/${Object.keys(Life.MEMORIES).length}`, run: () => { closeSheet(); lifeSheet(); } });
     rows.push({ icon: '🍜', text: 'New noodles for the Noodle-dex', stars: '+3', state: 'soon', note: `${Object.keys(life.noodles).length}/${NOODLE_DEX.length}`, run: () => noodleSheet() });
@@ -1924,7 +2042,16 @@
 
   /* ---------------- map ---------------- */
   const MAP_TINT = { downtown: '#cfcac0', uptown: '#c9e6a8', rural: '#d7e79a', beach: '#f1e2b3', mountain: '#b7cf9a', college: '#c8dfa5', oldtown: '#d5ccbc', lake: '#b7deb8', desert: '#e8c79a', forest: '#93bf73' };
+  function drawCompass(c) {
+    const x = c.getContext('2d'), W = c.width, H = c.height, h = homeInfo(), p = World.pos(), s = World.planetAt(p.x, p.y), B = Planet.BIOME[s.biome] || {};
+    x.fillStyle = B.ground || '#b4dc7a'; x.fillRect(0, 0, W, H);
+    x.save(); x.translate(W / 2, H / 2 - 8); x.rotate(h.deg * Math.PI / 180);
+    x.fillStyle = '#e4572e'; x.strokeStyle = '#34233f'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, -46); x.lineTo(24, 16); x.lineTo(0, 4); x.lineTo(-24, 16); x.closePath(); x.fill(); x.stroke(); x.restore();
+    x.fillStyle = '#34233f'; x.font = '800 22px "Baloo 2", sans-serif'; x.textAlign = 'center'; x.fillText('🏡 ' + kmText(h.dist), W / 2, H - 16);
+    x.font = '800 16px "Baloo 2", sans-serif'; x.fillText('N', W / 2, 18);
+  }
   function drawMap(c, big) {
+    if (!big && inWildNow()) return drawCompass(c);
     const R = Town.worldRight(town), B = { x0: 3380, x1: R, y0: -420, y1: 2640 };
     const x = c.getContext('2d'), W = c.width, H = c.height;
     // the minimap follows you when the town gets wide; the big map shows it all
@@ -1968,6 +2095,7 @@
   function mapSheet() {
     const ds = Town.districtsOf(town), here = World.trip ? -1 : Town.districtAt(town, World.pos().x);
     sheet(`🗺️ ${ds.length + 1} towns`, (body) => {
+      body.append(row(button('🌍 See the planet', () => { closeSheet(); planetView(); }, 'choice'), inWildNow() ? button(`🎈 Fly home (${kmText(homeInfo().dist)})`, () => { closeSheet(); goHome(); }, 'choice alt') : null));
       // 1) the whole region at a glance, west to east: tap a town to see it and get an arrow there
       const strip = document.createElement('div'); strip.className = 'region';
       const friendsIn = (k) => [...Net.others.values()].filter(o => o.x != null && o.y < 5e6 && Town.districtAt(town, o.tx ?? o.x) === k).map(o => `<i style="background:${esc(o.color)}"></i>`).join('');
@@ -2051,7 +2179,7 @@
     if (code.length < 3 || code.length > 8) { const m = $('roomMsg'); if (m) m.textContent = '3–8 letters or numbers'; return false; }
     const m = $('roomMsg'); if (m) m.textContent = '⏳';
     Net.onStatus((s) => { const el = $('roomMsg'); if (el) el.textContent = `⏳ ${s}s`; });
-    try { if (World.trip) endTrip(); await Net.enter(code, me.name, me.color, me.uid); S = S || {}; S.lastRoom = code; return true; }
+    try { if (World.trip) endTrip(true); await Net.enter(code, me.name, me.color, me.uid); S = S || {}; S.lastRoom = code; return true; }
     catch (e) { const el = $('roomMsg'); if (el) { el.textContent = e.code === 'offline' ? '📡 ✕ (online version only)' : '📡 ✕ · 🔁'; el.classList.add('err'); } return false; }
   }
   function friendsSheet() {
@@ -2111,12 +2239,12 @@
   /* ---------------- the leaderboard: everyone has a record, and many ways to be on top ---------------- */
   // Every board counts something that only goes up. A secret key on this device keeps the record yours.
   if (!me.key) me.key = newUid() + newUid();
-  const BOARDS = [['xp', '⭐', 'Stars'], ['week', '📅', 'This week'], ['earned', '💼', 'Coins earned'], ['mem', '📸', 'Memories'], ['noodles', '🍜', 'Noodles'], ['perfect', '🌟', 'Perfect Days'], ['kinds', '🗺️', 'Towns'], ['nights', '🌙', 'Nights']];
+  const BOARDS = [['xp', '⭐', 'Stars'], ['week', '📅', 'This week'], ['earned', '💼', 'Coins earned'], ['mem', '📸', 'Memories'], ['noodles', '🍜', 'Noodles'], ['perfect', '🌟', 'Perfect Days'], ['kinds', '🗺️', 'Towns'], ['far', '🧭', 'Farthest'], ['disc', '🗿', 'Discoveries'], ['nights', '🌙', 'Nights']];
   const onServer = /^https?:$/.test(location.protocol);
   let boardSent = '';
   function myRecord() {
     return { id: me.uid, key: me.key, name: me.name || 'Squareface', color: me.color, hat: life.hat || '', dream: life.dream || '', band: life.band,
-      xp: life.xp, earned: Math.round(life.stats.earned || 0), mem: Life.memCount(life), noodles: Object.keys(life.noodles || {}).length, perfect: life.perfectDays || 0, kinds: Object.keys(life.kindsSeen || {}).length, nights: life.stats.sleeps || 0 };
+      xp: life.xp, earned: Math.round(life.stats.earned || 0), mem: Life.memCount(life), noodles: Object.keys(life.noodles || {}).length, perfect: life.perfectDays || 0, kinds: Object.keys(life.kindsSeen || {}).length, nights: life.stats.sleeps || 0, far: Math.round(life.stats.farthest || 0), disc: life.stats.discoveries || 0 };
   }
   function postRecord(force) {
     if (!onServer || !life || !me.name) return Promise.resolve();
@@ -2139,13 +2267,13 @@
       body.append(list);
       if (!onServer) { list.innerHTML = '<p class="small">The leaderboard lives on the online server.</p>'; return; }
       const icon = (BOARDS.find(b => b[0] === by) || BOARDS[0])[1];
-      const rowOf = (e, mine) => `<div class="player-row ${mine ? 'me' : ''}"><span class="rank">${e.rank <= 3 ? ['🥇', '🥈', '🥉'][e.rank - 1] : '#' + e.rank}</span><span class="dot" style="background:${esc(e.color)}"></span><span class="who">${esc(e.name)} ${HAT_ICON[e.hat] || ''}</span><span class="stats"><span class="stat">${(Life.DREAMS[e.dream] || {}).icon || ''}</span><span class="stat big">${icon} ${e.v}</span></span></div>`;
+      const rowOf = (e, mine) => `<div class="player-row ${mine ? 'me' : ''}"><span class="rank">${e.rank <= 3 ? ['🥇', '🥈', '🥉'][e.rank - 1] : '#' + e.rank}</span><span class="dot" style="background:${esc(e.color)}"></span><span class="who">${esc(e.name)} ${HAT_ICON[e.hat] || ''}</span><span class="stats"><span class="stat">${(Life.DREAMS[e.dream] || {}).icon || ''}</span><span class="stat big">${icon} ${by === 'far' ? kmText(e.v) : e.v}</span></span></div>`;
       postRecord(true).then(() => fetch(`api/sw/board?by=${by}&band=${band}&me=${me.uid}`)).then(r => r.ok ? r.json() : Promise.reject()).then(d => {
         if (!list.isConnected) return;   // another tab or screen took its place
         const inTop = d.me && d.list.some(e => e.rank === d.me.rank);
         list.innerHTML = d.list.length ? d.list.map(e => rowOf(e, d.me && e.rank === d.me.rank)).join('') + (d.me && !inTop ? `<div class="board-gap">⋯</div>${rowOf(d.me, true)}` : '') : '<p class="small">Nobody yet. Be the first! ⭐</p>';
         if (d.mine) {
-          const mine = card(`<h3>🏅 My records</h3><div class="board-mine">${BOARDS.map(([id, ic, name]) => { const m = d.mine[id] || {}; return `<div class="pcard-stat"><span>${ic}</span><b>${m.v || 0}</b><small>${m.rank ? `#${m.rank} of ${m.of}` : name}</small></div>`; }).join('')}</div>`);
+          const mine = card(`<h3>🏅 My records</h3><div class="board-mine">${BOARDS.map(([id, ic, name]) => { const m = d.mine[id] || {}; return `<div class="pcard-stat"><span>${ic}</span><b>${id === 'far' ? kmText(m.v || 0) : m.v || 0}</b><small>${m.rank ? `#${m.rank} of ${m.of}` : name}</small></div>`; }).join('')}</div>`);
           body.append(mine);
         }
       }).catch(() => { if (list.isConnected) list.innerHTML = '<p class="small">📡 ✕ · Could not load the leaderboard. Try again soon.</p>'; });
@@ -2388,7 +2516,7 @@
     if (online() && !World.trip) Net.state({ x: Math.round(pos.x), y: Math.round(pos.y), mood: sleeping ? 'sleepy' : st.mood, moving: st.moving, face: st.face, z: st.hop, title: Life.title(life), swimming: World.swimming, hat: life.hat || '' });
     if (sleeping) { const f = Life.dayFrac(t), done = Math.max(0, Math.min(1, (f - sleepFrom) / Math.max(0.01, 1 - sleepFrom))); $('nightFill').style.width = Math.round(done * 100) + '%'; }
     if ((hudT -= dt) <= 0) {
-      hudT = 0.5; hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t)); wonderTick(); buddies(); boostTick();
+      hudT = 0.5; planetTick(); hud(); markers(); World.setDay(window.__sw.dayOverride ?? Life.dayFrac(t)); wonderTick(); buddies(); boostTick();
       const rain = Town.raining(t); if (rain && !rainWas) { fact('rain'); toast('🌧️ 🌱💧'); } rainWas = rain;
       const up = World.hillAt(World.pos().x, World.pos().y) > 2; if (up && !hillWas) fact('hill'); hillWas = up;
     }
