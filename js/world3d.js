@@ -3461,9 +3461,9 @@ function addPickups(list) {
     const id = String(it.id), old = picks.findIndex(p => p.id === id);
     if (old >= 0) picks.splice(old, 1);
     if (picks.filter(p => p.kind === it.kind).length >= PICK_MAX) continue;
-    // inside a tree or a wall? nudge it towards the player a few times, else leave it out
+    // inside a tree or a wall? nudge it towards the player a few times, else leave it out (fixed ones, like race bricks, stay put so everyone sees the same spot)
     let x = wx(it.x), z = wz(it.y);
-    for (let k = 0; k < 3 && !it.fixed && solidAt(x, z, 0.8); k++) {   // fixed: the same spot for everyone (races) const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
+    for (let k = 0; k < 3 && !it.fixed && solidAt(x, z, 0.8); k++) { const dx = player.x - x, dz = player.z - z, d = Math.hypot(dx, dz) || 1, st = Math.min(d, 3); x += dx / d * st; z += dz / d * st; }
     if (solidAt(x, z, 0.8)) continue;
     // on water it floats at the surface, on land it hovers
     const w = waterAt(x, z), pot = it.kind === 'pot' || it.kind === 'brick';
