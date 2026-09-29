@@ -35,42 +35,54 @@ generation does it better", not a claim that play fixes the real world.
 7. Power gives, never takes.
 8. Today's play is untouchable: world tasks hang off crunching, cooking, races, exploring.
 9. One new idea per session, at most one fact card.
-10. Stay inside the existing caps: rewards go through `kidBonus` and `RULES`.
+10. Stay inside the existing caps: rewards go through `kidBonus` and the daily caps.
 
-## Ages
+## One game for everyone (no age types)
 
-| Band (code) | Ages | What they do |
-| --- | --- | --- |
-| 1 | 6 to 8 (younger with a parent) | Sparks, helper missions with an animal buddy, Crew Captain, Clean-up Day. No reading needed. |
-| 2 | 9 to 12 | Specialist dreams, voting, fact-checking, Governor, Leader. |
-| 3 | 13 to 16 | Prime Minister, World Council, treaties, laws, the Shell Ledger (maybe). |
-| Adults, families | any | Play with children, Teacher mode, impact reports. |
+There is no age picker and no age-based rule set. Everyone plays the same game: it starts simple and
+complexity unlocks through play, so older players pass the easy start in minutes while young children stay
+there as long as they need (the Minecraft / Animal Crossing / Pokemon model). Three conditions make this safe:
+
+1. **Safety is set for the youngest, for everyone.** Safety never unlocks by skill or level. Talk is preset
+   phrases and face-emotes only; there is no typed chat (owner decision; revisit only with the owner).
+2. **A gentle base, depth by choice.** Coins only go down when a player chooses to spend. No debts, no
+   lost streaks, no random failures. Depth comes from things players opt into (owning land, running a
+   company, the Banker dream, harder quests), never from penalties.
+3. **Reading and difficulty adapt, not by age.** Pictures first for everyone, a "Tell me more" button for
+   words, more detail as the player levels up. Quizzes and math adapt: right answers make them harder,
+   wrong answers easier.
+
+Also: every early step must take seconds for a player who already gets it, so older players are never
+bored at the start. Play limits and bedtime stay as parent settings, not age rules. Because the game is made
+for children, every player is treated as a possible child for privacy (no ads, no tracking, name + PIN only).
 
 ## The growth ladder
 
 Town (today, Mayor; Mayor Maple is the NPC) → Province of 3 to 6 towns (Governor) → Country (Leader, then
 Prime Minister) → Multi-nation (council of country heads) → World (World Council). Each level unlocks
-through play; NPCs fill empty seats; small kids never have to touch governance, but their play counts.
+through play; NPCs fill empty seats; players never have to touch governance, and their play still counts.
 Inside a country, a "society of dreams": a Society screen shows which careers are present, and a missing
 one shows as a need ("No doctor yet: the clinic is closed").
 
 ## New dreams (13)
 
-| Dream | Ages (band) | Notes |
+| Dream | Unlocks at (star level, suggested) | Notes |
 | --- | --- | --- |
-| Scientist | all | Sensors, readings, find the cause at the Climate Lab |
-| Fact-Checker | 9+ (2) | Trace rumours, compare stories |
-| Clean Energy Engineer | all | Windmills, solar, water power |
-| Robot Maker | 9+ (2) | Helper robots, retraining school, robot rules |
-| Doctor | all | Clinics, sharing medicine |
-| Ranger | all | Fish, forests, animals, cutting limits |
-| Water Engineer | all | Treatment plants, clean rivers |
-| Crew Captain | all | How young kids lead: gather a crew of 3, lead a Clean-up Day or festival; crew votes by tapping faces; NPCs fill empty spots; can never kick anyone |
-| Ledger Keeper | 13+ (3) | Shell Ledger honesty, scams, bubbles (maybe) |
-| Governor | 9+ (2) | Leads a province |
-| Diplomat | 9+ (2) | Treaties between countries |
-| Leader | 9+ (2) | Heads a country |
-| Prime Minister | 13+ (3) | Speaks at the World Council (maybe) |
+| Scientist | start | Sensors, readings, find the cause at the Climate Lab |
+| Ranger | start | Fish, forests, animals, cutting limits |
+| Crew Captain | start | The first way to lead: gather a crew of 3, lead a Clean-up Day or festival; crew votes by tapping faces; NPCs fill empty spots; can never kick anyone |
+| Doctor | start | Clinics, sharing medicine |
+| Water Engineer | start | Treatment plants, clean rivers |
+| Clean Energy Engineer | start | Windmills, solar, water power |
+| Fact-Checker | 5 | Trace rumours, compare stories |
+| Robot Maker | 5 | Helper robots, retraining school, robot rules |
+| Governor | 8 | Leads a province |
+| Diplomat | 8 | Treaties between countries |
+| Leader | 8 | Heads a country |
+| Ledger Keeper | 12 | Shell Ledger honesty, scams, bubbles (maybe) |
+| Prime Minister | 12, and re-elected once as Leader | Speaks at the World Council (maybe) |
+
+Unlock levels are starting guesses; tune them in playtests.
 
 The existing Mayor dream becomes the first leadership rung. New school subjects: Nature and Media.
 
@@ -88,15 +100,15 @@ reduce and adapt.
 
 | Size | Examples | Real time | Beats | Mainly |
 | --- | --- | --- | --- | --- |
-| Spark | Litter pile, sick deer, spilled barrel, fake letter | One session (5 to 15 min) | Spot, fix, see it at once | Small kids, anyone |
-| Event | Volcano puff, storm, rumour, Oracle mistake | 1 to 3 days | Appears; scientists find the cause; a crew fixes it | Band 2 |
+| Spark | Litter pile, sick deer, spilled barrel, fake letter | One session (5 to 15 min) | Spot, fix, see it at once | New players, anyone |
+| Event | Volcano puff, storm, rumour, Oracle mistake | 1 to 3 days | Appears; scientists find the cause; a crew fixes it | Specialist dreams |
 | Season | Warmth in one biome, dying forest, dirty river, e-waste | 1 week | Daily action, mid-week reveal, weekend finale (Clean-up Day) | Towns, provinces |
 | Era | Warming trend, forest regrowth, energy switch | 4 to 8 weeks | Each Season moves it one visible notch on the globe | Countries |
 | Grand Project | Space Program, wonderful-world Wonders | Months | A celebrated milestone about every 2 weeks | Multi-nations, World Council |
 
 Pacing: at most one Era, one Season and one or two Events at once; Sparks always available. Nothing fails:
 an unsolved problem waits, does not get worse on screen, and carries over. Every beat pays (a visible change
-plus a capped reward). Small kids never see the Era: their Spark adds a visible leaf to the shared forest.
+plus a capped reward). New players never need to see the Era: their Spark adds a visible leaf to the shared forest.
 
 ## Clean world
 
@@ -110,7 +122,7 @@ Rewards: coins through `kidBonus` caps, plus beauty, returning animals, "Clean T
 | Topic | Decision |
 | --- | --- |
 | AI helper robots | Productivity vs jobs vs energy; retraining school, sharing, robot rules |
-| Oracle robot | Sometimes confidently wrong. Checking is an action: take its claim to the place, look, stamp "Caught it!" in a Fibs-dex. Answers are pre-written and rotate weekly; for small kids only silly-wrong. A real AI stays permanently optional for teens, outside the main loop. |
+| Oracle robot | Sometimes confidently wrong. Checking is an action: take its claim to the place, look, stamp "Caught it!" in a Fibs-dex. Answers are pre-written and rotate weekly; early claims are only silly-wrong, and trickier ones come with level. A real AI stays permanently optional (parent opt-in), outside the main loop. |
 | Rumour mill | Rumours spread as a wave; fact-checkers trace and publish checks |
 | Shell Ledger | Pretend digital money teaching public ledgers, mining energy, bubbles, scams. "Maybe" until players ask. Never real money. |
 | Privacy, e-waste | Light choice cards; recycling jobs |
@@ -134,8 +146,9 @@ never shows individual rankings to the class.
 
 ## Safety
 
-Made-up planet only; safe names and flags from word lists; preset phrases and face-emotes instead of free chat
-for kids; no war; kind power; real science with honest uncertainty; bedtime and daily limits stay.
+Made-up planet only; safe names and flags from word lists; preset phrases and face-emotes only (no typed
+chat); no war; kind power; real science with honest uncertainty; bedtime and daily limits stay as parent
+settings. Safety is the same for every player.
 
 ## Business and publishing
 

@@ -1,6 +1,7 @@
 # Small World: notes for coding agents
 
-Small World is a cozy 3D browser game for all ages, built so small kids (6 to 8) can play without reading.
+Small World is a cozy 3D browser game for everyone. There are no age types: it starts simple and unlocks
+depth through play, and a 6-year-old who cannot read must be able to play it.
 Players live in a shared town, follow dreams (careers), explore an infinite planet, and are growing into
 "World Builders": solving world problems together.
 
@@ -24,7 +25,7 @@ Players live in a shared town, follow dreams (careers), explore an infinite plan
 
 | File | What it is |
 | --- | --- |
-| `js/life.js` | One player's life rules: age `RULES` per band, jobs, school, bank, `DREAMS`, `kidBonus` (daily caps), memories, save `fresh()`/`repair()`. UMD: runs in the browser and in Node. |
+| `js/life.js` | One player's life rules: `RULES` (being merged into one table, see phase 0), jobs, school, bank, `DREAMS`, `kidBonus` (daily caps), memories, save `fresh()`/`repair()`. UMD: runs in the browser and in Node. |
 | `js/town.js` | Shared town rules, authoritative on the server: districts, plots, goods and prices, projects, mayor elections (`act`, `settle`, `wonderAt`). UMD. |
 | `js/planet.js` | The made-up planet: `sample(x, z)` gives height and biome; 100 km around, wraps east-west. UMD. |
 | `js/world3d.js` | three.js world (ES module): towns, the streamed Wild (chunks, plants, landmarks, pickable items, animals), travel animations. Exposes `window.World`. |
@@ -37,18 +38,19 @@ Players live in a shared town, follow dreams (careers), explore an infinite plan
 ## Conventions
 
 - Vanilla JS, no build step, no framework. `index.html` loads classic scripts in order, then the two modules.
-- Rules live in pure UMD modules (`life.js`, `town.js`, new `world.js`) so the server and `test/*.test.js` can run them.
+- Rules live in pure UMD modules (`life.js`, `town.js`, new `problems.js`) so the server and `test/*.test.js` can run them.
   The server is authoritative for anything shared; clients only send requests.
 - Every new saved field gets a default in `Life.fresh()` and a migration in `Life.repair()`. Old saves must load.
-- Every new coin reward goes through `kidBonus` with a cap in `RULES[band].caps`. No new currency.
+- Every new coin reward goes through `kidBonus` with a daily cap in `RULES` caps. No new currency.
 - Every new server message is rate limited (`allow(...)`) and its fields are whitelisted like `cleanAction`.
-- UI: pictures, emoji and a yellow arrow first. Small kids (band 1) must be able to do it without reading.
+- UI: pictures, emoji and a yellow arrow first. A new player who cannot read must be able to do it.
 - Match the surrounding code style: short comments, plain words, same naming.
 
 ## Hard rules (never break these)
 
 - No real money, crypto, tokens or NFTs for players. No third-party ads or tracking.
-- No free-typed chat reaching small kids. Use preset phrases and face-emotes.
+- No typed chat. Talk is preset phrases and face-emotes. Safety is the same for every player and never unlocks by level.
+- No age types or age-based rules. Complexity unlocks by play and choice, never by penalties.
 - No red meter that drains as punishment. Show progress toward the wonderful world; problems appear as things in the world to fix.
 - Power gives, never takes: no player can fine, ban, kick or take from another player.
 - No war, no losing, and missing days never costs anything.

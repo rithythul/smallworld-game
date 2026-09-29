@@ -11,8 +11,8 @@ detailed section here before it starts.
   before/after screenshots for any UI change (desktop 1000x700 and phone 390x844).
 - Tick the milestone's box in the checklist at the end of this file in the same PR.
 - If a milestone forces a design change, stop and ask the owner; then update `DESIGN.md` and the living doc.
-- Review every UI change against the fun rules in `DESIGN.md` ("Rules to keep it fun"). A band 1 player must
-  be able to do it with no reading.
+- Review every UI change against the fun rules in `DESIGN.md` ("Rules to keep it fun"). A brand-new player who
+  cannot read must be able to do it.
 
 ## Architecture
 
@@ -36,6 +36,36 @@ detailed section here before it starts.
   Splatfest / Nook Miles model). Towns stay per room, as today.
 - **Real time vs game time.** A game day (`Life.DAY`) is 6 real minutes. World Problem beats use real UTC
   days and weeks (`REAL_DAY = 86400000`). Never mix the two.
+
+## Phase 0: one game for everyone (do this before phase 1)
+
+Today the game asks for an age at the start and keeps three rule sets (`RULES[1|2|3]` in `life.js`, used
+through `rules(life)`), plus band checks in `sw.js` (about 60 places), `learn.js` quizzes and the server
+leaderboard. The design removes age types (see `DESIGN.md`, "One game for everyone"). Do it as its own PR.
+
+- **One rule table.** Collapse `RULES` to a single table based on today's band 1 values (the gentlest):
+  start coins, ritual windows, caps, no misses or losses (`fishMiss: 0`, `coLossZero: true`), streaks
+  that never reset, no taxes, rent, land tax or upkeep. `rules(life)` returns that table.
+- **Depth by choice, never penalties.** What bands 2 and 3 had becomes opt-in depth that never forces coins
+  below zero: investing and stocks with the Investor dream or a star level, bigger companies and plots by
+  level, loans only if the player opts in at star level 10, repaid only out of earnings. No automatic bills.
+- **Endless levels:** the coins per endless dream level start at 60 and grow about 10% per level, so the pace
+  suits both a new player and a veteran (today it is fixed per band).
+- **Dreams:** each dream's `little` steps become its first steps for everyone, followed by its full `steps`,
+  so experienced players finish the easy part in minutes. `FEATURED_BY_BAND` becomes one list, easiest first.
+- **Adaptive quizzes:** `learn.js` `classQuestions(subject, band)` takes a per-subject skill number instead
+  of a band. Two right answers in a row step it up; a wrong answer steps it down. Store it in the save.
+- **Reading:** pictures first everywhere; a "Tell me more" button shows words; longer text appears as the
+  player levels up.
+- **Talk:** remove typed chat. The server `chat` case accepts only preset phrase ids (`q`); remove the text
+  input from the client. Face-emotes and preset phrases stay.
+- **Start screen:** remove the age tabs (`#ages`). Parent settings (play limits, bedtime) stay in `care.js`.
+- **Leaderboard:** one board for everyone (drop the `band` filter in `swSorted` and `/api/sw/board`).
+- **Saves:** `repair()` ignores the old `band` field; players keep their coins, items, dreams and levels.
+  Existing loans keep their normal repayment and never go below zero.
+- **Tests:** the "band 1" promises in `test/life.test.js` become promises for every player: 30 days of
+  play, coins only go down on purchases, no debts unless opted in. Add a test that an old band 3 save loads.
+  Browser: the start screen has no age question; a new player completes the first dream step with icons only.
 
 ## Phase 1: World Problem Lite
 
@@ -92,10 +122,10 @@ function sparksIn(cx, cz, day) -> deterministic litter/sapling spots in one Wild
 
 - New save fields with defaults in `fresh()` and migration in `repair()`: `cleaned: { day, ids: [] }`
   (like `wildPicked`), `stats.cleaned`, `stats.planted`, `stats.sensors`, `stats.problemsHelped`.
-- New cap key `clean` in `RULES[1|2|3].caps` (suggested 15 / 12 / 10). All clean-up coins go through
+- New cap key `clean` in `RULES.caps` (suggested 15 a day). All clean-up coins go through
   `kidBonus(life, 'clean', ...)`.
 - New memories: `p_haze`, `p_litter`, `p_forest` ("I helped clear the haze") and `p_cause` (found a cause).
-- New dreams in `DREAMS`, each with `little` steps for band 1 and `steps` for bands 2 and 3, ending in the
+- New dreams in `DREAMS`, each with easy first steps then full steps (see phase 0), ending in the
   existing endless levels:
   - `scientist` (🔬): place a sensor, read 3 sensors, find a cause, help 2 problems.
   - `ranger` (🥾): pick up 10 litter, plant 5 saplings, see an animal return, help 3 problems.
@@ -121,7 +151,7 @@ function sparksIn(cx, cz, day) -> deterministic litter/sapling spots in one Wild
 - **HUD chip** 🌍 with the problem icon and a filling ring (up only). Tap opens a sheet with: a picture of
   the place, a compass arrow and "Go there" (existing travel), today's action as three big icons
   (🛍️ ✋, 🌱, 📡), the filling picture (leaves filling a tree), "You + N helpers", and the cause card once
-  revealed. Band 1 sees only icons and the picture.
+  revealed. Icons and the picture carry everything; "Tell me more" shows words.
 - **Guide arrow:** the existing yellow arrow points to the balloon, then the region, when the problem is new.
 - **Fact card:** at most one per session, on the cause reveal ("The mountain burped: volcanoes make haze too").
 - **Beats:** daily (new Sparks, a toast "The haze got thinner!"), mid-week (cause reveal), weekend finale
@@ -151,19 +181,17 @@ function sparksIn(cx, cz, day) -> deterministic litter/sapling spots in one Wild
   cause on every call; the region is on land and within 2 to 6 km; `fraction` never decreases across any sequence
   of `settle` and `act`; daily per-uid cap holds; the NPC trickle only runs when few players help; an unsolved
   week archives as waiting and never as failed; `sparksIn` is deterministic.
-- `test/life.test.js`: new fields survive `repair()` on an old save; clean-up coins never exceed the band cap;
+- `test/life.test.js`: new fields survive `repair()` on an old save; clean-up coins never exceed the daily cap;
   the three dreams can be completed.
 - **Commit the browser harness** as `test/browser/` with a small helper (launch, boot, `World.place`, close
   sheets) and a `npm run test:browser` script that starts a server on a free port with a temp `DATA_DIR`.
   Scripts: `world-problem.js` (travel to the region, haze visible, clean a Spark, progress rises, globe shows
-  the pin), `cleanup-day.js` (two clients, shared meter, festival), `band1-no-reading.js` (a band 1 player
+  the pin), `cleanup-day.js` (two clients, shared meter, festival), `no-reading.js` (a new player
   completes a Spark using only icon buttons).
 - **Fun check:** play the 10-minute session in `DESIGN.md` end to end and attach screenshots to the PR.
 
 ### 1.9 Decisions needed before or during phase 1
 
-- Free-typed chat: today rooms allow up to 80 typed characters. Proposed: preset phrases only for band 1,
-  typed chat for bands 2 and 3 in private rooms only. Owner to confirm.
 - Problem distance: 2 to 6 km from town assumes the balloon and plane are the way there. Confirm after playtest.
 - Goal sizes (350 to 500 actions per week) are guesses; tune from real play.
 
@@ -210,6 +238,9 @@ Architecture only; detail this section before starting.
 
 ## Checklist
 
+Phase 0
+- [ ] M0a One game for everyone: one rule table, opt-in depth, adaptive quizzes, no typed chat, no age picker
+
 Phase 1
 - [ ] M0 Commit the browser test harness (`test/browser/`, `npm run test:browser`)
 - [ ] M1 `js/problems.js` rules and `test/problems.test.js`
@@ -219,7 +250,7 @@ Phase 1
 - [ ] M5 HUD chip, problem sheet, guide arrow, beats and fact card
 - [ ] M6 Clean-up Day and Crew Captain
 - [ ] M7 Globe marker and "Go there"
-- [ ] M8 Playtest pass: the 10-minute session, band 1 no-reading check, tuning goals and caps
+- [ ] M8 Playtest pass: the 10-minute session, no-reading check, tuning goals and caps
 
 Phase 2
 - [ ] Detail this plan, then: teacher class rooms, Governor, countries, Society screen, Trust and the Oracle
